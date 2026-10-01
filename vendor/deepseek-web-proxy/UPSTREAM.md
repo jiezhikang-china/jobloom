@@ -9,7 +9,7 @@ Copyright (C) 2026 Chat2API Team. 本组件和改编文件使用 **GPL-3.0-or-la
 ## 本地修改
 
 - 只保留单个 DeepSeek 网页账号；监听 `127.0.0.1` 随机空闲端口，由求职助手自动管理，不需要 Docker 或另装管理台。
-- Flash / Pro 是此提交的代理模型标识，分别发送 `model_type: default` / `expert`；未声称账号一定拥有对应模式或额度。
+- 当前只保留已验证的网页普通模式，使用内部适配器标识 `deepseek-v4-flash`、发送 `model_type: default`。原适配器的 Pro / expert 入口已移除，不能据此推断用户账号支持付费模式。
 - 登录窗口由用户手动操作，成功后保持显示到用户关闭。规范化 `userToken` 裸字符串、JSON 字符串或 `{value: string}`，通过网页当前用户接口验证后保存。
 - 使用 Windows 当前用户的 Electron safeStorage 加密保存；不提供明文降级。不记录 token、Cookie、简历正文或模型正文。
 - 深度思考由用户选择；联网搜索关闭。非流式返回经过 SSE 分段解析，思考内容独立返回。保留答案里的 `FINISHED`，修正空片段切换及 UTF-8 边界。

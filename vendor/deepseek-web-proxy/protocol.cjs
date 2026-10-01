@@ -6,8 +6,7 @@ const path = require('node:path');
 const API_BASE = 'https://chat.deepseek.com/api/v0';
 // Names and mapping from the pinned adapter, not a live claim about the account's quota.
 const MODELS = [
-  { id: 'deepseek-v4-flash', name: 'DeepSeek Flash', modelType: 'default' },
-  { id: 'deepseek-v4-pro', name: 'DeepSeek Pro', modelType: 'expert' },
+  { id: 'deepseek-v4-flash', name: 'DeepSeek 网页', modelType: 'default' },
 ];
 
 class ProxyError extends Error {
@@ -33,7 +32,7 @@ function normalizeToken(raw) {
 
 function resolveOptions(request) {
   const model = MODELS.find((item) => item.id === request.model);
-  if (!model) throw new ProxyError('此网页代理不支持该模型，请选择 DeepSeek Flash 或 Pro', 400, 'invalid_model');
+  if (!model) throw new ProxyError('此网页代理只使用 DeepSeek 网页普通模式', 400, 'invalid_model');
   return { model_type: model.modelType, search_enabled: false, thinking_enabled: request.thinking === true };
 }
 

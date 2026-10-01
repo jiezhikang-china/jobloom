@@ -18,7 +18,7 @@ export interface AppConfig {
     salaryMin?: number;
     salaryMax?: number;
     experience: string[]; // ['应届生', '1-3年', '3-5年', '5-10年']
-    degree: string[]; // ['本科', '硕士', '大专']
+    degree: string[]; // 用户最高学历，0 或 1 项；空数组不限制，岗位按最低门槛比较
     hrActiveDaysLimit: number; // 3天内活跃为 3；<=0 表示不限制
     companyBlacklist: string[]; // 外包、劳务、人力资源、某某中介
     requiredKeywords: string[]; // 职位名称、技能标签或完整 JD 命中任意一个才进入 AI 评估

@@ -15,7 +15,7 @@ export interface AppConfig {
     salaryMin?: number;
     salaryMax?: number;
     experience: string[];
-    degree: string[];
+    degree: string[]; // 用户最高学历，0 或 1 项
     hrActiveDaysLimit: number;
     companyBlacklist: string[];
     requiredKeywords: string[];

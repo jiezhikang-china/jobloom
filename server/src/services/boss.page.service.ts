@@ -193,7 +193,7 @@ export class BossPageService {
         index: row.index, jobHref: row.href, jobName: row.name, companyName: row.company,
         cityName: row.location.split('·')[0]?.trim() || '', salary: row.salary, activeTimeDesc: '',
         experience: row.tags.find((tag) => /年|应届|在校|经验/.test(tag)) || '',
-        degree: row.tags.find((tag) => /博士|硕士|本科|大专|专科|高中|中专|学历/.test(tag)) || '',
+        degree: row.tags.find((tag) => /博士|硕士|本科|大专|专科|高中|中专|中技|职高|初中|学历/.test(tag)) || '',
         skills: row.tags, cardLocator: this.cardByHref(page, row.href),
       });
     }

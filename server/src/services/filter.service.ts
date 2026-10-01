@@ -1,8 +1,8 @@
 import { configManager } from '../config/config.manager.js';
 import { llmService, ChatMessage } from './llm.service.js';
 import { BossJobItem, JobFilterResult } from '../types.js';
+import { checkEducationRequirement, normalizeCandidateDegrees } from './education.js';
 
-const DEGREE_TOKENS = ['博士', '硕士', '本科', '大专', '专科', '高中', '中专', '中技', '初中'];
 const EXPERIENCE_TOKENS = ['应届生', '在校/应届', '在校', '应届', '1年以内', '1-3年', '3-5年', '5-10年', '10年以上', '10年及以上'];
 
 export interface Stage2Result {
@@ -40,7 +40,7 @@ export class FilterService {
     }
 
     // 3. 学历要求
-    const degreeCheck = this.checkDegree(job.jobDegree || '', filterCfg.degree || []);
+    const degreeCheck = checkEducationRequirement(job.jobDegree || '', filterCfg.degree || []);
     if (!degreeCheck.passed) return { passed: false, reason: degreeCheck.reason };
 
     // 4. 工作经验
@@ -68,19 +68,6 @@ export class FilterService {
     if (/本月活跃/.test(t)) return 30;
     if (/半年|很久|年活跃|无记录|未活跃/.test(t)) return 999;
     return null;
-  }
-
-  private checkDegree(jobDegree: string, allowed: string[]): { passed: boolean; reason?: string } {
-    if (!allowed.length) return { passed: true };
-    if (!jobDegree || /不限/.test(jobDegree)) return { passed: true };
-    const hit = DEGREE_TOKENS.find((d) => jobDegree.includes(d));
-    if (!hit) return { passed: true };
-    const normalized = hit === '专科' ? '大专' : hit;
-    const allowList = allowed.map((d) => (d === '专科' ? '大专' : d));
-    if (!allowList.includes(normalized)) {
-      return { passed: false, reason: `学历要求不符（岗位要求 ${hit}，期望 ${allowed.join('/')}）` };
-    }
-    return { passed: true };
   }
 
   private checkExperience(jobExperience: string, allowed: string[]): { passed: boolean; reason?: string } {
@@ -177,6 +164,7 @@ export class FilterService {
     }
 
     const isManual = candidateSource === 'requirements';
+    const candidateDegree = normalizeCandidateDegrees(filterCfg.degree)[0];
     const messages: ChatMessage[] = [
       {
         role: 'system',
@@ -185,7 +173,9 @@ export class FilterService {
 1. 核心技术栈重合度（硬性门槛）
 2. 业务项目经历契合度
 3. 岗位层级与工作年限匹配度
-${isManual ? '用户没有提供简历。只评估岗位是否符合其要求，不得推测用户的经历、技能或学历。' : '只依据提供的简历判断个人经历，不得捏造经历。'}
+${isManual ? '用户没有提供简历。只依据其填写的要求及明确设置的最高学历评估，不得推测未提供的经历、技能或学历。' : '只依据提供的简历及用户明确设置的信息判断，不得捏造经历。'}
+学历按岗位最低门槛比较：本科满足大专/专科要求，硕士满足本科及以下要求，博士满足硕士及以下要求。
+不得仅因求职者学历高于岗位最低要求而扣分或淘汰。明确限定“仅限某学历”及全日制、专业等额外条件另行判断；用户未提供的学历不得推测。
 
 如果打分 >= ${minScore} 分，请生成一条不超过 80 字的专业打招呼首语。不得声称用户具备未提供的经历或技能。
 如果打分 < ${minScore} 分，请给出清晰的淘汰原因。
@@ -204,11 +194,13 @@ ${isManual ? '用户没有提供简历。只评估岗位是否符合其要求，
 
 【${isManual ? '用户指定的岗位方向与筛选要求' : '求职者简历信息摘要'}】：
 ${candidateResumeText.slice(0, 2000)}
+${candidateDegree ? `\n【用户明确设置的最高学历】：${candidateDegree}` : ''}
 
 【招聘岗位信息】：
 - 岗位名称：${job.jobName}
 - 公司：${job.brandName} (${job.brandScaleName})
 - 薪资：${job.salaryDesc}
+- 岗位学历要求：${job.jobDegree || '未注明'}
 - 技能标签：${job.skills.join(', ')}
 - 详细职责与要求：
 ${jobDetail.slice(0, 1500)}`,

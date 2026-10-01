@@ -589,7 +589,7 @@ export default function App() {
           {/* 模型指标 */}
           <div style={{ fontSize: '13px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Sparkles size={16} color="#38bdf8" />
-            <span>模型: <strong style={{ color: '#38bdf8' }}>{config?.llm?.model || 'DeepSeek'}</strong></span>
+            <span>模型: <strong style={{ color: '#38bdf8' }}>{config?.llm?.connectionMode === 'deepseek-web' ? 'DeepSeek 网页' : config?.llm?.model || '未设置'}</strong></span>
           </div>
 
           {/* 设置入口 */}
@@ -1210,6 +1210,21 @@ export default function App() {
                   </div>
                 </div>
 
+                <div>
+                  <label htmlFor="candidate-degree" style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                    我的最高学历
+                  </label>
+                  <select id="candidate-degree" value={config.filter.degree[0] || ''} onChange={(event) =>
+                    setConfig({ ...config, filter: { ...config.filter, degree: event.target.value ? [event.target.value] : [] } })
+                  } style={{ width: '100%' }}>
+                    <option value="">不设置</option>
+                    {['初中', '高中', '中专', '大专', '本科', '硕士', '博士'].map((degree) => <option key={degree} value={degree}>{degree}</option>)}
+                  </select>
+                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px', lineHeight: 1.6 }}>
+                    按岗位最低学历判断。本科可匹配大专、本科及学历不限的岗位。
+                  </p>
+                </div>
+
                 {/* HR活跃度 */}
                 <div>
                   <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
@@ -1780,6 +1795,7 @@ export default function App() {
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '12px' }}>
                   <select
+                    aria-label="AI 连接方式"
                     value={selectedPresetId}
                     onChange={(e) => handleSelectPreset(e.target.value)}
                     style={{ flex: 1, backgroundColor: '#1e293b', border: '1px solid #334155' }}
@@ -1841,7 +1857,7 @@ export default function App() {
                       setConfig({ ...config, llm: { ...config.llm, baseUrl: e.target.value } });
                       setModelTestMessage('');
                     }}
-                    placeholder="https://open.bigmodel.cn/api/paas/v4 或 https://api.siliconflow.cn/v1"
+                    placeholder="填写接口提供方的完整地址"
                     style={{ width: '100%' }}
                   />
                 </div>}
@@ -1876,12 +1892,12 @@ export default function App() {
                       setConfig({ ...config, llm: { ...config.llm, model: e.target.value } });
                       setModelTestMessage('');
                     }}
-                    placeholder="deepseek-chat 或 moonshot-v1-8k 或 qwen-plus"
+                    placeholder="填写接口提供方指定的模型名称"
                     style={{ width: '100%' }}
                   />
                 </div>}
 
-                {(config.llm.connectionMode === 'deepseek-web' || (/^glm-4\.7-flash$/i.test(config.llm.model.trim()) && /bigmodel\.cn/i.test(config.llm.baseUrl))) && (
+                {config.llm.connectionMode === 'deepseek-web' && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#cbd5e1' }}>
                     <input type="checkbox" checked={config.llm.thinking === 'enabled'} onChange={(event) => {
                       setConfig({ ...config, llm: { ...config.llm, thinking: event.target.checked ? 'enabled' : 'disabled' } });

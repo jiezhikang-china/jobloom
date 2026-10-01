@@ -77,15 +77,15 @@ function mockAdapter() {
   return { adapter, calls };
 }
 
-test('uses web auth, Flash/Pro model_type and JSON prompts; deletes only its temporary session', async () => {
+test('uses web auth, ordinary model_type and JSON prompts; deletes only its temporary session', async () => {
   const { adapter, calls } = mockAdapter();
   const messages = [{ role: 'system', content: '岗位筛选' }, { role: 'user', content: '要求 React' }];
-  for (const model of ['deepseek-v4-flash', 'deepseek-v4-pro']) {
+  for (const model of ['deepseek-v4-flash']) {
     const result = await adapter.complete({ model, messages, response_format: { type: 'json_object' } }, AbortSignal.timeout(5000));
     assert.equal(result.model, model);
     assert.equal(JSON.parse(result.choices[0].message.content).ok, true);
     const completion = calls.filter((call) => call.url.endsWith('/chat/completion')).at(-1);
-    assert.equal(completion.body.model_type, model.endsWith('pro') ? 'expert' : 'default');
+    assert.equal(completion.body.model_type, 'default');
     assert.equal(completion.body.thinking_enabled, false);
     assert.equal(completion.body.search_enabled, false);
     assert.match(completion.body.prompt, /岗位筛选/);
@@ -97,10 +97,12 @@ test('uses web auth, Flash/Pro model_type and JSON prompts; deletes only its tem
   }
   assert.equal(calls.filter((call) => call.url.endsWith('/users/current')).length, 1, 'reuse validated access token');
   const cleanup = calls.filter((call) => call.url.endsWith('/chat_session/delete'));
-  assert.equal(cleanup.length, 2);
+  assert.equal(cleanup.length, 1);
   assert.ok(cleanup.every((call) => call.body.chat_session_id === 'owned-temporary-session'));
   assert.ok(calls.every((call) => new URL(call.url).hostname === 'chat.deepseek.com'));
   assert.ok(!calls.some((call) => /delete_all/.test(call.url)));
+  await assert.rejects(adapter.complete({ model: 'deepseek-v4-pro', messages }), (error) => error.code === 'invalid_model');
+  assert.equal(calls.filter((call) => call.url.endsWith('/chat/completion')).length, 1, '移除的 Pro 模式不能发起上游请求');
 });
 
 test('missing login makes no upstream requests; expired / verification / rate limits are distinct', async () => {

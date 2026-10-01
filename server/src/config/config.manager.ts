@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { AppConfig } from '../types.js';
 import { sanitizeApiKey } from './credentials.js';
+import { normalizeCandidateDegrees } from '../services/education.js';
 
 const CONFIG_FILE_PATH = path.resolve(process.cwd(), '../data/config.json');
 
@@ -19,24 +20,9 @@ export interface ModelPreset {
 export const FREE_MODEL_PRESETS: ModelPreset[] = [
   {
     id: 'deepseek-web-flash', connectionMode: 'deepseek-web',
-    name: 'DeepSeek 网页 · Flash', badge: '网页账号 · 本机反代',
+    name: 'DeepSeek 网页', badge: '使用已登录账号',
     baseUrl: '', model: 'deepseek-v4-flash', applyUrl: 'https://github.com/xiaoY233/Chat2API',
     description: '使用已接入的 Chat2API DeepSeek 协议。手动登录网页一次后自动保存，单账号按顺序处理，适合个人少量使用。',
-  },
-  {
-    id: 'deepseek-web-pro', connectionMode: 'deepseek-web',
-    name: 'DeepSeek 网页 · Pro', badge: '网页账号 · 本机反代',
-    baseUrl: '', model: 'deepseek-v4-pro', applyUrl: 'https://github.com/xiaoY233/Chat2API',
-    description: '使用同一网页账号的 Pro 模式。是否可用及额度以网页账号为准，默认关闭联网搜索和深度思考。',
-  },
-  {
-    id: 'zhipu-glm4-7-flash',
-    name: '智谱 AI · GLM-4.7-Flash',
-    badge: '官方 API · 需 API Key',
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    model: 'glm-4.7-flash',
-    applyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
-    description: '保留官方 API 接口配置，使用时需要单独填写对应 API Key。',
   },
 ];
 
@@ -57,7 +43,7 @@ const DEFAULT_CONFIG: AppConfig = {
     salaryMin: 15,
     salaryMax: 40,
     experience: ['1-3年', '3-5年', '5-10年'],
-    degree: ['本科', '硕士'],
+    degree: ['本科'],
     hrActiveDaysLimit: 3,
     companyBlacklist: [
       '外包', '人力资源', '劳务派遣', '中软国际', '软通动力', '法本信息',
@@ -110,9 +96,10 @@ export class ConfigManager {
       ...cfg,
       llm: { ...cfg.llm, connectionMode: isWeb ? 'deepseek-web' : 'api',
         baseUrl: isWeb ? '' : cfg.llm.baseUrl, apiKey: isWeb ? '' : cleanedKey,
-        model, thinking: cfg.llm?.thinking === 'enabled' ? 'enabled' : 'disabled' },
+        model: isWeb ? 'deepseek-v4-flash' : model, thinking: cfg.llm?.thinking === 'enabled' ? 'enabled' : 'disabled' },
       filter: {
         ...cfg.filter,
+        degree: normalizeCandidateDegrees(cfg.filter?.degree),
         companyBlacklist: this.splitKeywords(cfg.filter?.companyBlacklist),
         requiredKeywords: this.splitKeywords(cfg.filter?.requiredKeywords),
       },
