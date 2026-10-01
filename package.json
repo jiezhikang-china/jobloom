@@ -1,0 +1,28 @@
+{
+  "name": "boss-job-agent",
+  "version": "1.0.0",
+  "description": "BOSS直聘智能求职与投递助手",
+  "main": "desktop/electron-main.cjs",
+  "scripts": {
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "desktop:prepare": "npm run build:client && npm run build:server",
+    "desktop": "npm run desktop:prepare && electron .",
+    "desktop:open": "electron .",
+    "start": "cd server && npm start"
+  },
+  "keywords": [
+    "boss-zhipin",
+    "playwright",
+    "job-hunting",
+    "llm",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "38.8.6"
+  }
+}

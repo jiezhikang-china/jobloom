@@ -1,0 +1,27 @@
+# Local accounts, resumes, browser profiles, runtime state and logs
+/data/
+.env
+.env.*
+!.env.example
+*.log
+
+# Dependencies, generated builds and caches
+node_modules/
+dist/
+.npm-cache/
+.workbuddy/
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
+
+# Downloaded upstream archive; the adapted component remains tracked
+/vendor/chat2api-source/
+*.zip
+
+# Machine and assistant settings
+.codex/
+.agents/
+.aws/
+
+# Legacy private audit includes credential material
+/代码审查报告.md

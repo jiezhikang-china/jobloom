@@ -1,0 +1,6632 @@
+{
+  "fetchedAt": "2026-10-01T03:16:34.414Z",
+  "sourceUrl": "https://www.zhipin.com/wapi/zpCommon/data/getCityShowPosition?cityCode=100010000",
+  "cityCode": "100010000",
+  "categories": [
+    {
+      "code": "1010000",
+      "name": "互联网/AI",
+      "children": [
+        {
+          "code": "1000020",
+          "name": "后端开发",
+          "children": [
+            {
+              "code": "100101",
+              "name": "Java",
+              "children": []
+            },
+            {
+              "code": "100102",
+              "name": "C/C++",
+              "children": []
+            },
+            {
+              "code": "100103",
+              "name": "PHP",
+              "children": []
+            },
+            {
+              "code": "100109",
+              "name": "Python",
+              "children": []
+            },
+            {
+              "code": "100106",
+              "name": "C#",
+              "children": []
+            },
+            {
+              "code": "100107",
+              "name": ".NET",
+              "children": []
+            },
+            {
+              "code": "100116",
+              "name": "Golang",
+              "children": []
+            },
+            {
+              "code": "100114",
+              "name": "Node.js",
+              "children": []
+            },
+            {
+              "code": "100121",
+              "name": "语音/视频/图形开发",
+              "children": []
+            },
+            {
+              "code": "101313",
+              "name": "高性能计算工程师",
+              "children": []
+            },
+            {
+              "code": "100124",
+              "name": "GIS工程师",
+              "children": []
+            },
+            {
+              "code": "100125",
+              "name": "区块链工程师",
+              "children": []
+            },
+            {
+              "code": "100123",
+              "name": "全栈工程师",
+              "children": []
+            },
+            {
+              "code": "100608",
+              "name": "软件项目经理",
+              "children": []
+            },
+            {
+              "code": "100199",
+              "name": "其他后端开发",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000030",
+          "name": "前端/移动开发",
+          "children": [
+            {
+              "code": "100901",
+              "name": "前端开发工程师",
+              "children": []
+            },
+            {
+              "code": "100202",
+              "name": "Android",
+              "children": []
+            },
+            {
+              "code": "100203",
+              "name": "iOS",
+              "children": []
+            },
+            {
+              "code": "100209",
+              "name": "U3D",
+              "children": []
+            },
+            {
+              "code": "100211",
+              "name": "UE4",
+              "children": []
+            },
+            {
+              "code": "100210",
+              "name": "Cocos",
+              "children": []
+            },
+            {
+              "code": "100212",
+              "name": "技术美术",
+              "children": []
+            },
+            {
+              "code": "100208",
+              "name": "JavaScript",
+              "children": []
+            },
+            {
+              "code": "100213",
+              "name": "鸿蒙开发工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000040",
+          "name": "测试",
+          "children": [
+            {
+              "code": "100301",
+              "name": "测试工程师",
+              "children": []
+            },
+            {
+              "code": "100309",
+              "name": "软件测试",
+              "children": []
+            },
+            {
+              "code": "100302",
+              "name": "自动化测试",
+              "children": []
+            },
+            {
+              "code": "100303",
+              "name": "功能测试",
+              "children": []
+            },
+            {
+              "code": "100305",
+              "name": "测试开发",
+              "children": []
+            },
+            {
+              "code": "100308",
+              "name": "硬件测试",
+              "children": []
+            },
+            {
+              "code": "100307",
+              "name": "游戏测试",
+              "children": []
+            },
+            {
+              "code": "100304",
+              "name": "性能测试",
+              "children": []
+            },
+            {
+              "code": "100310",
+              "name": "渗透测试",
+              "children": []
+            },
+            {
+              "code": "100703",
+              "name": "测试经理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000050",
+          "name": "运维/技术支持",
+          "children": [
+            {
+              "code": "100401",
+              "name": "运维工程师",
+              "children": []
+            },
+            {
+              "code": "100405",
+              "name": "IT技术支持",
+              "children": []
+            },
+            {
+              "code": "100403",
+              "name": "网络工程师",
+              "children": []
+            },
+            {
+              "code": "100407",
+              "name": "网络安全",
+              "children": []
+            },
+            {
+              "code": "100404",
+              "name": "系统工程师",
+              "children": []
+            },
+            {
+              "code": "100402",
+              "name": "运维开发工程师",
+              "children": []
+            },
+            {
+              "code": "100406",
+              "name": "系统管理员",
+              "children": []
+            },
+            {
+              "code": "100409",
+              "name": "DBA",
+              "children": []
+            },
+            {
+              "code": "290166",
+              "name": "电脑/打印机维修",
+              "children": []
+            },
+            {
+              "code": "100408",
+              "name": "系统安全",
+              "children": []
+            },
+            {
+              "code": "100410",
+              "name": "技术文档工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000130",
+          "name": "人工智能",
+          "children": [
+            {
+              "code": "101306",
+              "name": "图像算法",
+              "children": []
+            },
+            {
+              "code": "100117",
+              "name": "自然语言处理算法",
+              "children": []
+            },
+            {
+              "code": "101310",
+              "name": "大模型算法",
+              "children": []
+            },
+            {
+              "code": "100104",
+              "name": "数据挖掘",
+              "children": []
+            },
+            {
+              "code": "101311",
+              "name": "规控算法",
+              "children": []
+            },
+            {
+              "code": "101312",
+              "name": "SLAM算法",
+              "children": []
+            },
+            {
+              "code": "100118",
+              "name": "推荐算法",
+              "children": []
+            },
+            {
+              "code": "100115",
+              "name": "搜索算法",
+              "children": []
+            },
+            {
+              "code": "101305",
+              "name": "语音算法",
+              "children": []
+            },
+            {
+              "code": "101309",
+              "name": "风控算法",
+              "children": []
+            },
+            {
+              "code": "101313",
+              "name": "高性能计算工程师",
+              "children": []
+            },
+            {
+              "code": "100120",
+              "name": "算法工程师",
+              "children": []
+            },
+            {
+              "code": "101307",
+              "name": "算法研究员",
+              "children": []
+            },
+            {
+              "code": "101301",
+              "name": "机器学习",
+              "children": []
+            },
+            {
+              "code": "101302",
+              "name": "深度学习",
+              "children": []
+            },
+            {
+              "code": "101308",
+              "name": "自动驾驶系统工程师",
+              "children": []
+            },
+            {
+              "code": "130121",
+              "name": "数据标注/AI训练师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000140",
+          "name": "销售技术支持",
+          "children": [
+            {
+              "code": "101201",
+              "name": "售前技术支持",
+              "children": []
+            },
+            {
+              "code": "101202",
+              "name": "售后技术支持",
+              "children": []
+            },
+            {
+              "code": "101299",
+              "name": "销售技术支持",
+              "children": []
+            },
+            {
+              "code": "160303",
+              "name": "客户成功",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000060",
+          "name": "数据",
+          "children": [
+            {
+              "code": "100511",
+              "name": "数据分析师",
+              "children": []
+            },
+            {
+              "code": "100508",
+              "name": "数据开发",
+              "children": []
+            },
+            {
+              "code": "100507",
+              "name": "数据仓库",
+              "children": []
+            },
+            {
+              "code": "100506",
+              "name": "ETL工程师",
+              "children": []
+            },
+            {
+              "code": "100104",
+              "name": "数据挖掘",
+              "children": []
+            },
+            {
+              "code": "100512",
+              "name": "数据架构师",
+              "children": []
+            },
+            {
+              "code": "100514",
+              "name": "爬虫工程师",
+              "children": []
+            },
+            {
+              "code": "100122",
+              "name": "数据采集",
+              "children": []
+            },
+            {
+              "code": "100515",
+              "name": "数据治理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000070",
+          "name": "技术项目管理",
+          "children": [
+            {
+              "code": "100601",
+              "name": "项目经理/主管",
+              "children": []
+            },
+            {
+              "code": "100608",
+              "name": "软件项目经理",
+              "children": []
+            },
+            {
+              "code": "100606",
+              "name": "实施工程师",
+              "children": []
+            },
+            {
+              "code": "100605",
+              "name": "实施顾问",
+              "children": []
+            },
+            {
+              "code": "100607",
+              "name": "需求分析工程师",
+              "children": []
+            },
+            {
+              "code": "100603",
+              "name": "项目专员/助理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000120",
+          "name": "高端技术职位",
+          "children": [
+            {
+              "code": "100701",
+              "name": "技术经理",
+              "children": []
+            },
+            {
+              "code": "100704",
+              "name": "架构师",
+              "children": []
+            },
+            {
+              "code": "100702",
+              "name": "技术总监",
+              "children": []
+            },
+            {
+              "code": "100705",
+              "name": "CTO/CIO",
+              "children": []
+            },
+            {
+              "code": "100707",
+              "name": "技术合伙人",
+              "children": []
+            },
+            {
+              "code": "100706",
+              "name": "运维总监",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000150",
+          "name": "其他技术职位",
+          "children": [
+            {
+              "code": "101101",
+              "name": "其他技术职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1210000",
+      "name": "电子/电气/通信",
+      "children": [
+        {
+          "code": "1000080",
+          "name": "电子/硬件开发",
+          "children": [
+            {
+              "code": "101401",
+              "name": "电子工程师",
+              "children": []
+            },
+            {
+              "code": "100801",
+              "name": "硬件工程师",
+              "children": []
+            },
+            {
+              "code": "100802",
+              "name": "嵌入式软件工程师",
+              "children": []
+            },
+            {
+              "code": "100808",
+              "name": "FPGA开发",
+              "children": []
+            },
+            {
+              "code": "100804",
+              "name": "单片机",
+              "children": []
+            },
+            {
+              "code": "100806",
+              "name": "驱动开发工程师",
+              "children": []
+            },
+            {
+              "code": "100811",
+              "name": "PCB工程师",
+              "children": []
+            },
+            {
+              "code": "101408",
+              "name": "电子维修技术员",
+              "children": []
+            },
+            {
+              "code": "100816",
+              "name": "射频工程师",
+              "children": []
+            },
+            {
+              "code": "100805",
+              "name": "电路设计",
+              "children": []
+            },
+            {
+              "code": "100807",
+              "name": "系统集成",
+              "children": []
+            },
+            {
+              "code": "100818",
+              "name": "光学工程师",
+              "children": []
+            },
+            {
+              "code": "100809",
+              "name": "DSP开发",
+              "children": []
+            },
+            {
+              "code": "100819",
+              "name": "电源工程师",
+              "children": []
+            },
+            {
+              "code": "300801",
+              "name": "电池工程师",
+              "children": []
+            },
+            {
+              "code": "100820",
+              "name": "电声工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000110",
+          "name": "半导体/芯片",
+          "children": [
+            {
+              "code": "101405",
+              "name": "集成电路IC设计",
+              "children": []
+            },
+            {
+              "code": "101406",
+              "name": "数字IC验证工程师",
+              "children": []
+            },
+            {
+              "code": "101407",
+              "name": "模拟版图设计工程师",
+              "children": []
+            },
+            {
+              "code": "101409",
+              "name": "芯片测试工程师",
+              "children": []
+            },
+            {
+              "code": "101410",
+              "name": "DFT工程师",
+              "children": []
+            },
+            {
+              "code": "101403",
+              "name": "FAE",
+              "children": []
+            },
+            {
+              "code": "101411",
+              "name": "数字前端设计师",
+              "children": []
+            },
+            {
+              "code": "101412",
+              "name": "数字后端工程师",
+              "children": []
+            },
+            {
+              "code": "101413",
+              "name": "模拟IC设计工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600842",
+          "name": "电气/自动化",
+          "children": [
+            {
+              "code": "101402",
+              "name": "电气工程师",
+              "children": []
+            },
+            {
+              "code": "101404",
+              "name": "电气设计工程师",
+              "children": []
+            },
+            {
+              "code": "100803",
+              "name": "自动化工程师",
+              "children": []
+            },
+            {
+              "code": "300310",
+              "name": "机电工程师",
+              "children": []
+            },
+            {
+              "code": "220223",
+              "name": "建筑机电工程师",
+              "children": []
+            },
+            {
+              "code": "101414",
+              "name": "电力工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600422",
+          "name": "技术项目管理",
+          "children": [
+            {
+              "code": "100601",
+              "name": "项目经理/主管",
+              "children": []
+            },
+            {
+              "code": "100606",
+              "name": "实施工程师",
+              "children": []
+            },
+            {
+              "code": "100605",
+              "name": "实施顾问",
+              "children": []
+            },
+            {
+              "code": "100817",
+              "name": "硬件项目经理",
+              "children": []
+            },
+            {
+              "code": "100603",
+              "name": "项目专员/助理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000100",
+          "name": "通信",
+          "children": [
+            {
+              "code": "101011",
+              "name": "通信项目专员",
+              "children": []
+            },
+            {
+              "code": "101012",
+              "name": "通信项目经理",
+              "children": []
+            },
+            {
+              "code": "101001",
+              "name": "通信技术工程师",
+              "children": []
+            },
+            {
+              "code": "101002",
+              "name": "通信研发工程师",
+              "children": []
+            },
+            {
+              "code": "101003",
+              "name": "数据通信工程师",
+              "children": []
+            },
+            {
+              "code": "101018",
+              "name": "光网络工程师",
+              "children": []
+            },
+            {
+              "code": "101007",
+              "name": "有线传输工程师",
+              "children": []
+            },
+            {
+              "code": "101013",
+              "name": "核心网工程师",
+              "children": []
+            },
+            {
+              "code": "101010",
+              "name": "通信标准化工程师",
+              "children": []
+            },
+            {
+              "code": "100403",
+              "name": "网络工程师",
+              "children": []
+            },
+            {
+              "code": "101005",
+              "name": "宽带装维",
+              "children": []
+            },
+            {
+              "code": "101008",
+              "name": "无线/天线工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600862",
+          "name": "销售技术支持",
+          "children": [
+            {
+              "code": "101201",
+              "name": "售前技术支持",
+              "children": []
+            },
+            {
+              "code": "101202",
+              "name": "售后技术支持",
+              "children": []
+            },
+            {
+              "code": "101299",
+              "name": "销售技术支持",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600852",
+          "name": "运维/技术支持",
+          "children": [
+            {
+              "code": "100401",
+              "name": "运维工程师",
+              "children": []
+            },
+            {
+              "code": "100404",
+              "name": "系统工程师",
+              "children": []
+            },
+            {
+              "code": "100410",
+              "name": "技术文档工程师",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1020000",
+      "name": "产品",
+      "children": [
+        {
+          "code": "1000160",
+          "name": "产品经理",
+          "children": [
+            {
+              "code": "110101",
+              "name": "产品经理",
+              "children": []
+            },
+            {
+              "code": "110108",
+              "name": "产品专员/助理",
+              "children": []
+            },
+            {
+              "code": "110302",
+              "name": "产品总监",
+              "children": []
+            },
+            {
+              "code": "120302",
+              "name": "用户研究",
+              "children": []
+            },
+            {
+              "code": "110106",
+              "name": "电商产品经理",
+              "children": []
+            },
+            {
+              "code": "110110",
+              "name": "AI产品经理",
+              "children": []
+            },
+            {
+              "code": "110105",
+              "name": "数据产品经理",
+              "children": []
+            },
+            {
+              "code": "110103",
+              "name": "移动产品经理",
+              "children": []
+            },
+            {
+              "code": "180501",
+              "name": "金融产品经理",
+              "children": []
+            },
+            {
+              "code": "130133",
+              "name": "跨境电商产品开发",
+              "children": []
+            },
+            {
+              "code": "110111",
+              "name": "化妆品产品经理",
+              "children": []
+            },
+            {
+              "code": "110109",
+              "name": "硬件产品经理",
+              "children": []
+            },
+            {
+              "code": "100607",
+              "name": "需求分析工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600432",
+          "name": "游戏策划/制作",
+          "children": [
+            {
+              "code": "110107",
+              "name": "游戏策划",
+              "children": []
+            },
+            {
+              "code": "120305",
+              "name": "系统策划",
+              "children": []
+            },
+            {
+              "code": "120303",
+              "name": "游戏数值策划",
+              "children": []
+            },
+            {
+              "code": "110303",
+              "name": "游戏制作人",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1040000",
+      "name": "客服/运营",
+      "children": [
+        {
+          "code": "1000270",
+          "name": "客服",
+          "children": [
+            {
+              "code": "130305",
+              "name": "客服专员",
+              "children": []
+            },
+            {
+              "code": "130306",
+              "name": "客服主管",
+              "children": []
+            },
+            {
+              "code": "130304",
+              "name": "客服经理",
+              "children": []
+            },
+            {
+              "code": "130303",
+              "name": "网络客服",
+              "children": []
+            },
+            {
+              "code": "130308",
+              "name": "电话客服",
+              "children": []
+            },
+            {
+              "code": "130302",
+              "name": "售后客服",
+              "children": []
+            },
+            {
+              "code": "130301",
+              "name": "售前客服",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001290",
+          "name": "内容运营",
+          "children": [
+            {
+              "code": "130111",
+              "name": "新媒体运营",
+              "children": []
+            },
+            {
+              "code": "130122",
+              "name": "直播运营",
+              "children": []
+            },
+            {
+              "code": "170108",
+              "name": "视频运营",
+              "children": []
+            },
+            {
+              "code": "130104",
+              "name": "内容运营",
+              "children": []
+            },
+            {
+              "code": "130113",
+              "name": "微信运营",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001300",
+          "name": "电商运营",
+          "children": [
+            {
+              "code": "130117",
+              "name": "国内电商运营",
+              "children": []
+            },
+            {
+              "code": "130124",
+              "name": "跨境电商运营",
+              "children": []
+            },
+            {
+              "code": "130107",
+              "name": "品类运营",
+              "children": []
+            },
+            {
+              "code": "130126",
+              "name": "淘宝运营",
+              "children": []
+            },
+            {
+              "code": "130127",
+              "name": "天猫运营",
+              "children": []
+            },
+            {
+              "code": "130128",
+              "name": "京东运营",
+              "children": []
+            },
+            {
+              "code": "130129",
+              "name": "拼多多运营",
+              "children": []
+            },
+            {
+              "code": "130130",
+              "name": "亚马逊运营",
+              "children": []
+            },
+            {
+              "code": "130133",
+              "name": "跨境电商产品开发",
+              "children": []
+            },
+            {
+              "code": "130132",
+              "name": "阿里国际站运营",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000250",
+          "name": "业务运营",
+          "children": [
+            {
+              "code": "130118",
+              "name": "运营助理/专员",
+              "children": []
+            },
+            {
+              "code": "130102",
+              "name": "产品运营",
+              "children": []
+            },
+            {
+              "code": "130101",
+              "name": "用户运营",
+              "children": []
+            },
+            {
+              "code": "130106",
+              "name": "商家运营",
+              "children": []
+            },
+            {
+              "code": "130103",
+              "name": "数据/策略运营",
+              "children": []
+            },
+            {
+              "code": "130112",
+              "name": "社群运营",
+              "children": []
+            },
+            {
+              "code": "130108",
+              "name": "游戏运营",
+              "children": []
+            },
+            {
+              "code": "130110",
+              "name": "网站运营",
+              "children": []
+            },
+            {
+              "code": "130120",
+              "name": "内容审核",
+              "children": []
+            },
+            {
+              "code": "130121",
+              "name": "数据标注/AI训练师",
+              "children": []
+            },
+            {
+              "code": "130134",
+              "name": "外卖运营",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001310",
+          "name": "线下运营",
+          "children": [
+            {
+              "code": "130116",
+              "name": "线下拓展运营",
+              "children": []
+            },
+            {
+              "code": "290314",
+              "name": "商场运营",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000260",
+          "name": "编辑",
+          "children": [
+            {
+              "code": "130203",
+              "name": "文案编辑",
+              "children": []
+            },
+            {
+              "code": "130201",
+              "name": "主编/副主编",
+              "children": []
+            },
+            {
+              "code": "130204",
+              "name": "网站编辑",
+              "children": []
+            },
+            {
+              "code": "210101",
+              "name": "医学编辑",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000280",
+          "name": "高端运营职位",
+          "children": [
+            {
+              "code": "130405",
+              "name": "运营经理/主管",
+              "children": []
+            },
+            {
+              "code": "130402",
+              "name": "运营总监",
+              "children": []
+            },
+            {
+              "code": "130403",
+              "name": "COO",
+              "children": []
+            },
+            {
+              "code": "130404",
+              "name": "客服总监",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000290",
+          "name": "其他运营职位",
+          "children": [
+            {
+              "code": "130501",
+              "name": "其他运营职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1070000",
+      "name": "销售",
+      "children": [
+        {
+          "code": "1000490",
+          "name": "销售",
+          "children": [
+            {
+              "code": "140301",
+              "name": "销售专员",
+              "children": []
+            },
+            {
+              "code": "140310",
+              "name": "电话销售",
+              "children": []
+            },
+            {
+              "code": "140314",
+              "name": "网络销售",
+              "children": []
+            },
+            {
+              "code": "140307",
+              "name": "渠道销售",
+              "children": []
+            },
+            {
+              "code": "140304",
+              "name": "大客户代表",
+              "children": []
+            },
+            {
+              "code": "140317",
+              "name": "客户经理",
+              "children": []
+            },
+            {
+              "code": "140305",
+              "name": "BD经理",
+              "children": []
+            },
+            {
+              "code": "140316",
+              "name": "销售工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000520",
+          "name": "销售管理",
+          "children": [
+            {
+              "code": "140302",
+              "name": "销售经理/主管",
+              "children": []
+            },
+            {
+              "code": "140402",
+              "name": "销售总监",
+              "children": []
+            },
+            {
+              "code": "160103",
+              "name": "销售VP",
+              "children": []
+            },
+            {
+              "code": "160102",
+              "name": "城市经理",
+              "children": []
+            },
+            {
+              "code": "160101",
+              "name": "区域总监",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000420",
+          "name": "销售行政/商务",
+          "children": [
+            {
+              "code": "140309",
+              "name": "销售助理",
+              "children": []
+            },
+            {
+              "code": "130119",
+              "name": "销售运营",
+              "children": []
+            },
+            {
+              "code": "160301",
+              "name": "商务专员",
+              "children": []
+            },
+            {
+              "code": "140107",
+              "name": "商务经理",
+              "children": []
+            },
+            {
+              "code": "140403",
+              "name": "商务总监",
+              "children": []
+            },
+            {
+              "code": "160304",
+              "name": "招商",
+              "children": []
+            },
+            {
+              "code": "160303",
+              "name": "客户成功",
+              "children": []
+            },
+            {
+              "code": "160305",
+              "name": "业务跟单",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000480",
+          "name": "外贸销售",
+          "children": [
+            {
+              "code": "250203",
+              "name": "外贸业务员",
+              "children": []
+            },
+            {
+              "code": "250201",
+              "name": "外贸经理",
+              "children": []
+            },
+            {
+              "code": "240111",
+              "name": "货代/物流销售",
+              "children": []
+            },
+            {
+              "code": "250205",
+              "name": "海外销售",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000500",
+          "name": "教培销售",
+          "children": [
+            {
+              "code": "190601",
+              "name": "课程顾问",
+              "children": []
+            },
+            {
+              "code": "190603",
+              "name": "留学顾问",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000450",
+          "name": "汽车销售",
+          "children": [
+            {
+              "code": "230201",
+              "name": "汽车销售",
+              "children": []
+            },
+            {
+              "code": "230202",
+              "name": "汽车配件销售",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000430",
+          "name": "房地产销售/招商",
+          "children": [
+            {
+              "code": "160401",
+              "name": "置业顾问",
+              "children": []
+            },
+            {
+              "code": "160403",
+              "name": "地产中介",
+              "children": []
+            },
+            {
+              "code": "220403",
+              "name": "地产招商",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000440",
+          "name": "服务业销售",
+          "children": [
+            {
+              "code": "290302",
+              "name": "导购",
+              "children": []
+            },
+            {
+              "code": "160501",
+              "name": "服装导购",
+              "children": []
+            },
+            {
+              "code": "290312",
+              "name": "珠宝销售",
+              "children": []
+            },
+            {
+              "code": "210414",
+              "name": "美容顾问",
+              "children": []
+            },
+            {
+              "code": "210406",
+              "name": "化妆品导购",
+              "children": []
+            },
+            {
+              "code": "160502",
+              "name": "家装导购",
+              "children": []
+            },
+            {
+              "code": "210610",
+              "name": "会籍顾问",
+              "children": []
+            },
+            {
+              "code": "280103",
+              "name": "旅游顾问",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000510",
+          "name": "医疗销售",
+          "children": [
+            {
+              "code": "210502",
+              "name": "医药代表",
+              "children": []
+            },
+            {
+              "code": "210506",
+              "name": "医疗器械销售",
+              "children": []
+            },
+            {
+              "code": "210803",
+              "name": "药店店员",
+              "children": []
+            },
+            {
+              "code": "210801",
+              "name": "药店店长",
+              "children": []
+            },
+            {
+              "code": "210505",
+              "name": "医美咨询",
+              "children": []
+            },
+            {
+              "code": "210504",
+              "name": "健康顾问",
+              "children": []
+            },
+            {
+              "code": "210507",
+              "name": "口腔咨询师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000460",
+          "name": "广告/会展销售",
+          "children": [
+            {
+              "code": "140313",
+              "name": "广告销售",
+              "children": []
+            },
+            {
+              "code": "140504",
+              "name": "会展活动销售",
+              "children": []
+            },
+            {
+              "code": "140501",
+              "name": "会议活动销售",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000470",
+          "name": "金融销售",
+          "children": [
+            {
+              "code": "180506",
+              "name": "理财顾问",
+              "children": []
+            },
+            {
+              "code": "180701",
+              "name": "保险顾问",
+              "children": []
+            },
+            {
+              "code": "180401",
+              "name": "信用卡销售",
+              "children": []
+            },
+            {
+              "code": "180801",
+              "name": "证券经纪人",
+              "children": []
+            },
+            {
+              "code": "180901",
+              "name": "机构业务经理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000530",
+          "name": "其他销售职位",
+          "children": [
+            {
+              "code": "160201",
+              "name": "其他销售职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1060000",
+      "name": "人力/行政/法务",
+      "children": [
+        {
+          "code": "1000370",
+          "name": "人力资源",
+          "children": [
+            {
+              "code": "150104",
+              "name": "人力资源专员/助理",
+              "children": []
+            },
+            {
+              "code": "150403",
+              "name": "人力资源经理/主管",
+              "children": []
+            },
+            {
+              "code": "150108",
+              "name": "人力资源总监",
+              "children": []
+            },
+            {
+              "code": "150102",
+              "name": "招聘",
+              "children": []
+            },
+            {
+              "code": "150103",
+              "name": "HRBP",
+              "children": []
+            },
+            {
+              "code": "150105",
+              "name": "培训",
+              "children": []
+            },
+            {
+              "code": "150109",
+              "name": "员工关系",
+              "children": []
+            },
+            {
+              "code": "150110",
+              "name": "组织发展",
+              "children": []
+            },
+            {
+              "code": "150111",
+              "name": "企业文化",
+              "children": []
+            },
+            {
+              "code": "150106",
+              "name": "薪酬绩效",
+              "children": []
+            },
+            {
+              "code": "260108",
+              "name": "猎头顾问",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000380",
+          "name": "行政",
+          "children": [
+            {
+              "code": "150201",
+              "name": "行政专员/助理",
+              "children": []
+            },
+            {
+              "code": "150401",
+              "name": "行政经理/主管",
+              "children": []
+            },
+            {
+              "code": "150209",
+              "name": "行政总监",
+              "children": []
+            },
+            {
+              "code": "150202",
+              "name": "前台",
+              "children": []
+            },
+            {
+              "code": "150207",
+              "name": "后勤",
+              "children": []
+            },
+            {
+              "code": "150205",
+              "name": "经理助理",
+              "children": []
+            },
+            {
+              "code": "150210",
+              "name": "文员",
+              "children": []
+            },
+            {
+              "code": "140802",
+              "name": "企业党建",
+              "children": []
+            },
+            {
+              "code": "150211",
+              "name": "档案管理",
+              "children": []
+            },
+            {
+              "code": "150208",
+              "name": "商务司机",
+              "children": []
+            },
+            {
+              "code": "100603",
+              "name": "项目专员/助理",
+              "children": []
+            },
+            {
+              "code": "170106",
+              "name": "录入员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000400",
+          "name": "法律服务",
+          "children": [
+            {
+              "code": "150203",
+              "name": "法务专员/助理",
+              "children": []
+            },
+            {
+              "code": "150506",
+              "name": "法务经理/主管",
+              "children": []
+            },
+            {
+              "code": "150507",
+              "name": "法务总监",
+              "children": []
+            },
+            {
+              "code": "150504",
+              "name": "法律顾问",
+              "children": []
+            },
+            {
+              "code": "260201",
+              "name": "律师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000410",
+          "name": "其他职能职位",
+          "children": [
+            {
+              "code": "150601",
+              "name": "其他职能职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1230000",
+      "name": "财务/审计/税务",
+      "children": [
+        {
+          "code": "1001250",
+          "name": "会计",
+          "children": [
+            {
+              "code": "150301",
+              "name": "会计",
+              "children": []
+            },
+            {
+              "code": "150311",
+              "name": "总账会计",
+              "children": []
+            },
+            {
+              "code": "150310",
+              "name": "成本会计",
+              "children": []
+            },
+            {
+              "code": "150304",
+              "name": "结算会计",
+              "children": []
+            },
+            {
+              "code": "150313",
+              "name": "外勤会计",
+              "children": []
+            },
+            {
+              "code": "150312",
+              "name": "建筑/工程会计",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001260",
+          "name": "审计/税务",
+          "children": [
+            {
+              "code": "150306",
+              "name": "审计",
+              "children": []
+            },
+            {
+              "code": "150305",
+              "name": "税务",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001270",
+          "name": "高级财务职位",
+          "children": [
+            {
+              "code": "150402",
+              "name": "财务经理/主管",
+              "children": []
+            },
+            {
+              "code": "150308",
+              "name": "财务总监/VP",
+              "children": []
+            },
+            {
+              "code": "150404",
+              "name": "CFO",
+              "children": []
+            },
+            {
+              "code": "150317",
+              "name": "资金管理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000390",
+          "name": "其他财务岗位",
+          "children": [
+            {
+              "code": "150302",
+              "name": "出纳",
+              "children": []
+            },
+            {
+              "code": "150307",
+              "name": "风控",
+              "children": []
+            },
+            {
+              "code": "150303",
+              "name": "财务顾问",
+              "children": []
+            },
+            {
+              "code": "150316",
+              "name": "财务分析/财务BP",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "2162200",
+      "name": "技工/普工",
+      "children": [
+        {
+          "code": "2600722",
+          "name": "普工",
+          "children": [
+            {
+              "code": "300601",
+              "name": "普工/操作工",
+              "children": []
+            },
+            {
+              "code": "300624",
+              "name": "包装工",
+              "children": []
+            },
+            {
+              "code": "300628",
+              "name": "学徒工",
+              "children": []
+            },
+            {
+              "code": "300630",
+              "name": "搬运工/装卸工",
+              "children": []
+            },
+            {
+              "code": "300623",
+              "name": "组装工",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600902",
+          "name": "机械加工",
+          "children": [
+            {
+              "code": "300604",
+              "name": "焊工",
+              "children": []
+            },
+            {
+              "code": "300605",
+              "name": "氩弧焊工",
+              "children": []
+            },
+            {
+              "code": "300610",
+              "name": "车工",
+              "children": []
+            },
+            {
+              "code": "300613",
+              "name": "钳工",
+              "children": []
+            },
+            {
+              "code": "300631",
+              "name": "切割工",
+              "children": []
+            },
+            {
+              "code": "300616",
+              "name": "钣金工",
+              "children": []
+            },
+            {
+              "code": "300622",
+              "name": "注塑工",
+              "children": []
+            },
+            {
+              "code": "300619",
+              "name": "折弯工",
+              "children": []
+            },
+            {
+              "code": "300611",
+              "name": "磨工",
+              "children": []
+            },
+            {
+              "code": "300633",
+              "name": "模具工",
+              "children": []
+            },
+            {
+              "code": "300612",
+              "name": "铣工",
+              "children": []
+            },
+            {
+              "code": "300617",
+              "name": "抛光工",
+              "children": []
+            },
+            {
+              "code": "300621",
+              "name": "喷塑工",
+              "children": []
+            },
+            {
+              "code": "300614",
+              "name": "钻工",
+              "children": []
+            },
+            {
+              "code": "300615",
+              "name": "铆工",
+              "children": []
+            },
+            {
+              "code": "300620",
+              "name": "电镀工",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001200",
+          "name": "技工",
+          "children": [
+            {
+              "code": "300606",
+              "name": "电工",
+              "children": []
+            },
+            {
+              "code": "300635",
+              "name": "弱电工",
+              "children": []
+            },
+            {
+              "code": "300618",
+              "name": "机修工",
+              "children": []
+            },
+            {
+              "code": "300311",
+              "name": "CNC数控操机/编程员",
+              "children": []
+            },
+            {
+              "code": "300608",
+              "name": "木工",
+              "children": []
+            },
+            {
+              "code": "300609",
+              "name": "油漆工",
+              "children": []
+            },
+            {
+              "code": "300627",
+              "name": "锅炉工",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600732",
+          "name": "运输设备操作",
+          "children": [
+            {
+              "code": "300602",
+              "name": "叉车工",
+              "children": []
+            },
+            {
+              "code": "300603",
+              "name": "铲车司机",
+              "children": []
+            },
+            {
+              "code": "300634",
+              "name": "挖掘机司机",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1190000",
+      "name": "生产制造",
+      "children": [
+        {
+          "code": "2601232",
+          "name": "普工",
+          "children": [
+            {
+              "code": "300601",
+              "name": "普工/操作工",
+              "children": []
+            },
+            {
+              "code": "300624",
+              "name": "包装工",
+              "children": []
+            },
+            {
+              "code": "300628",
+              "name": "学徒工",
+              "children": []
+            },
+            {
+              "code": "300630",
+              "name": "搬运工/装卸工",
+              "children": []
+            },
+            {
+              "code": "300623",
+              "name": "组装工",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2601242",
+          "name": "机械加工",
+          "children": [
+            {
+              "code": "300604",
+              "name": "焊工",
+              "children": []
+            },
+            {
+              "code": "300605",
+              "name": "氩弧焊工",
+              "children": []
+            },
+            {
+              "code": "300610",
+              "name": "车工",
+              "children": []
+            },
+            {
+              "code": "300613",
+              "name": "钳工",
+              "children": []
+            },
+            {
+              "code": "300631",
+              "name": "切割工",
+              "children": []
+            },
+            {
+              "code": "300616",
+              "name": "钣金工",
+              "children": []
+            },
+            {
+              "code": "300622",
+              "name": "注塑工",
+              "children": []
+            },
+            {
+              "code": "300619",
+              "name": "折弯工",
+              "children": []
+            },
+            {
+              "code": "300611",
+              "name": "磨工",
+              "children": []
+            },
+            {
+              "code": "300633",
+              "name": "模具工",
+              "children": []
+            },
+            {
+              "code": "300612",
+              "name": "铣工",
+              "children": []
+            },
+            {
+              "code": "300617",
+              "name": "抛光工",
+              "children": []
+            },
+            {
+              "code": "300621",
+              "name": "喷塑工",
+              "children": []
+            },
+            {
+              "code": "300614",
+              "name": "钻工",
+              "children": []
+            },
+            {
+              "code": "300615",
+              "name": "铆工",
+              "children": []
+            },
+            {
+              "code": "300620",
+              "name": "电镀工",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2601252",
+          "name": "技工",
+          "children": [
+            {
+              "code": "300606",
+              "name": "电工",
+              "children": []
+            },
+            {
+              "code": "300635",
+              "name": "弱电工",
+              "children": []
+            },
+            {
+              "code": "300618",
+              "name": "机修工",
+              "children": []
+            },
+            {
+              "code": "300311",
+              "name": "CNC数控操机/编程员",
+              "children": []
+            },
+            {
+              "code": "300608",
+              "name": "木工",
+              "children": []
+            },
+            {
+              "code": "300609",
+              "name": "油漆工",
+              "children": []
+            },
+            {
+              "code": "300627",
+              "name": "锅炉工",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2601262",
+          "name": "运输设备操作",
+          "children": [
+            {
+              "code": "300602",
+              "name": "叉车工",
+              "children": []
+            },
+            {
+              "code": "300603",
+              "name": "铲车司机",
+              "children": []
+            },
+            {
+              "code": "300634",
+              "name": "挖掘机司机",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001130",
+          "name": "质量管理",
+          "children": [
+            {
+              "code": "300201",
+              "name": "质量管理/测试工程师",
+              "children": []
+            },
+            {
+              "code": "300208",
+              "name": "质检员",
+              "children": []
+            },
+            {
+              "code": "300402",
+              "name": "实验室技术员",
+              "children": []
+            },
+            {
+              "code": "300205",
+              "name": "体系工程师",
+              "children": []
+            },
+            {
+              "code": "300206",
+              "name": "体系审核员",
+              "children": []
+            },
+            {
+              "code": "300204",
+              "name": "产品认证工程师",
+              "children": []
+            },
+            {
+              "code": "300203",
+              "name": "失效分析工程师",
+              "children": []
+            },
+            {
+              "code": "300202",
+              "name": "可靠度工程师",
+              "children": []
+            },
+            {
+              "code": "250108",
+              "name": "供应商质量工程师",
+              "children": []
+            },
+            {
+              "code": "210122",
+              "name": "医疗器械生产/质量管理",
+              "children": []
+            },
+            {
+              "code": "230109",
+              "name": "汽车质量工程师",
+              "children": []
+            },
+            {
+              "code": "300209",
+              "name": "计量工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001170",
+          "name": "机械设计/制造",
+          "children": [
+            {
+              "code": "300301",
+              "name": "机械工程师",
+              "children": []
+            },
+            {
+              "code": "300306",
+              "name": "机械结构工程师",
+              "children": []
+            },
+            {
+              "code": "300321",
+              "name": "家电/3C结构工程师",
+              "children": []
+            },
+            {
+              "code": "300308",
+              "name": "工艺工程师",
+              "children": []
+            },
+            {
+              "code": "300304",
+              "name": "设备维修保养工程师",
+              "children": []
+            },
+            {
+              "code": "300303",
+              "name": "机械设备工程师",
+              "children": []
+            },
+            {
+              "code": "300310",
+              "name": "机电工程师",
+              "children": []
+            },
+            {
+              "code": "300305",
+              "name": "机械制图员",
+              "children": []
+            },
+            {
+              "code": "300314",
+              "name": "模具工程师",
+              "children": []
+            },
+            {
+              "code": "300313",
+              "name": "夹具工程师",
+              "children": []
+            },
+            {
+              "code": "300309",
+              "name": "材料工程师",
+              "children": []
+            },
+            {
+              "code": "300307",
+              "name": "工业工程师(IE)",
+              "children": []
+            },
+            {
+              "code": "300319",
+              "name": "仿真工程师",
+              "children": []
+            },
+            {
+              "code": "100813",
+              "name": "热设计工程师",
+              "children": []
+            },
+            {
+              "code": "300316",
+              "name": "注塑工程师",
+              "children": []
+            },
+            {
+              "code": "300315",
+              "name": "焊接工程师",
+              "children": []
+            },
+            {
+              "code": "300317",
+              "name": "铸造/锻造工程师",
+              "children": []
+            },
+            {
+              "code": "300318",
+              "name": "液压工程师",
+              "children": []
+            },
+            {
+              "code": "300312",
+              "name": "冲压工程师",
+              "children": []
+            },
+            {
+              "code": "300320",
+              "name": "装配工程师",
+              "children": []
+            },
+            {
+              "code": "300802",
+              "name": "电机工程师",
+              "children": []
+            },
+            {
+              "code": "300322",
+              "name": "生产制造项目经理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600942",
+          "name": "电气/自动化",
+          "children": [
+            {
+              "code": "101402",
+              "name": "电气工程师",
+              "children": []
+            },
+            {
+              "code": "101404",
+              "name": "电气设计工程师",
+              "children": []
+            },
+            {
+              "code": "100803",
+              "name": "自动化工程师",
+              "children": []
+            },
+            {
+              "code": "101414",
+              "name": "电力工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001120",
+          "name": "生产营运",
+          "children": [
+            {
+              "code": "300103",
+              "name": "车间主任",
+              "children": []
+            },
+            {
+              "code": "300104",
+              "name": "生产组长/拉长",
+              "children": []
+            },
+            {
+              "code": "300102",
+              "name": "生产总监",
+              "children": []
+            },
+            {
+              "code": "300101",
+              "name": "厂长",
+              "children": []
+            },
+            {
+              "code": "300108",
+              "name": "生产跟单/文员",
+              "children": []
+            },
+            {
+              "code": "300107",
+              "name": "生产计划/物料管理(PMC)",
+              "children": []
+            },
+            {
+              "code": "300106",
+              "name": "生产设备管理",
+              "children": []
+            },
+            {
+              "code": "300110",
+              "name": "厂务",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600712",
+          "name": "生产安全",
+          "children": [
+            {
+              "code": "300207",
+              "name": "生产安全员",
+              "children": []
+            },
+            {
+              "code": "300903",
+              "name": "EHS工程师",
+              "children": []
+            },
+            {
+              "code": "300210",
+              "name": "安全评价师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001180",
+          "name": "化工",
+          "children": [
+            {
+              "code": "300402",
+              "name": "实验室技术员",
+              "children": []
+            },
+            {
+              "code": "300401",
+              "name": "化工工程师",
+              "children": []
+            },
+            {
+              "code": "300406",
+              "name": "食品/饮料研发",
+              "children": []
+            },
+            {
+              "code": "300405",
+              "name": "化妆品研发",
+              "children": []
+            },
+            {
+              "code": "300404",
+              "name": "涂料研发",
+              "children": []
+            },
+            {
+              "code": "300407",
+              "name": "化工项目经理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001190",
+          "name": "服装/纺织/皮革",
+          "children": [
+            {
+              "code": "300510",
+              "name": "服装/纺织/皮革跟单",
+              "children": []
+            },
+            {
+              "code": "300509",
+              "name": "打样/制版",
+              "children": []
+            },
+            {
+              "code": "300501",
+              "name": "服装/纺织设计",
+              "children": []
+            },
+            {
+              "code": "120615",
+              "name": "鞋类设计师",
+              "children": []
+            },
+            {
+              "code": "300507",
+              "name": "面料辅料开发",
+              "children": []
+            },
+            {
+              "code": "300629",
+              "name": "缝纫工",
+              "children": []
+            },
+            {
+              "code": "300632",
+              "name": "样衣工",
+              "children": []
+            },
+            {
+              "code": "300511",
+              "name": "量体师",
+              "children": []
+            },
+            {
+              "code": "300637",
+              "name": "裁剪工",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001140",
+          "name": "新能源汽车",
+          "children": [
+            {
+              "code": "300801",
+              "name": "电池工程师",
+              "children": []
+            },
+            {
+              "code": "300802",
+              "name": "电机工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001150",
+          "name": "汽车研发/制造",
+          "children": [
+            {
+              "code": "230108",
+              "name": "汽车项目管理",
+              "children": []
+            },
+            {
+              "code": "230109",
+              "name": "汽车质量工程师",
+              "children": []
+            },
+            {
+              "code": "230113",
+              "name": "汽车工艺工程师",
+              "children": []
+            },
+            {
+              "code": "230101",
+              "name": "汽车设计",
+              "children": []
+            },
+            {
+              "code": "300803",
+              "name": "线束设计",
+              "children": []
+            },
+            {
+              "code": "230112",
+              "name": "车身工程师",
+              "children": []
+            },
+            {
+              "code": "230102",
+              "name": "汽车造型设计",
+              "children": []
+            },
+            {
+              "code": "230107",
+              "name": "汽车零部件设计",
+              "children": []
+            },
+            {
+              "code": "230106",
+              "name": "汽车电子工程师",
+              "children": []
+            },
+            {
+              "code": "101308",
+              "name": "自动驾驶系统工程师",
+              "children": []
+            },
+            {
+              "code": "230105",
+              "name": "动力系统工程师",
+              "children": []
+            },
+            {
+              "code": "230110",
+              "name": "内外饰设计工程师",
+              "children": []
+            },
+            {
+              "code": "230103",
+              "name": "底盘工程师",
+              "children": []
+            },
+            {
+              "code": "230111",
+              "name": "总布置工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600602",
+          "name": "环保",
+          "children": [
+            {
+              "code": "300903",
+              "name": "EHS工程师",
+              "children": []
+            },
+            {
+              "code": "300905",
+              "name": "环境采样/检测员",
+              "children": []
+            },
+            {
+              "code": "300902",
+              "name": "环评工程师",
+              "children": []
+            },
+            {
+              "code": "300901",
+              "name": "环保工程师",
+              "children": []
+            },
+            {
+              "code": "300904",
+              "name": "碳排放管理师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001210",
+          "name": "其他生产制造职位",
+          "children": [
+            {
+              "code": "300701",
+              "name": "其他生产制造职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1180000",
+      "name": "零售/生活服务",
+      "children": [
+        {
+          "code": "1001050",
+          "name": "零售",
+          "children": [
+            {
+              "code": "290303",
+              "name": "店员/营业员",
+              "children": []
+            },
+            {
+              "code": "290201",
+              "name": "收银",
+              "children": []
+            },
+            {
+              "code": "290302",
+              "name": "导购",
+              "children": []
+            },
+            {
+              "code": "160501",
+              "name": "服装导购",
+              "children": []
+            },
+            {
+              "code": "290312",
+              "name": "珠宝销售",
+              "children": []
+            },
+            {
+              "code": "210406",
+              "name": "化妆品导购",
+              "children": []
+            },
+            {
+              "code": "160502",
+              "name": "家装导购",
+              "children": []
+            },
+            {
+              "code": "290307",
+              "name": "理货/陈列员",
+              "children": []
+            },
+            {
+              "code": "290311",
+              "name": "促销员",
+              "children": []
+            },
+            {
+              "code": "290308",
+              "name": "防损员",
+              "children": []
+            },
+            {
+              "code": "290304",
+              "name": "门店店长",
+              "children": []
+            },
+            {
+              "code": "290226",
+              "name": "储备店长",
+              "children": []
+            },
+            {
+              "code": "290305",
+              "name": "督导/巡店",
+              "children": []
+            },
+            {
+              "code": "290309",
+              "name": "卖场经理",
+              "children": []
+            },
+            {
+              "code": "290314",
+              "name": "商场运营",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001060",
+          "name": "美容美发",
+          "children": [
+            {
+              "code": "210405",
+              "name": "美容师",
+              "children": []
+            },
+            {
+              "code": "210410",
+              "name": "美容店长",
+              "children": []
+            },
+            {
+              "code": "210408",
+              "name": "美体师",
+              "children": []
+            },
+            {
+              "code": "210414",
+              "name": "美容顾问",
+              "children": []
+            },
+            {
+              "code": "290802",
+              "name": "美容导师",
+              "children": []
+            },
+            {
+              "code": "210608",
+              "name": "美甲美睫师",
+              "children": []
+            },
+            {
+              "code": "210407",
+              "name": "纹绣师",
+              "children": []
+            },
+            {
+              "code": "210607",
+              "name": "发型师",
+              "children": []
+            },
+            {
+              "code": "210409",
+              "name": "美发助理/学徒",
+              "children": []
+            },
+            {
+              "code": "290801",
+              "name": "养发师",
+              "children": []
+            },
+            {
+              "code": "210609",
+              "name": "化妆/造型/服装",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600592",
+          "name": "理疗保健",
+          "children": [
+            {
+              "code": "210403",
+              "name": "理疗师",
+              "children": []
+            },
+            {
+              "code": "290118",
+              "name": "产后康复师",
+              "children": []
+            },
+            {
+              "code": "210404",
+              "name": "针灸推拿",
+              "children": []
+            },
+            {
+              "code": "210412",
+              "name": "按摩师",
+              "children": []
+            },
+            {
+              "code": "210411",
+              "name": "足疗师",
+              "children": []
+            },
+            {
+              "code": "210415",
+              "name": "采耳师",
+              "children": []
+            },
+            {
+              "code": "210401",
+              "name": "营养师/健康管理师",
+              "children": []
+            },
+            {
+              "code": "210305",
+              "name": "康复治疗师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001100",
+          "name": "家政/保洁",
+          "children": [
+            {
+              "code": "290106",
+              "name": "保洁",
+              "children": []
+            },
+            {
+              "code": "290122",
+              "name": "保洁主管",
+              "children": []
+            },
+            {
+              "code": "290108",
+              "name": "保姆",
+              "children": []
+            },
+            {
+              "code": "290109",
+              "name": "月嫂",
+              "children": []
+            },
+            {
+              "code": "290110",
+              "name": "育婴师",
+              "children": []
+            },
+            {
+              "code": "290111",
+              "name": "护工",
+              "children": []
+            },
+            {
+              "code": "290169",
+              "name": "收纳师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600572",
+          "name": "安保服务",
+          "children": [
+            {
+              "code": "290105",
+              "name": "保安",
+              "children": []
+            },
+            {
+              "code": "290117",
+              "name": "保安主管/队长",
+              "children": []
+            },
+            {
+              "code": "290121",
+              "name": "消防中控员",
+              "children": []
+            },
+            {
+              "code": "290120",
+              "name": "押运员",
+              "children": []
+            },
+            {
+              "code": "290112",
+              "name": "安检员",
+              "children": []
+            },
+            {
+              "code": "290123",
+              "name": "消防维保员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600972",
+          "name": "维修服务",
+          "children": [
+            {
+              "code": "290114",
+              "name": "家电维修",
+              "children": []
+            },
+            {
+              "code": "290113",
+              "name": "手机维修",
+              "children": []
+            },
+            {
+              "code": "290166",
+              "name": "电脑/打印机维修",
+              "children": []
+            },
+            {
+              "code": "290124",
+              "name": "电动车/摩托车维修",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001160",
+          "name": "汽车服务",
+          "children": [
+            {
+              "code": "230204",
+              "name": "汽车维修",
+              "children": []
+            },
+            {
+              "code": "230205",
+              "name": "汽车美容",
+              "children": []
+            },
+            {
+              "code": "230213",
+              "name": "洗车工",
+              "children": []
+            },
+            {
+              "code": "230209",
+              "name": "汽车改装",
+              "children": []
+            },
+            {
+              "code": "230203",
+              "name": "汽车服务顾问",
+              "children": []
+            },
+            {
+              "code": "230208",
+              "name": "4S店店长/维修站长",
+              "children": []
+            },
+            {
+              "code": "230207",
+              "name": "二手车评估师",
+              "children": []
+            },
+            {
+              "code": "230206",
+              "name": "汽车查勘定损",
+              "children": []
+            },
+            {
+              "code": "230214",
+              "name": "加油员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001090",
+          "name": "宠物服务",
+          "children": [
+            {
+              "code": "290601",
+              "name": "宠物美容",
+              "children": []
+            },
+            {
+              "code": "290602",
+              "name": "宠物医生",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001070",
+          "name": "运动健身",
+          "children": [
+            {
+              "code": "190705",
+              "name": "健身教练",
+              "children": []
+            },
+            {
+              "code": "190701",
+              "name": "舞蹈老师",
+              "children": []
+            },
+            {
+              "code": "190706",
+              "name": "篮球教练",
+              "children": []
+            },
+            {
+              "code": "210601",
+              "name": "瑜伽老师",
+              "children": []
+            },
+            {
+              "code": "210603",
+              "name": "游泳教练",
+              "children": []
+            },
+            {
+              "code": "190707",
+              "name": "跆拳道教练",
+              "children": []
+            },
+            {
+              "code": "190708",
+              "name": "武术教练",
+              "children": []
+            },
+            {
+              "code": "190709",
+              "name": "轮滑教练",
+              "children": []
+            },
+            {
+              "code": "210613",
+              "name": "救生员",
+              "children": []
+            },
+            {
+              "code": "190719",
+              "name": "乒乓球教练",
+              "children": []
+            },
+            {
+              "code": "190766",
+              "name": "足球教练",
+              "children": []
+            },
+            {
+              "code": "190720",
+              "name": "羽毛球教练",
+              "children": []
+            },
+            {
+              "code": "190769",
+              "name": "拳击教练",
+              "children": []
+            },
+            {
+              "code": "190312",
+              "name": "体育/体能老师",
+              "children": []
+            },
+            {
+              "code": "190771",
+              "name": "网球教练",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600752",
+          "name": "驾驶员",
+          "children": [
+            {
+              "code": "240305",
+              "name": "网约车司机",
+              "children": []
+            },
+            {
+              "code": "240306",
+              "name": "代驾司机",
+              "children": []
+            },
+            {
+              "code": "240307",
+              "name": "驾校教练",
+              "children": []
+            },
+            {
+              "code": "150208",
+              "name": "商务司机",
+              "children": []
+            },
+            {
+              "code": "240301",
+              "name": "货运司机",
+              "children": []
+            },
+            {
+              "code": "240308",
+              "name": "客运司机",
+              "children": []
+            },
+            {
+              "code": "100311",
+              "name": "无人机飞手",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001110",
+          "name": "其他服务业职位",
+          "children": [
+            {
+              "code": "290701",
+              "name": "花艺师",
+              "children": []
+            },
+            {
+              "code": "290702",
+              "name": "婚礼策划",
+              "children": []
+            },
+            {
+              "code": "290313",
+              "name": "网吧网管",
+              "children": []
+            },
+            {
+              "code": "210610",
+              "name": "会籍顾问",
+              "children": []
+            },
+            {
+              "code": "280103",
+              "name": "旅游顾问",
+              "children": []
+            },
+            {
+              "code": "210109",
+              "name": "验光师",
+              "children": []
+            },
+            {
+              "code": "170602",
+              "name": "摄影/摄像师",
+              "children": []
+            },
+            {
+              "code": "170626",
+              "name": "剧本杀主持人",
+              "children": []
+            },
+            {
+              "code": "170628",
+              "name": "儿童引导师",
+              "children": []
+            },
+            {
+              "code": "290402",
+              "name": "游戏陪玩",
+              "children": []
+            },
+            {
+              "code": "190770",
+              "name": "台球教练/助教",
+              "children": []
+            },
+            {
+              "code": "290401",
+              "name": "其他服务业职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "2142200",
+      "name": "餐饮",
+      "children": [
+        {
+          "code": "2600512",
+          "name": "前厅",
+          "children": [
+            {
+              "code": "290202",
+              "name": "服务员",
+              "children": []
+            },
+            {
+              "code": "290201",
+              "name": "收银",
+              "children": []
+            },
+            {
+              "code": "290107",
+              "name": "礼仪/迎宾/接待",
+              "children": []
+            },
+            {
+              "code": "290216",
+              "name": "传菜员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600522",
+          "name": "后厨",
+          "children": [
+            {
+              "code": "290212",
+              "name": "餐饮学徒",
+              "children": []
+            },
+            {
+              "code": "290203",
+              "name": "厨师",
+              "children": []
+            },
+            {
+              "code": "290219",
+              "name": "中餐厨师",
+              "children": []
+            },
+            {
+              "code": "290222",
+              "name": "烧烤师傅",
+              "children": []
+            },
+            {
+              "code": "290220",
+              "name": "西餐厨师",
+              "children": []
+            },
+            {
+              "code": "290221",
+              "name": "日料厨师",
+              "children": []
+            },
+            {
+              "code": "290218",
+              "name": "凉菜厨师",
+              "children": []
+            },
+            {
+              "code": "290213",
+              "name": "面点师",
+              "children": []
+            },
+            {
+              "code": "290208",
+              "name": "后厨",
+              "children": []
+            },
+            {
+              "code": "290209",
+              "name": "配菜打荷",
+              "children": []
+            },
+            {
+              "code": "290217",
+              "name": "洗碗工",
+              "children": []
+            },
+            {
+              "code": "290224",
+              "name": "水台/水产员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600532",
+          "name": "餐饮管理",
+          "children": [
+            {
+              "code": "290206",
+              "name": "餐饮店长",
+              "children": []
+            },
+            {
+              "code": "290207",
+              "name": "餐饮前厅经理/领班",
+              "children": []
+            },
+            {
+              "code": "290226",
+              "name": "储备店长",
+              "children": []
+            },
+            {
+              "code": "290215",
+              "name": "厨师长",
+              "children": []
+            },
+            {
+              "code": "290214",
+              "name": "行政总厨",
+              "children": []
+            },
+            {
+              "code": "290228",
+              "name": "餐饮督导",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600552",
+          "name": "甜点饮品",
+          "children": [
+            {
+              "code": "290204",
+              "name": "咖啡师",
+              "children": []
+            },
+            {
+              "code": "290210",
+              "name": "茶艺师",
+              "children": []
+            },
+            {
+              "code": "290223",
+              "name": "奶茶店店员",
+              "children": []
+            },
+            {
+              "code": "290227",
+              "name": "调酒师",
+              "children": []
+            },
+            {
+              "code": "290225",
+              "name": "面包/烘焙师",
+              "children": []
+            },
+            {
+              "code": "290211",
+              "name": "蛋糕/裱花师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600542",
+          "name": "其他餐饮岗位",
+          "children": [
+            {
+              "code": "290205",
+              "name": "送餐员",
+              "children": []
+            },
+            {
+              "code": "130134",
+              "name": "外卖运营",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1170000",
+      "name": "酒店/旅游",
+      "children": [
+        {
+          "code": "1001040",
+          "name": "酒店",
+          "children": [
+            {
+              "code": "290102",
+              "name": "酒店前台",
+              "children": []
+            },
+            {
+              "code": "290107",
+              "name": "礼仪/迎宾/接待",
+              "children": []
+            },
+            {
+              "code": "290103",
+              "name": "客房服务员",
+              "children": []
+            },
+            {
+              "code": "290104",
+              "name": "酒店经理",
+              "children": []
+            },
+            {
+              "code": "290115",
+              "name": "酒店前厅经理",
+              "children": []
+            },
+            {
+              "code": "290116",
+              "name": "客房经理",
+              "children": []
+            },
+            {
+              "code": "290158",
+              "name": "民宿管家",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001000",
+          "name": "旅游服务",
+          "children": [
+            {
+              "code": "280103",
+              "name": "旅游顾问",
+              "children": []
+            },
+            {
+              "code": "280104",
+              "name": "导游",
+              "children": []
+            },
+            {
+              "code": "280201",
+              "name": "旅游产品经理",
+              "children": []
+            },
+            {
+              "code": "280106",
+              "name": "讲解员",
+              "children": []
+            },
+            {
+              "code": "280101",
+              "name": "计调",
+              "children": []
+            },
+            {
+              "code": "280105",
+              "name": "票务员",
+              "children": []
+            },
+            {
+              "code": "280102",
+              "name": "签证专员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001020",
+          "name": "其他旅游职位",
+          "children": [
+            {
+              "code": "280301",
+              "name": "其他旅游职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1100000",
+      "name": "教育培训",
+      "children": [
+        {
+          "code": "1000680",
+          "name": "教师",
+          "children": [
+            {
+              "code": "190301",
+              "name": "教师",
+              "children": []
+            },
+            {
+              "code": "190309",
+              "name": "英语教师",
+              "children": []
+            },
+            {
+              "code": "190302",
+              "name": "助教",
+              "children": []
+            },
+            {
+              "code": "190317",
+              "name": "数学教师",
+              "children": []
+            },
+            {
+              "code": "190316",
+              "name": "语文教师",
+              "children": []
+            },
+            {
+              "code": "190303",
+              "name": "高中教师",
+              "children": []
+            },
+            {
+              "code": "190304",
+              "name": "初中教师",
+              "children": []
+            },
+            {
+              "code": "190305",
+              "name": "小学教师",
+              "children": []
+            },
+            {
+              "code": "190321",
+              "name": "家教",
+              "children": []
+            },
+            {
+              "code": "190318",
+              "name": "物理教师",
+              "children": []
+            },
+            {
+              "code": "190319",
+              "name": "化学教师",
+              "children": []
+            },
+            {
+              "code": "190307",
+              "name": "理科教师",
+              "children": []
+            },
+            {
+              "code": "190314",
+              "name": "日语教师",
+              "children": []
+            },
+            {
+              "code": "190320",
+              "name": "生物教师",
+              "children": []
+            },
+            {
+              "code": "190308",
+              "name": "文科教师",
+              "children": []
+            },
+            {
+              "code": "190245",
+              "name": "地理教师",
+              "children": []
+            },
+            {
+              "code": "190315",
+              "name": "其他外语教师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600892",
+          "name": "幼少儿教师",
+          "children": [
+            {
+              "code": "190306",
+              "name": "幼教",
+              "children": []
+            },
+            {
+              "code": "190322",
+              "name": "托管老师",
+              "children": []
+            },
+            {
+              "code": "190323",
+              "name": "早教老师",
+              "children": []
+            },
+            {
+              "code": "190326",
+              "name": "保育员",
+              "children": []
+            },
+            {
+              "code": "190324",
+              "name": "感统训练教师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000670",
+          "name": "教育行政",
+          "children": [
+            {
+              "code": "190202",
+              "name": "教务管理",
+              "children": []
+            },
+            {
+              "code": "190201",
+              "name": "校长/副校长",
+              "children": []
+            },
+            {
+              "code": "190204",
+              "name": "班主任/辅导员",
+              "children": []
+            },
+            {
+              "code": "190203",
+              "name": "教学管理",
+              "children": []
+            },
+            {
+              "code": "190205",
+              "name": "园长/副园长",
+              "children": []
+            },
+            {
+              "code": "190313",
+              "name": "就业老师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600812",
+          "name": "运动健身",
+          "children": [
+            {
+              "code": "190705",
+              "name": "健身教练",
+              "children": []
+            },
+            {
+              "code": "190706",
+              "name": "篮球教练",
+              "children": []
+            },
+            {
+              "code": "190707",
+              "name": "跆拳道教练",
+              "children": []
+            },
+            {
+              "code": "190708",
+              "name": "武术教练",
+              "children": []
+            },
+            {
+              "code": "190709",
+              "name": "轮滑教练",
+              "children": []
+            },
+            {
+              "code": "190719",
+              "name": "乒乓球教练",
+              "children": []
+            },
+            {
+              "code": "190766",
+              "name": "足球教练",
+              "children": []
+            },
+            {
+              "code": "190720",
+              "name": "羽毛球教练",
+              "children": []
+            },
+            {
+              "code": "190769",
+              "name": "拳击教练",
+              "children": []
+            },
+            {
+              "code": "190770",
+              "name": "台球教练/助教",
+              "children": []
+            },
+            {
+              "code": "210603",
+              "name": "游泳教练",
+              "children": []
+            },
+            {
+              "code": "210601",
+              "name": "瑜伽老师",
+              "children": []
+            },
+            {
+              "code": "210613",
+              "name": "救生员",
+              "children": []
+            },
+            {
+              "code": "210612",
+              "name": "普拉提老师",
+              "children": []
+            },
+            {
+              "code": "190312",
+              "name": "体育/体能老师",
+              "children": []
+            },
+            {
+              "code": "190771",
+              "name": "网球教练",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600822",
+          "name": "文化艺术",
+          "children": [
+            {
+              "code": "190311",
+              "name": "美术教师",
+              "children": []
+            },
+            {
+              "code": "190701",
+              "name": "舞蹈老师",
+              "children": []
+            },
+            {
+              "code": "190712",
+              "name": "书法教师",
+              "children": []
+            },
+            {
+              "code": "190310",
+              "name": "音乐教师",
+              "children": []
+            },
+            {
+              "code": "190716",
+              "name": "播音主持教师",
+              "children": []
+            },
+            {
+              "code": "190713",
+              "name": "钢琴教师",
+              "children": []
+            },
+            {
+              "code": "190715",
+              "name": "古筝教师",
+              "children": []
+            },
+            {
+              "code": "190714",
+              "name": "吉他教师",
+              "children": []
+            },
+            {
+              "code": "190710",
+              "name": "表演教师",
+              "children": []
+            },
+            {
+              "code": "190767",
+              "name": "架子鼓老师",
+              "children": []
+            },
+            {
+              "code": "190768",
+              "name": "围棋老师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600832",
+          "name": "科学探索培训",
+          "children": [
+            {
+              "code": "190717",
+              "name": "乐高教师",
+              "children": []
+            },
+            {
+              "code": "190711",
+              "name": "机器人教师",
+              "children": []
+            },
+            {
+              "code": "190718",
+              "name": "少儿编程老师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000700",
+          "name": "职业培训",
+          "children": [
+            {
+              "code": "190105",
+              "name": "培训师",
+              "children": []
+            },
+            {
+              "code": "190504",
+              "name": "拓展培训",
+              "children": []
+            },
+            {
+              "code": "190406",
+              "name": "IT培训讲师",
+              "children": []
+            },
+            {
+              "code": "190501",
+              "name": "财会培训讲师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000660",
+          "name": "教育产品研发",
+          "children": [
+            {
+              "code": "190101",
+              "name": "课程设计",
+              "children": []
+            },
+            {
+              "code": "190102",
+              "name": "课程编辑",
+              "children": []
+            },
+            {
+              "code": "190107",
+              "name": "培训策划",
+              "children": []
+            },
+            {
+              "code": "190104",
+              "name": "培训研究",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600452",
+          "name": "教培销售",
+          "children": [
+            {
+              "code": "190601",
+              "name": "课程顾问",
+              "children": []
+            },
+            {
+              "code": "190603",
+              "name": "留学顾问",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000720",
+          "name": "其他教育培训职位",
+          "children": [
+            {
+              "code": "190801",
+              "name": "其他教育培训职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1030000",
+      "name": "设计",
+      "children": [
+        {
+          "code": "1000190",
+          "name": "视觉/交互设计",
+          "children": [
+            {
+              "code": "120106",
+              "name": "平面设计",
+              "children": []
+            },
+            {
+              "code": "120117",
+              "name": "美工",
+              "children": []
+            },
+            {
+              "code": "120119",
+              "name": "设计师助理",
+              "children": []
+            },
+            {
+              "code": "120105",
+              "name": "UI设计师",
+              "children": []
+            },
+            {
+              "code": "120101",
+              "name": "视觉设计师",
+              "children": []
+            },
+            {
+              "code": "140603",
+              "name": "广告设计",
+              "children": []
+            },
+            {
+              "code": "120201",
+              "name": "UX/交互设计师",
+              "children": []
+            },
+            {
+              "code": "120302",
+              "name": "用户研究",
+              "children": []
+            },
+            {
+              "code": "120118",
+              "name": "包装设计",
+              "children": []
+            },
+            {
+              "code": "120123",
+              "name": "修图师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600652",
+          "name": "环境设计",
+          "children": [
+            {
+              "code": "220205",
+              "name": "室内设计",
+              "children": []
+            },
+            {
+              "code": "220217",
+              "name": "软装设计师",
+              "children": []
+            },
+            {
+              "code": "120611",
+              "name": "展览/展示设计",
+              "children": []
+            },
+            {
+              "code": "120608",
+              "name": "陈列设计",
+              "children": []
+            },
+            {
+              "code": "120612",
+              "name": "照明设计",
+              "children": []
+            },
+            {
+              "code": "220206",
+              "name": "园林/景观设计",
+              "children": []
+            },
+            {
+              "code": "120614",
+              "name": "舞美设计师",
+              "children": []
+            },
+            {
+              "code": "120116",
+              "name": "CAD绘图员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600962",
+          "name": "工业/产品设计",
+          "children": [
+            {
+              "code": "120604",
+              "name": "家具设计",
+              "children": []
+            },
+            {
+              "code": "120602",
+              "name": "工业设计",
+              "children": []
+            },
+            {
+              "code": "120606",
+              "name": "珠宝设计",
+              "children": []
+            },
+            {
+              "code": "120613",
+              "name": "家具拆单员",
+              "children": []
+            },
+            {
+              "code": "300501",
+              "name": "服装/纺织设计",
+              "children": []
+            },
+            {
+              "code": "120615",
+              "name": "鞋类设计师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600622",
+          "name": "美术/3D/动画",
+          "children": [
+            {
+              "code": "120107",
+              "name": "3D设计师",
+              "children": []
+            },
+            {
+              "code": "120121",
+              "name": "插画师",
+              "children": []
+            },
+            {
+              "code": "120120",
+              "name": "动画设计",
+              "children": []
+            },
+            {
+              "code": "120110",
+              "name": "原画师",
+              "children": []
+            },
+            {
+              "code": "120122",
+              "name": "漫画师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000200",
+          "name": "游戏设计",
+          "children": [
+            {
+              "code": "120113",
+              "name": "游戏场景",
+              "children": []
+            },
+            {
+              "code": "120114",
+              "name": "游戏角色",
+              "children": []
+            },
+            {
+              "code": "120112",
+              "name": "游戏UI设计",
+              "children": []
+            },
+            {
+              "code": "120111",
+              "name": "游戏特效",
+              "children": []
+            },
+            {
+              "code": "120115",
+              "name": "游戏动作",
+              "children": []
+            },
+            {
+              "code": "120306",
+              "name": "游戏主美术",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000220",
+          "name": "设计管理",
+          "children": [
+            {
+              "code": "120401",
+              "name": "设计总监/经理",
+              "children": []
+            },
+            {
+              "code": "120404",
+              "name": "视觉设计总监/经理",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1140000",
+      "name": "房地产/建筑",
+      "children": [
+        {
+          "code": "2600672",
+          "name": "工程管理",
+          "children": [
+            {
+              "code": "220212",
+              "name": "建筑施工项目经理",
+              "children": []
+            },
+            {
+              "code": "220209",
+              "name": "工程造价",
+              "children": []
+            },
+            {
+              "code": "220208",
+              "name": "工程监理",
+              "children": []
+            },
+            {
+              "code": "260114",
+              "name": "工程咨询",
+              "children": []
+            },
+            {
+              "code": "220218",
+              "name": "施工员",
+              "children": []
+            },
+            {
+              "code": "220211",
+              "name": "资料员",
+              "children": []
+            },
+            {
+              "code": "220220",
+              "name": "材料员",
+              "children": []
+            },
+            {
+              "code": "220219",
+              "name": "测绘/测量",
+              "children": []
+            },
+            {
+              "code": "220225",
+              "name": "施工安全员",
+              "children": []
+            },
+            {
+              "code": "220226",
+              "name": "工程检测员",
+              "children": []
+            },
+            {
+              "code": "220103",
+              "name": "工程招投标",
+              "children": []
+            },
+            {
+              "code": "220227",
+              "name": "成本工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000900",
+          "name": "装饰装修",
+          "children": [
+            {
+              "code": "220205",
+              "name": "室内设计",
+              "children": []
+            },
+            {
+              "code": "220217",
+              "name": "软装设计师",
+              "children": []
+            },
+            {
+              "code": "220222",
+              "name": "装修项目经理",
+              "children": []
+            },
+            {
+              "code": "220702",
+              "name": "装修监理",
+              "children": []
+            },
+            {
+              "code": "220701",
+              "name": "装修造价",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000910",
+          "name": "物业管理",
+          "children": [
+            {
+              "code": "220401",
+              "name": "物业经理",
+              "children": []
+            },
+            {
+              "code": "220406",
+              "name": "物业管理员",
+              "children": []
+            },
+            {
+              "code": "220404",
+              "name": "综合维修工",
+              "children": []
+            },
+            {
+              "code": "220407",
+              "name": "物业工程主管",
+              "children": []
+            },
+            {
+              "code": "300635",
+              "name": "弱电工",
+              "children": []
+            },
+            {
+              "code": "220405",
+              "name": "绿化工",
+              "children": []
+            },
+            {
+              "code": "290105",
+              "name": "保安",
+              "children": []
+            },
+            {
+              "code": "290117",
+              "name": "保安主管/队长",
+              "children": []
+            },
+            {
+              "code": "290121",
+              "name": "消防中控员",
+              "children": []
+            },
+            {
+              "code": "290123",
+              "name": "消防维保员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600692",
+          "name": "建筑/规划设计",
+          "children": [
+            {
+              "code": "220204",
+              "name": "土木/土建/结构工程师",
+              "children": []
+            },
+            {
+              "code": "220206",
+              "name": "园林/景观设计",
+              "children": []
+            },
+            {
+              "code": "220203",
+              "name": "建筑设计师",
+              "children": []
+            },
+            {
+              "code": "220202",
+              "name": "建筑工程师",
+              "children": []
+            },
+            {
+              "code": "220213",
+              "name": "弱电工程师",
+              "children": []
+            },
+            {
+              "code": "220223",
+              "name": "建筑机电工程师",
+              "children": []
+            },
+            {
+              "code": "220214",
+              "name": "给排水工程师",
+              "children": []
+            },
+            {
+              "code": "220215",
+              "name": "暖通工程师",
+              "children": []
+            },
+            {
+              "code": "220216",
+              "name": "幕墙工程师",
+              "children": []
+            },
+            {
+              "code": "220221",
+              "name": "BIM工程师",
+              "children": []
+            },
+            {
+              "code": "220224",
+              "name": "消防工程师",
+              "children": []
+            },
+            {
+              "code": "301004",
+              "name": "水利工程师",
+              "children": []
+            },
+            {
+              "code": "220207",
+              "name": "城乡规划设计",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000890",
+          "name": "房地产规划开发",
+          "children": [
+            {
+              "code": "220102",
+              "name": "房地产项目管理",
+              "children": []
+            },
+            {
+              "code": "220101",
+              "name": "房地产策划",
+              "children": []
+            },
+            {
+              "code": "220302",
+              "name": "房地产估价师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600442",
+          "name": "房地产销售/招商",
+          "children": [
+            {
+              "code": "160401",
+              "name": "置业顾问",
+              "children": []
+            },
+            {
+              "code": "160403",
+              "name": "地产中介",
+              "children": []
+            },
+            {
+              "code": "220403",
+              "name": "地产招商",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001280",
+          "name": "建筑/装修工人",
+          "children": [
+            {
+              "code": "300606",
+              "name": "电工",
+              "children": []
+            },
+            {
+              "code": "300604",
+              "name": "焊工",
+              "children": []
+            },
+            {
+              "code": "300608",
+              "name": "木工",
+              "children": []
+            },
+            {
+              "code": "300625",
+              "name": "空调工",
+              "children": []
+            },
+            {
+              "code": "300609",
+              "name": "油漆工",
+              "children": []
+            },
+            {
+              "code": "300626",
+              "name": "电梯工",
+              "children": []
+            },
+            {
+              "code": "300639",
+              "name": "泥瓦工",
+              "children": []
+            },
+            {
+              "code": "300638",
+              "name": "水电工",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000930",
+          "name": "其他房地产职位",
+          "children": [
+            {
+              "code": "220601",
+              "name": "其他房地产职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "2172200",
+      "name": "直播",
+      "children": [
+        {
+          "code": "2601272",
+          "name": "主播",
+          "children": [
+            {
+              "code": "170625",
+              "name": "带货主播",
+              "children": []
+            },
+            {
+              "code": "170702",
+              "name": "语音主播",
+              "children": []
+            },
+            {
+              "code": "170701",
+              "name": "娱乐主播",
+              "children": []
+            },
+            {
+              "code": "170629",
+              "name": "游戏主播",
+              "children": []
+            },
+            {
+              "code": "170610",
+              "name": "主播",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2601282",
+          "name": "直播支持",
+          "children": [
+            {
+              "code": "130122",
+              "name": "直播运营",
+              "children": []
+            },
+            {
+              "code": "170621",
+              "name": "中控/场控/助播",
+              "children": []
+            },
+            {
+              "code": "170603",
+              "name": "视频剪辑",
+              "children": []
+            },
+            {
+              "code": "170602",
+              "name": "摄影/摄像师",
+              "children": []
+            },
+            {
+              "code": "210609",
+              "name": "化妆/造型/服装",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1080000",
+      "name": "影视/传媒",
+      "children": [
+        {
+          "code": "2600872",
+          "name": "直播",
+          "children": [
+            {
+              "code": "170625",
+              "name": "带货主播",
+              "children": []
+            },
+            {
+              "code": "170702",
+              "name": "语音主播",
+              "children": []
+            },
+            {
+              "code": "170701",
+              "name": "娱乐主播",
+              "children": []
+            },
+            {
+              "code": "170629",
+              "name": "游戏主播",
+              "children": []
+            },
+            {
+              "code": "170610",
+              "name": "主播",
+              "children": []
+            },
+            {
+              "code": "130122",
+              "name": "直播运营",
+              "children": []
+            },
+            {
+              "code": "170621",
+              "name": "中控/场控/助播",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000570",
+          "name": "影视",
+          "children": [
+            {
+              "code": "210609",
+              "name": "化妆/造型/服装",
+              "children": []
+            },
+            {
+              "code": "170611",
+              "name": "演员/配音员",
+              "children": []
+            },
+            {
+              "code": "170617",
+              "name": "艺人助理",
+              "children": []
+            },
+            {
+              "code": "170620",
+              "name": "主持人/DJ",
+              "children": []
+            },
+            {
+              "code": "170630",
+              "name": "模特",
+              "children": []
+            },
+            {
+              "code": "170602",
+              "name": "摄影/摄像师",
+              "children": []
+            },
+            {
+              "code": "170601",
+              "name": "导演/编导",
+              "children": []
+            },
+            {
+              "code": "170605",
+              "name": "经纪人/星探",
+              "children": []
+            },
+            {
+              "code": "170616",
+              "name": "编剧",
+              "children": []
+            },
+            {
+              "code": "170615",
+              "name": "制片人",
+              "children": []
+            },
+            {
+              "code": "170609",
+              "name": "影视策划",
+              "children": []
+            },
+            {
+              "code": "170608",
+              "name": "影视发行",
+              "children": []
+            },
+            {
+              "code": "170603",
+              "name": "视频剪辑",
+              "children": []
+            },
+            {
+              "code": "170606",
+              "name": "后期制作",
+              "children": []
+            },
+            {
+              "code": "120120",
+              "name": "动画设计",
+              "children": []
+            },
+            {
+              "code": "120123",
+              "name": "修图师",
+              "children": []
+            },
+            {
+              "code": "170622",
+              "name": "灯光师",
+              "children": []
+            },
+            {
+              "code": "170614",
+              "name": "录音/音效",
+              "children": []
+            },
+            {
+              "code": "170604",
+              "name": "音频编辑",
+              "children": []
+            },
+            {
+              "code": "170624",
+              "name": "影视特效",
+              "children": []
+            },
+            {
+              "code": "170626",
+              "name": "剧本杀主持人",
+              "children": []
+            },
+            {
+              "code": "170628",
+              "name": "儿童引导师",
+              "children": []
+            },
+            {
+              "code": "170627",
+              "name": "剧本杀编剧",
+              "children": []
+            },
+            {
+              "code": "120614",
+              "name": "舞美设计师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000560",
+          "name": "广告",
+          "children": [
+            {
+              "code": "140604",
+              "name": "策划经理",
+              "children": []
+            },
+            {
+              "code": "140605",
+              "name": "广告文案",
+              "children": []
+            },
+            {
+              "code": "140202",
+              "name": "广告客户执行",
+              "children": []
+            },
+            {
+              "code": "140601",
+              "name": "广告创意策划",
+              "children": []
+            },
+            {
+              "code": "140407",
+              "name": "创意总监",
+              "children": []
+            },
+            {
+              "code": "140603",
+              "name": "广告设计",
+              "children": []
+            },
+            {
+              "code": "140602",
+              "name": "美术指导",
+              "children": []
+            },
+            {
+              "code": "140607",
+              "name": "广告制作",
+              "children": []
+            },
+            {
+              "code": "140611",
+              "name": "广告审核",
+              "children": []
+            },
+            {
+              "code": "170212",
+              "name": "广告/会展项目经理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000540",
+          "name": "采编/写作/出版",
+          "children": [
+            {
+              "code": "130203",
+              "name": "文案编辑",
+              "children": []
+            },
+            {
+              "code": "170104",
+              "name": "作者/撰稿人",
+              "children": []
+            },
+            {
+              "code": "170102",
+              "name": "编辑",
+              "children": []
+            },
+            {
+              "code": "170109",
+              "name": "印刷排版",
+              "children": []
+            },
+            {
+              "code": "170106",
+              "name": "录入员",
+              "children": []
+            },
+            {
+              "code": "170101",
+              "name": "记者/采编",
+              "children": []
+            },
+            {
+              "code": "130204",
+              "name": "网站编辑",
+              "children": []
+            },
+            {
+              "code": "130201",
+              "name": "主编/副主编",
+              "children": []
+            },
+            {
+              "code": "170105",
+              "name": "出版发行",
+              "children": []
+            },
+            {
+              "code": "170627",
+              "name": "剧本杀编剧",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000580",
+          "name": "其他传媒职位",
+          "children": [
+            {
+              "code": "170501",
+              "name": "其他传媒职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1050000",
+      "name": "市场/公关/广告",
+      "children": [
+        {
+          "code": "1000310",
+          "name": "市场营销",
+          "children": [
+            {
+              "code": "140101",
+              "name": "市场营销策划",
+              "children": []
+            },
+            {
+              "code": "140111",
+              "name": "海外市场",
+              "children": []
+            },
+            {
+              "code": "140109",
+              "name": "活动策划执行",
+              "children": []
+            },
+            {
+              "code": "140506",
+              "name": "会务/会展执行",
+              "children": []
+            },
+            {
+              "code": "140505",
+              "name": "会务/会展策划",
+              "children": []
+            },
+            {
+              "code": "140401",
+              "name": "市场总监",
+              "children": []
+            },
+            {
+              "code": "140404",
+              "name": "CMO",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600952",
+          "name": "推广/投放",
+          "children": [
+            {
+              "code": "140104",
+              "name": "市场推广/地推",
+              "children": []
+            },
+            {
+              "code": "130109",
+              "name": "网络推广",
+              "children": []
+            },
+            {
+              "code": "140608",
+              "name": "媒介投放",
+              "children": []
+            },
+            {
+              "code": "140609",
+              "name": "媒介商务BD",
+              "children": []
+            },
+            {
+              "code": "140204",
+              "name": "媒介专员",
+              "children": []
+            },
+            {
+              "code": "140206",
+              "name": "媒介经理/总监",
+              "children": []
+            },
+            {
+              "code": "140116",
+              "name": "信息流优化师",
+              "children": []
+            },
+            {
+              "code": "140105",
+              "name": "SEO",
+              "children": []
+            },
+            {
+              "code": "140106",
+              "name": "SEM",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000300",
+          "name": "政府事务",
+          "children": [
+            {
+              "code": "140112",
+              "name": "政府关系",
+              "children": []
+            },
+            {
+              "code": "140804",
+              "name": "项目申报专员",
+              "children": []
+            },
+            {
+              "code": "140801",
+              "name": "政策研究",
+              "children": []
+            },
+            {
+              "code": "140803",
+              "name": "社工",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000320",
+          "name": "公关",
+          "children": [
+            {
+              "code": "140203",
+              "name": "品牌公关",
+              "children": []
+            },
+            {
+              "code": "140405",
+              "name": "公关总监",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000340",
+          "name": "广告",
+          "children": [
+            {
+              "code": "140604",
+              "name": "策划经理",
+              "children": []
+            },
+            {
+              "code": "140605",
+              "name": "广告文案",
+              "children": []
+            },
+            {
+              "code": "140202",
+              "name": "广告客户执行",
+              "children": []
+            },
+            {
+              "code": "140601",
+              "name": "广告创意策划",
+              "children": []
+            },
+            {
+              "code": "140407",
+              "name": "创意总监",
+              "children": []
+            },
+            {
+              "code": "140603",
+              "name": "广告设计",
+              "children": []
+            },
+            {
+              "code": "140602",
+              "name": "美术指导",
+              "children": []
+            },
+            {
+              "code": "140607",
+              "name": "广告制作",
+              "children": []
+            },
+            {
+              "code": "140611",
+              "name": "广告审核",
+              "children": []
+            },
+            {
+              "code": "170212",
+              "name": "广告/会展项目经理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1001240",
+          "name": "调研分析",
+          "children": [
+            {
+              "code": "260109",
+              "name": "市场调研",
+              "children": []
+            },
+            {
+              "code": "140114",
+              "name": "选址开发",
+              "children": []
+            },
+            {
+              "code": "140108",
+              "name": "商业数据分析",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600462",
+          "name": "广告/会展销售",
+          "children": [
+            {
+              "code": "140313",
+              "name": "广告销售",
+              "children": []
+            },
+            {
+              "code": "140504",
+              "name": "会展活动销售",
+              "children": []
+            },
+            {
+              "code": "140501",
+              "name": "会议活动销售",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000360",
+          "name": "其他市场职位",
+          "children": [
+            {
+              "code": "140701",
+              "name": "其他市场职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1130000",
+      "name": "物流/仓储/司机",
+      "children": [
+        {
+          "code": "1000840",
+          "name": "物流/运输",
+          "children": [
+            {
+              "code": "240103",
+              "name": "物流专员",
+              "children": []
+            },
+            {
+              "code": "240104",
+              "name": "物流经理",
+              "children": []
+            },
+            {
+              "code": "240402",
+              "name": "物流总监",
+              "children": []
+            },
+            {
+              "code": "240105",
+              "name": "物流运营",
+              "children": []
+            },
+            {
+              "code": "240106",
+              "name": "物流跟单",
+              "children": []
+            },
+            {
+              "code": "240108",
+              "name": "调度员",
+              "children": []
+            },
+            {
+              "code": "240110",
+              "name": "运输经理/主管",
+              "children": []
+            },
+            {
+              "code": "240119",
+              "name": "跟车员",
+              "children": []
+            },
+            {
+              "code": "240113",
+              "name": "水/空/陆运操作",
+              "children": []
+            },
+            {
+              "code": "240111",
+              "name": "货代/物流销售",
+              "children": []
+            },
+            {
+              "code": "240109",
+              "name": "物流/仓储项目经理",
+              "children": []
+            },
+            {
+              "code": "240302",
+              "name": "集装箱管理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600742",
+          "name": "配送理货",
+          "children": [
+            {
+              "code": "240206",
+              "name": "配/理/拣/发货",
+              "children": []
+            },
+            {
+              "code": "240303",
+              "name": "配送员",
+              "children": []
+            },
+            {
+              "code": "290205",
+              "name": "送餐员",
+              "children": []
+            },
+            {
+              "code": "240304",
+              "name": "快递员",
+              "children": []
+            },
+            {
+              "code": "300630",
+              "name": "搬运工/装卸工",
+              "children": []
+            },
+            {
+              "code": "300602",
+              "name": "叉车工",
+              "children": []
+            },
+            {
+              "code": "240118",
+              "name": "配送站长",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000860",
+          "name": "驾驶员",
+          "children": [
+            {
+              "code": "240301",
+              "name": "货运司机",
+              "children": []
+            },
+            {
+              "code": "150208",
+              "name": "商务司机",
+              "children": []
+            },
+            {
+              "code": "240305",
+              "name": "网约车司机",
+              "children": []
+            },
+            {
+              "code": "240306",
+              "name": "代驾司机",
+              "children": []
+            },
+            {
+              "code": "240307",
+              "name": "驾校教练",
+              "children": []
+            },
+            {
+              "code": "240308",
+              "name": "客运司机",
+              "children": []
+            },
+            {
+              "code": "100311",
+              "name": "无人机飞手",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000850",
+          "name": "仓储",
+          "children": [
+            {
+              "code": "240204",
+              "name": "仓库管理员",
+              "children": []
+            },
+            {
+              "code": "240205",
+              "name": "仓库文员",
+              "children": []
+            },
+            {
+              "code": "240201",
+              "name": "仓库主管/经理",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000870",
+          "name": "供应链",
+          "children": [
+            {
+              "code": "240101",
+              "name": "供应链专员",
+              "children": []
+            },
+            {
+              "code": "240102",
+              "name": "供应链经理",
+              "children": []
+            },
+            {
+              "code": "240401",
+              "name": "供应链总监",
+              "children": []
+            },
+            {
+              "code": "300107",
+              "name": "生产计划/物料管理(PMC)",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1120000",
+      "name": "采购/贸易",
+      "children": [
+        {
+          "code": "1000810",
+          "name": "采购",
+          "children": [
+            {
+              "code": "250103",
+              "name": "采购专员/助理",
+              "children": []
+            },
+            {
+              "code": "250102",
+              "name": "采购经理/主管",
+              "children": []
+            },
+            {
+              "code": "250105",
+              "name": "采购工程师",
+              "children": []
+            },
+            {
+              "code": "250104",
+              "name": "买手",
+              "children": []
+            },
+            {
+              "code": "250108",
+              "name": "供应商质量工程师",
+              "children": []
+            },
+            {
+              "code": "250111",
+              "name": "商品专员/助理",
+              "children": []
+            },
+            {
+              "code": "250101",
+              "name": "采购总监",
+              "children": []
+            },
+            {
+              "code": "250109",
+              "name": "招标专员",
+              "children": []
+            },
+            {
+              "code": "250110",
+              "name": "投标专员",
+              "children": []
+            },
+            {
+              "code": "140312",
+              "name": "商品经理/主管",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600482",
+          "name": "外贸销售",
+          "children": [
+            {
+              "code": "250203",
+              "name": "外贸业务员",
+              "children": []
+            },
+            {
+              "code": "250201",
+              "name": "外贸经理",
+              "children": []
+            },
+            {
+              "code": "250205",
+              "name": "海外销售",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000820",
+          "name": "进出口贸易",
+          "children": [
+            {
+              "code": "250204",
+              "name": "外贸跟单",
+              "children": []
+            },
+            {
+              "code": "240117",
+              "name": "单证员",
+              "children": []
+            },
+            {
+              "code": "240114",
+              "name": "报关/报检员",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "2152200",
+      "name": "汽车",
+      "children": [
+        {
+          "code": "2600772",
+          "name": "新能源汽车",
+          "children": [
+            {
+              "code": "300801",
+              "name": "电池工程师",
+              "children": []
+            },
+            {
+              "code": "300802",
+              "name": "电机工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600782",
+          "name": "汽车研发/制造",
+          "children": [
+            {
+              "code": "230108",
+              "name": "汽车项目管理",
+              "children": []
+            },
+            {
+              "code": "230109",
+              "name": "汽车质量工程师",
+              "children": []
+            },
+            {
+              "code": "230113",
+              "name": "汽车工艺工程师",
+              "children": []
+            },
+            {
+              "code": "230101",
+              "name": "汽车设计",
+              "children": []
+            },
+            {
+              "code": "300803",
+              "name": "线束设计",
+              "children": []
+            },
+            {
+              "code": "230112",
+              "name": "车身工程师",
+              "children": []
+            },
+            {
+              "code": "230102",
+              "name": "汽车造型设计",
+              "children": []
+            },
+            {
+              "code": "230107",
+              "name": "汽车零部件设计",
+              "children": []
+            },
+            {
+              "code": "230106",
+              "name": "汽车电子工程师",
+              "children": []
+            },
+            {
+              "code": "101308",
+              "name": "自动驾驶系统工程师",
+              "children": []
+            },
+            {
+              "code": "230105",
+              "name": "动力系统工程师",
+              "children": []
+            },
+            {
+              "code": "230110",
+              "name": "内外饰设计工程师",
+              "children": []
+            },
+            {
+              "code": "230103",
+              "name": "底盘工程师",
+              "children": []
+            },
+            {
+              "code": "230111",
+              "name": "总布置工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600802",
+          "name": "汽车服务",
+          "children": [
+            {
+              "code": "230204",
+              "name": "汽车维修",
+              "children": []
+            },
+            {
+              "code": "230205",
+              "name": "汽车美容",
+              "children": []
+            },
+            {
+              "code": "230213",
+              "name": "洗车工",
+              "children": []
+            },
+            {
+              "code": "230209",
+              "name": "汽车改装",
+              "children": []
+            },
+            {
+              "code": "230203",
+              "name": "汽车服务顾问",
+              "children": []
+            },
+            {
+              "code": "230208",
+              "name": "4S店店长/维修站长",
+              "children": []
+            },
+            {
+              "code": "230207",
+              "name": "二手车评估师",
+              "children": []
+            },
+            {
+              "code": "230206",
+              "name": "汽车查勘定损",
+              "children": []
+            },
+            {
+              "code": "230214",
+              "name": "加油员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600792",
+          "name": "汽车销售",
+          "children": [
+            {
+              "code": "230201",
+              "name": "汽车销售",
+              "children": []
+            },
+            {
+              "code": "230202",
+              "name": "汽车配件销售",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1110000",
+      "name": "医疗健康",
+      "children": [
+        {
+          "code": "1000750",
+          "name": "护士/护理",
+          "children": [
+            {
+              "code": "210201",
+              "name": "护士",
+              "children": []
+            },
+            {
+              "code": "210503",
+              "name": "导医",
+              "children": []
+            },
+            {
+              "code": "210202",
+              "name": "护士长",
+              "children": []
+            },
+            {
+              "code": "290111",
+              "name": "护工",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000740",
+          "name": "医生/医技",
+          "children": [
+            {
+              "code": "210309",
+              "name": "外科医生",
+              "children": []
+            },
+            {
+              "code": "210306",
+              "name": "内科医生",
+              "children": []
+            },
+            {
+              "code": "210313",
+              "name": "皮肤科医生",
+              "children": []
+            },
+            {
+              "code": "210311",
+              "name": "妇产科医生",
+              "children": []
+            },
+            {
+              "code": "210310",
+              "name": "儿科医生",
+              "children": []
+            },
+            {
+              "code": "210312",
+              "name": "眼科医生",
+              "children": []
+            },
+            {
+              "code": "210303",
+              "name": "精神心理科医生",
+              "children": []
+            },
+            {
+              "code": "210402",
+              "name": "整形外科医生",
+              "children": []
+            },
+            {
+              "code": "210307",
+              "name": "全科医生",
+              "children": []
+            },
+            {
+              "code": "210314",
+              "name": "耳鼻喉科医生",
+              "children": []
+            },
+            {
+              "code": "210111",
+              "name": "医学检验",
+              "children": []
+            },
+            {
+              "code": "210113",
+              "name": "放射科医生",
+              "children": []
+            },
+            {
+              "code": "210114",
+              "name": "超声科医生",
+              "children": []
+            },
+            {
+              "code": "210315",
+              "name": "麻醉科医生",
+              "children": []
+            },
+            {
+              "code": "210316",
+              "name": "病理科医生",
+              "children": []
+            },
+            {
+              "code": "210112",
+              "name": "医生助理",
+              "children": []
+            },
+            {
+              "code": "210302",
+              "name": "中医",
+              "children": []
+            },
+            {
+              "code": "210304",
+              "name": "口腔科医生",
+              "children": []
+            },
+            {
+              "code": "210308",
+              "name": "幼儿园保健医",
+              "children": []
+            },
+            {
+              "code": "210104",
+              "name": "药剂师",
+              "children": []
+            },
+            {
+              "code": "210109",
+              "name": "验光师",
+              "children": []
+            },
+            {
+              "code": "210317",
+              "name": "医务管理",
+              "children": []
+            },
+            {
+              "code": "210103",
+              "name": "其他医生职位",
+              "children": []
+            },
+            {
+              "code": "210318",
+              "name": "医疗机构院长",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000760",
+          "name": "理疗保健",
+          "children": [
+            {
+              "code": "210403",
+              "name": "理疗师",
+              "children": []
+            },
+            {
+              "code": "210401",
+              "name": "营养师/健康管理师",
+              "children": []
+            },
+            {
+              "code": "210404",
+              "name": "针灸推拿",
+              "children": []
+            },
+            {
+              "code": "210305",
+              "name": "康复治疗师",
+              "children": []
+            },
+            {
+              "code": "290118",
+              "name": "产后康复师",
+              "children": []
+            },
+            {
+              "code": "260112",
+              "name": "心理咨询师",
+              "children": []
+            },
+            {
+              "code": "210412",
+              "name": "按摩师",
+              "children": []
+            },
+            {
+              "code": "210411",
+              "name": "足疗师",
+              "children": []
+            },
+            {
+              "code": "210415",
+              "name": "采耳师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000790",
+          "name": "药店",
+          "children": [
+            {
+              "code": "210803",
+              "name": "药店店员",
+              "children": []
+            },
+            {
+              "code": "210802",
+              "name": "执业药师/驻店药师",
+              "children": []
+            },
+            {
+              "code": "210801",
+              "name": "药店店长",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000770",
+          "name": "生物医药",
+          "children": [
+            {
+              "code": "210115",
+              "name": "生物学研究人员",
+              "children": []
+            },
+            {
+              "code": "210108",
+              "name": "医药研发",
+              "children": []
+            },
+            {
+              "code": "210128",
+              "name": "生物信息工程师",
+              "children": []
+            },
+            {
+              "code": "210117",
+              "name": "药品生产",
+              "children": []
+            },
+            {
+              "code": "210116",
+              "name": "药品注册",
+              "children": []
+            },
+            {
+              "code": "210123",
+              "name": "医药项目经理",
+              "children": []
+            },
+            {
+              "code": "210124",
+              "name": "细胞培养员",
+              "children": []
+            },
+            {
+              "code": "210130",
+              "name": "药理毒理研究员",
+              "children": []
+            },
+            {
+              "code": "210126",
+              "name": "药物合成",
+              "children": []
+            },
+            {
+              "code": "210129",
+              "name": "制剂研发",
+              "children": []
+            },
+            {
+              "code": "210125",
+              "name": "药物分析",
+              "children": []
+            },
+            {
+              "code": "210127",
+              "name": "医疗产品技术支持",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000730",
+          "name": "临床试验",
+          "children": [
+            {
+              "code": "210119",
+              "name": "临床协调员",
+              "children": []
+            },
+            {
+              "code": "211002",
+              "name": "临床监查员",
+              "children": []
+            },
+            {
+              "code": "211001",
+              "name": "临床项目经理",
+              "children": []
+            },
+            {
+              "code": "210120",
+              "name": "临床数据分析",
+              "children": []
+            },
+            {
+              "code": "210118",
+              "name": "临床医学经理/专员",
+              "children": []
+            },
+            {
+              "code": "210501",
+              "name": "临床医学总监",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000780",
+          "name": "医疗器械",
+          "children": [
+            {
+              "code": "210122",
+              "name": "医疗器械生产/质量管理",
+              "children": []
+            },
+            {
+              "code": "210105",
+              "name": "医疗器械研发",
+              "children": []
+            },
+            {
+              "code": "210121",
+              "name": "医疗器械注册",
+              "children": []
+            },
+            {
+              "code": "210901",
+              "name": "试剂研发",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600472",
+          "name": "医疗销售",
+          "children": [
+            {
+              "code": "210502",
+              "name": "医药代表",
+              "children": []
+            },
+            {
+              "code": "210506",
+              "name": "医疗器械销售",
+              "children": []
+            },
+            {
+              "code": "210505",
+              "name": "医美咨询",
+              "children": []
+            },
+            {
+              "code": "210504",
+              "name": "健康顾问",
+              "children": []
+            },
+            {
+              "code": "210507",
+              "name": "口腔咨询师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000800",
+          "name": "其他医疗健康职位",
+          "children": [
+            {
+              "code": "210101",
+              "name": "医学编辑",
+              "children": []
+            },
+            {
+              "code": "210701",
+              "name": "其他医疗健康职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1090000",
+      "name": "金融",
+      "children": [
+        {
+          "code": "1000610",
+          "name": "银行",
+          "children": [
+            {
+              "code": "180403",
+              "name": "银行客户经理",
+              "children": []
+            },
+            {
+              "code": "180404",
+              "name": "银行大堂经理",
+              "children": []
+            },
+            {
+              "code": "180406",
+              "name": "信贷专员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000590",
+          "name": "证券/基金/期货",
+          "children": [
+            {
+              "code": "180106",
+              "name": "证券交易员",
+              "children": []
+            },
+            {
+              "code": "180802",
+              "name": "卖方分析师",
+              "children": []
+            },
+            {
+              "code": "180803",
+              "name": "买方分析师",
+              "children": []
+            },
+            {
+              "code": "180806",
+              "name": "投资银行业务",
+              "children": []
+            },
+            {
+              "code": "180805",
+              "name": "基金经理",
+              "children": []
+            },
+            {
+              "code": "180807",
+              "name": "量化研究员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000630",
+          "name": "中后台",
+          "children": [
+            {
+              "code": "150307",
+              "name": "风控",
+              "children": []
+            },
+            {
+              "code": "180204",
+              "name": "合规稽查",
+              "children": []
+            },
+            {
+              "code": "180203",
+              "name": "资信评估",
+              "children": []
+            },
+            {
+              "code": "180304",
+              "name": "清算",
+              "children": []
+            },
+            {
+              "code": "180104",
+              "name": "资产评估",
+              "children": []
+            },
+            {
+              "code": "180501",
+              "name": "金融产品经理",
+              "children": []
+            },
+            {
+              "code": "180503",
+              "name": "催收员",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000600",
+          "name": "投融资",
+          "children": [
+            {
+              "code": "180101",
+              "name": "投资经理",
+              "children": []
+            },
+            {
+              "code": "180118",
+              "name": "投资助理",
+              "children": []
+            },
+            {
+              "code": "180103",
+              "name": "行业研究",
+              "children": []
+            },
+            {
+              "code": "180115",
+              "name": "融资",
+              "children": []
+            },
+            {
+              "code": "180117",
+              "name": "投后管理",
+              "children": []
+            },
+            {
+              "code": "180116",
+              "name": "并购",
+              "children": []
+            },
+            {
+              "code": "180112",
+              "name": "投资总监/VP",
+              "children": []
+            },
+            {
+              "code": "180120",
+              "name": "投资者关系/证券事务代表",
+              "children": []
+            },
+            {
+              "code": "180111",
+              "name": "其他投融资职位",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000620",
+          "name": "保险",
+          "children": [
+            {
+              "code": "180703",
+              "name": "保险理赔",
+              "children": []
+            },
+            {
+              "code": "180702",
+              "name": "保险精算师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600492",
+          "name": "金融销售",
+          "children": [
+            {
+              "code": "180506",
+              "name": "理财顾问",
+              "children": []
+            },
+            {
+              "code": "180701",
+              "name": "保险顾问",
+              "children": []
+            },
+            {
+              "code": "180401",
+              "name": "信用卡销售",
+              "children": []
+            },
+            {
+              "code": "180801",
+              "name": "证券经纪人",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000650",
+          "name": "其他金融职位",
+          "children": [
+            {
+              "code": "180601",
+              "name": "其他金融职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1220000",
+      "name": "项目管理",
+      "children": [
+        {
+          "code": "2600982",
+          "name": "项目管理",
+          "children": [
+            {
+              "code": "100601",
+              "name": "项目经理/主管",
+              "children": []
+            },
+            {
+              "code": "100603",
+              "name": "项目专员/助理",
+              "children": []
+            },
+            {
+              "code": "220212",
+              "name": "建筑施工项目经理",
+              "children": []
+            },
+            {
+              "code": "220222",
+              "name": "装修项目经理",
+              "children": []
+            },
+            {
+              "code": "100608",
+              "name": "软件项目经理",
+              "children": []
+            },
+            {
+              "code": "220102",
+              "name": "房地产项目管理",
+              "children": []
+            },
+            {
+              "code": "101012",
+              "name": "通信项目经理",
+              "children": []
+            },
+            {
+              "code": "100817",
+              "name": "硬件项目经理",
+              "children": []
+            },
+            {
+              "code": "260106",
+              "name": "咨询项目管理",
+              "children": []
+            },
+            {
+              "code": "240109",
+              "name": "物流/仓储项目经理",
+              "children": []
+            },
+            {
+              "code": "170212",
+              "name": "广告/会展项目经理",
+              "children": []
+            },
+            {
+              "code": "230108",
+              "name": "汽车项目管理",
+              "children": []
+            },
+            {
+              "code": "300322",
+              "name": "生产制造项目经理",
+              "children": []
+            },
+            {
+              "code": "300407",
+              "name": "化工项目经理",
+              "children": []
+            },
+            {
+              "code": "211001",
+              "name": "临床项目经理",
+              "children": []
+            },
+            {
+              "code": "210123",
+              "name": "医药项目经理",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1160000",
+      "name": "咨询/翻译/法律",
+      "children": [
+        {
+          "code": "1000960",
+          "name": "咨询/调研",
+          "children": [
+            {
+              "code": "260111",
+              "name": "知识产权/专利/商标代理人",
+              "children": []
+            },
+            {
+              "code": "140804",
+              "name": "项目申报专员",
+              "children": []
+            },
+            {
+              "code": "260106",
+              "name": "咨询项目管理",
+              "children": []
+            },
+            {
+              "code": "260101",
+              "name": "企业管理咨询",
+              "children": []
+            },
+            {
+              "code": "260107",
+              "name": "战略咨询",
+              "children": []
+            },
+            {
+              "code": "150303",
+              "name": "财务顾问",
+              "children": []
+            },
+            {
+              "code": "260104",
+              "name": "IT咨询顾问",
+              "children": []
+            },
+            {
+              "code": "260402",
+              "name": "咨询经理",
+              "children": []
+            },
+            {
+              "code": "260105",
+              "name": "人力资源咨询顾问",
+              "children": []
+            },
+            {
+              "code": "260108",
+              "name": "猎头顾问",
+              "children": []
+            },
+            {
+              "code": "260401",
+              "name": "咨询总监",
+              "children": []
+            },
+            {
+              "code": "260109",
+              "name": "市场调研",
+              "children": []
+            },
+            {
+              "code": "100511",
+              "name": "数据分析师",
+              "children": []
+            },
+            {
+              "code": "260112",
+              "name": "心理咨询师",
+              "children": []
+            },
+            {
+              "code": "260113",
+              "name": "婚恋咨询师",
+              "children": []
+            },
+            {
+              "code": "260114",
+              "name": "工程咨询",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000980",
+          "name": "翻译",
+          "children": [
+            {
+              "code": "260301",
+              "name": "英语翻译",
+              "children": []
+            },
+            {
+              "code": "260302",
+              "name": "日语翻译",
+              "children": []
+            },
+            {
+              "code": "260303",
+              "name": "韩语/朝鲜语翻译",
+              "children": []
+            },
+            {
+              "code": "260306",
+              "name": "俄语翻译",
+              "children": []
+            },
+            {
+              "code": "260307",
+              "name": "西班牙语翻译",
+              "children": []
+            },
+            {
+              "code": "260305",
+              "name": "德语翻译",
+              "children": []
+            },
+            {
+              "code": "260304",
+              "name": "法语翻译",
+              "children": []
+            },
+            {
+              "code": "260308",
+              "name": "其他语种翻译",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000970",
+          "name": "法律服务",
+          "children": [
+            {
+              "code": "260204",
+              "name": "律师助理",
+              "children": []
+            },
+            {
+              "code": "260203",
+              "name": "知识产权律师",
+              "children": []
+            },
+            {
+              "code": "260201",
+              "name": "律师",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1150000",
+      "name": "能源/环保/农业",
+      "children": [
+        {
+          "code": "1000940",
+          "name": "能源/地质",
+          "children": [
+            {
+              "code": "301002",
+              "name": "光伏系统工程师",
+              "children": []
+            },
+            {
+              "code": "301003",
+              "name": "风电/光伏运维工程师",
+              "children": []
+            },
+            {
+              "code": "301004",
+              "name": "水利工程师",
+              "children": []
+            },
+            {
+              "code": "301001",
+              "name": "地质工程师",
+              "children": []
+            },
+            {
+              "code": "101414",
+              "name": "电力工程师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "2600612",
+          "name": "环保",
+          "children": [
+            {
+              "code": "300903",
+              "name": "EHS工程师",
+              "children": []
+            },
+            {
+              "code": "300905",
+              "name": "环境采样/检测员",
+              "children": []
+            },
+            {
+              "code": "300902",
+              "name": "环评工程师",
+              "children": []
+            },
+            {
+              "code": "300901",
+              "name": "环保工程师",
+              "children": []
+            },
+            {
+              "code": "300904",
+              "name": "碳排放管理师",
+              "children": []
+            }
+          ]
+        },
+        {
+          "code": "1000950",
+          "name": "农/林/牧/渔",
+          "children": [
+            {
+              "code": "400101",
+              "name": "农业/林业技术员",
+              "children": []
+            },
+            {
+              "code": "400201",
+              "name": "饲养员",
+              "children": []
+            },
+            {
+              "code": "400202",
+              "name": "养殖技术员",
+              "children": []
+            },
+            {
+              "code": "400203",
+              "name": "畜牧兽医",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1000000",
+      "name": "高级管理",
+      "children": [
+        {
+          "code": "1000010",
+          "name": "高级管理职位",
+          "children": [
+            {
+              "code": "150407",
+              "name": "总裁/总经理/CEO",
+              "children": []
+            },
+            {
+              "code": "150408",
+              "name": "副总裁/副总经理/VP",
+              "children": []
+            },
+            {
+              "code": "150411",
+              "name": "总助/CEO助理/董事长助理",
+              "children": []
+            },
+            {
+              "code": "150410",
+              "name": "区域负责人(辖多个分公司)",
+              "children": []
+            },
+            {
+              "code": "150409",
+              "name": "分公司/代表处负责人",
+              "children": []
+            },
+            {
+              "code": "150414",
+              "name": "董事会秘书",
+              "children": []
+            },
+            {
+              "code": "150413",
+              "name": "联合创始人",
+              "children": []
+            },
+            {
+              "code": "150499",
+              "name": "高级管理职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "1200000",
+      "name": "其他",
+      "children": [
+        {
+          "code": "1001220",
+          "name": "其他职位类别",
+          "children": [
+            {
+              "code": "200101",
+              "name": "其他职位",
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "positionCount": 848
+}
