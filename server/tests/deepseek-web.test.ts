@@ -15,6 +15,10 @@ async function main() {
   const normalized = (configManager as any).normalize(web);
   assert.equal(normalized.llm.apiKey, '');
   assert.equal(normalized.llm.baseUrl, '');
+  const normalize = (configManager as any).normalize.bind(configManager);
+  assert.equal(normalize({ ...web, llm: { ...web.llm, webSearch: undefined } }).llm.webSearch, false);
+  assert.equal(normalize({ ...web, llm: { ...web.llm, webSearch: true } }).llm.webSearch, true);
+  assert.equal(normalize({ ...web, llm: { ...web.llm, webSearch: 'false' } }).llm.webSearch, false);
   (configManager as any).getConfig = () => web;
   deepseekProxyService.connection = async () => ({ baseUrl: 'http://127.0.0.1:19081/v1', apiKey: 'test-local-key-123456789' });
   globalThis.fetch = (async (url: any, init: any) => {
@@ -24,13 +28,19 @@ async function main() {
     const body = JSON.parse(init.body);
     assert.equal(body.model, 'deepseek-v4-flash');
     assert.equal(body.stream, false);
-    assert.equal(typeof body.thinking, 'boolean');
+    assert.equal(body.thinking, web.llm.thinking === 'enabled');
+    assert.equal(body.web_search, web.llm.webSearch === true);
     assert.equal(body.max_tokens, undefined);
     assert.equal(body.temperature, undefined);
     return new Response(JSON.stringify({ choices: [{ message: { content: '```json\n{"score":87,"passed":true}\n```', reasoning_content: '不能用作 JSON' } }] }));
   }) as typeof fetch;
-  const result = await llmService.chatJson([{ role: 'user', content: '请筛选 React 岗位' }]);
-  assert.deepEqual(result, { score: 87, passed: true });
+  for (const [thinking, search] of [[false, false], [true, false], [false, true], [true, true]]) {
+    web.llm.thinking = thinking ? 'enabled' : 'disabled';
+    web.llm.webSearch = search;
+    const result = await llmService.chatJson([{ role: 'user', content: '请筛选 React 岗位' }]);
+    assert.deepEqual(result, { score: 87, passed: true });
+  }
+  assert.equal(requestCount, 4, '思考与联网的四种组合分别发送对应参数');
   requestCount = 0;
   globalThis.fetch = (async () => {
     requestCount++;

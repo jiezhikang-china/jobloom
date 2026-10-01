@@ -63,6 +63,7 @@ export class LLMService {
       delete payload.temperature;
       payload.stream = false;
       payload.thinking = config.thinking === 'enabled';
+      payload.web_search = config.webSearch === true;
     }
 
     if (responseFormatJson) {

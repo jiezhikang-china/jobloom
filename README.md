@@ -55,14 +55,16 @@ npm run dev
 
 已接入 [Chat2API](https://github.com/xiaoY233/Chat2API) 的 DeepSeek 网页适配器精简版本，在独立本机进程中运行。来源、固定版本、GPL 授权及修改记录见 [组件说明](vendor/deepseek-web-proxy/UPSTREAM.md)。
 
-- 单账号顺序处理，深度思考默认关闭，不开启联网搜索；网页频率或额度受限时暂停任务，由用户检查后恢复。
-- 只保留已验证的网页普通模式，内部使用适配器标识 `deepseek-v4-flash`，实际发送网页参数 `model_type: default`。这个标识不代表已确认网页底层模型版本。AI 设置已移除 GLM 和 Pro 预设。
+- 单账号顺序处理。深度思考与联网搜索分别设置，默认均关闭；可单独开启，也可同时开启。网页频率或额度受限时暂停任务，由用户检查后恢复。
+- 使用已验证的网页默认模型，内部使用适配器标识 `deepseek-v4-flash`，实际发送网页参数 `model_type: default`。这个标识不代表已确认网页底层模型版本。AI 设置已移除 GLM 和 Pro 预设。
 - 网页凭据使用当前 Windows 用户的 safeStorage 保存到 `data/deepseek-web-credential.json`，浏览器资料在 `data/deepseek-web-profile`；与 BOSS 会话独立。不会把旧 GLM Key 发送给网页代理。
 - 不保存简历或模型正文到代理日志；JSON 依靠提示词与解析校验，网页接口没有原生 JSON 模式或输出 token 限制。
 - 进入设置时自动准备本机服务；登录窗口关闭不会结束模型服务。退出空闲桌面助手会停止空闲代理，仍打开的登录窗口会继续保留。
 - 也可以选择其他兼容 API 并手动填写地址、模型和对应 Key。网页账号与官方 API Key 是不同凭据。
 
 校验：`node --test vendor/deepseek-web-proxy/tests/protocol.test.cjs`、`cd server; npx tsx tests/deepseek-web.test.ts`。真实 DeepSeek 调用需先由用户完成网页登录。
+
+在“设置 → 网页功能”选择“深度思考”和“联网搜索”，点击“保存设置”。前者控制网页思考功能，后者允许网页模型检索相关信息；两者独立于本机模型标识。设置用于后续简历分析、改写及岗位匹配，不会修改自定义 API 的请求格式。网页登录窗口中手动切换按钮不会覆盖助手保存的选项。
 
 ### 反代与官方 API 的区别
 

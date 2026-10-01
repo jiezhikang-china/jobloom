@@ -9,10 +9,11 @@ Copyright (C) 2026 Chat2API Team. 本组件和改编文件使用 **GPL-3.0-or-la
 ## 本地修改
 
 - 只保留单个 DeepSeek 网页账号；监听 `127.0.0.1` 随机空闲端口，由求职助手自动管理，不需要 Docker 或另装管理台。
-- 当前只保留已验证的网页普通模式，使用内部适配器标识 `deepseek-v4-flash`、发送 `model_type: default`。它是本机映射标识；返回的 `model` 也沿用请求标识，不能据此确认网页实际模型版本。原适配器的 Pro / expert 入口已移除；官方 API 提供的 Pro 模型与网页账号的可用模式是两回事。
+- 当前使用已验证的网页默认模型，使用内部适配器标识 `deepseek-v4-flash`、发送 `model_type: default`。它是本机映射标识；返回的 `model` 也沿用请求标识，不能据此确认网页实际模型版本。原适配器的 Pro / expert 入口已移除；官方 API 提供的 Pro 模型与网页账号的可用模式是两回事。
 - 登录窗口由用户手动操作，成功后保持显示到用户关闭。规范化 `userToken` 裸字符串、JSON 字符串或 `{value: string}`，通过网页当前用户接口验证后保存。
 - 使用 Windows 当前用户的 Electron safeStorage 加密保存；不提供明文降级。不记录 token、Cookie、简历正文或模型正文。
-- 深度思考由用户选择；联网搜索关闭。非流式返回经过 SSE 分段解析，思考内容独立返回。保留答案里的 `FINISHED`，修正空片段切换及 UTF-8 边界。
+- 深度思考与联网搜索由用户分别选择，默认关闭。请求分别映射到网页的 `thinking_enabled` 和 `search_enabled`，仍使用 `model_type: default`。非流式返回经过 SSE 分段解析，思考内容独立返回。保留答案里的 `FINISHED`，修正空片段切换及 UTF-8 边界。
+- 联网返回中的检索片段与最终回答分开，只在联网请求中移除答案开头的 SEARCH / WEB_SEARCH / SEARCHING 控制标记；不把搜索来源追加到 JSON 正文。对应处理依据固定版本的 `deepseek-stream.ts`。
 - 网页没有 OpenAI 的原生 `response_format`、`temperature`、`max_tokens`。JSON 使用提示词和主应用解析校验；不能保证所有模型任务都返回合法 JSON。
 - 一次处理一个模型请求，两次完成之间至少间隔 2 秒；网页限流遵循等待提示，不轮换账号、不自动重复调用。不处理账号验证码或交互验证。
 - 每次请求创建独立临时聊天，结束后只尝试删除本次创建的聊天，不调用 `delete_all`；删除失败不丢弃已完成答案。

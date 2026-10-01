@@ -8,6 +8,7 @@ export interface AppConfig {
     maxTokens?: number;
     timeoutMs?: number;
     thinking?: 'enabled' | 'disabled';
+    webSearch?: boolean;
   };
   filter: {
     cityCode: string;

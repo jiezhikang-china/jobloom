@@ -51,8 +51,10 @@ async function main(): Promise<void> {
   await llmService.chat([{ role: 'user', content: '测试' }], false, 1);
   assert.deepEqual(requestBody.thinking, { type: 'enabled' }, '用户主动选择后才开启深度思考');
   config.llm.baseUrl = 'https://example.com/v1';
+  config.llm.webSearch = true;
   await llmService.chat([{ role: 'user', content: '测试' }], false, 1);
   assert.equal(requestBody.thinking, undefined, '兼容接口不应被添加智谱专用参数');
+  assert.equal(requestBody.web_search, undefined, '网页联网选项不能添加到自定义 API 请求');
   config.llm.baseUrl = 'https://open.bigmodel.cn/api/paas/v4';
   config.llm.thinking = 'disabled';
   globalThis.fetch = (async () => new Response(JSON.stringify({ choices: [{ message: { content: '', reasoning_content: '{"ok":true}' } }] }), { status: 200 })) as typeof fetch;

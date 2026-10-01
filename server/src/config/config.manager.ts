@@ -36,6 +36,7 @@ const DEFAULT_CONFIG: AppConfig = {
     maxTokens: 16384,
     timeoutMs: 210000,
     thinking: 'disabled',
+    webSearch: false,
   },
   filter: {
     cityCode: '101010100', // 默认北京
@@ -96,7 +97,8 @@ export class ConfigManager {
       ...cfg,
       llm: { ...cfg.llm, connectionMode: isWeb ? 'deepseek-web' : 'api',
         baseUrl: isWeb ? '' : cfg.llm.baseUrl, apiKey: isWeb ? '' : cleanedKey,
-        model: isWeb ? 'deepseek-v4-flash' : model, thinking: cfg.llm?.thinking === 'enabled' ? 'enabled' : 'disabled' },
+        model: isWeb ? 'deepseek-v4-flash' : model, thinking: cfg.llm?.thinking === 'enabled' ? 'enabled' : 'disabled',
+        webSearch: cfg.llm?.webSearch === true },
       filter: {
         ...cfg.filter,
         degree: normalizeCandidateDegrees(cfg.filter?.degree),

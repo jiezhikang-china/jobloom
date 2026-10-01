@@ -11,6 +11,8 @@ export interface AppConfig {
     timeoutMs?: number;
     /** GLM 官方接口 / DeepSeek 网页深度思考开关；默认关闭。 */
     thinking?: 'enabled' | 'disabled';
+    /** DeepSeek 网页联网搜索；与深度思考独立，默认关闭。 */
+    webSearch?: boolean;
   };
   filter: {
     cityCode: string; // 城市代码，如 101010100 (北京), 101020100 (上海), 101280100 (广州), 101280600 (深圳), 101210100 (杭州)

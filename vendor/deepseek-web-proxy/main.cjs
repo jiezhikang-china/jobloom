@@ -140,7 +140,7 @@ async function openLogin() {
 async function handle(req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
   if (url.pathname === '/health' && req.method === 'GET') {
-    return reply(res, 200, { app: 'boss-deepseek-web-proxy', integrationVersion: 1, status: 'ok' });
+    return reply(res, 200, { app: 'boss-deepseek-web-proxy', integrationVersion: 2, status: 'ok' });
   }
   if (!authenticated(req)) return reply(res, 401, { error: { message: '本机代理认证失败', code: 'proxy_unauthorized' } });
   try {
@@ -229,7 +229,7 @@ if (hasLock && secret.length >= 32) app.whenReady().then(async () => {
   server.requestTimeout = 210000;
   server.on('error', () => { state = 'error'; stateMessage = '本机 DeepSeek 代理无法启动'; void close(); });
   server.listen(0, '127.0.0.1', () => {
-    fs.writeFileSync(runtimeFile, JSON.stringify({ port: server.address().port, secret, pid: process.pid, integrationVersion: 1 }), { mode: 0o600 });
+    fs.writeFileSync(runtimeFile, JSON.stringify({ port: server.address().port, secret, pid: process.pid, integrationVersion: 2 }), { mode: 0o600 });
   });
 }).catch(() => void close());
 app.on('window-all-closed', () => {}); // Login window lifetime does not control the proxy.

@@ -14,6 +14,7 @@ const originalImport = deepseekProxyService.importToken;
 const originalConnection = deepseekProxyService.connection;
 let config = (configManager as any).normalize({ ...configManager.getConfig(), llm: {
   ...configManager.getConfig().llm, connectionMode: 'deepseek-web', apiKey: '', baseUrl: '', model: 'deepseek-v4-flash',
+  thinking: 'disabled', webSearch: false,
 } });
 configManager.getConfig = () => config;
 configManager.updateConfig = (partial) => {
@@ -73,6 +74,23 @@ async function main() {
     assert.match(await page.locator('header').innerText(), /DeepSeek 网页/);
     assert.equal(config.llm.connectionMode, 'deepseek-web');
     assert.equal(config.llm.apiKey, '');
+    const features = page.getByRole('region', { name: 'DeepSeek 网页功能' });
+    await features.waitFor();
+    for (const [thinking, search] of [[false, false], [true, false], [false, true], [true, true]]) {
+      await features.getByRole('checkbox', { name: '深度思考', exact: true }).setChecked(thinking);
+      await features.getByRole('checkbox', { name: '联网搜索', exact: true }).setChecked(search);
+      await Promise.all([
+        page.waitForResponse((response) => response.url().endsWith('/api/config') && response.request().method() === 'POST'),
+        page.getByRole('button', { name: '保存设置', exact: true }).click(),
+      ]);
+      assert.equal(config.llm.thinking, thinking ? 'enabled' : 'disabled');
+      assert.equal(config.llm.webSearch, search);
+      await page.reload();
+      await page.getByRole('button', { name: '设置', exact: true }).click();
+      await features.waitFor();
+      assert.equal(await features.getByRole('checkbox', { name: '深度思考', exact: true }).isChecked(), thinking);
+      assert.equal(await features.getByRole('checkbox', { name: '联网搜索', exact: true }).isChecked(), search);
+    }
     await Promise.all([
       page.waitForResponse((response) => response.url().endsWith('/api/config') && response.request().method() === 'POST'),
       presets.selectOption('custom-api'),
@@ -105,7 +123,7 @@ async function main() {
     const screenshot = path.resolve(process.cwd(), '../data/deepseek-settings-preview.png');
     fs.mkdirSync(path.dirname(screenshot), { recursive: true });
     await page.screenshot({ path: screenshot, fullPage: true });
-    console.log('PASS | 精简 DeepSeek 设置、移除 GLM/Pro、最高学历选择与保存、自定义接口、登录提示和来源保护');
+    console.log('PASS | DeepSeek 思考与联网四种组合、保存后恢复、精简预设、学历保存、自定义接口与登录提示');
   } finally {
     await browser?.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

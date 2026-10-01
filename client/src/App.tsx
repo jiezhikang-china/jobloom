@@ -1898,13 +1898,32 @@ export default function App() {
                 </div>}
 
                 {config.llm.connectionMode === 'deepseek-web' && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#cbd5e1' }}>
-                    <input type="checkbox" checked={config.llm.thinking === 'enabled'} onChange={(event) => {
-                      setConfig({ ...config, llm: { ...config.llm, thinking: event.target.checked ? 'enabled' : 'disabled' } });
-                      setModelTestMessage('');
-                    }} />
-                    开启深度思考（耗时较长，默认关闭）
-                  </label>
+                  <section aria-label="DeepSeek 网页功能" style={{ padding: '18px', border: '1px solid #334155', borderRadius: '12px', background: '#0f172a' }}>
+                    <h3 style={{ fontSize: '15px', margin: '0 0 8px', color: '#e2e8f0' }}>网页功能</h3>
+                    <p style={{ fontSize: '12px', lineHeight: 1.7, color: '#94a3b8', margin: '0 0 16px' }}>
+                      深度思考和联网搜索可以分别开启，也可以同时开启。保存后用于简历分析和岗位匹配。
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', borderRadius: '10px', background: '#1e293b', cursor: 'pointer' }}>
+                        <input type="checkbox" aria-label="深度思考" disabled={isTestingModel} checked={config.llm.thinking === 'enabled'} onChange={(event) => {
+                          setConfig({ ...config, llm: { ...config.llm, thinking: event.target.checked ? 'enabled' : 'disabled' } });
+                          setModelTestMessage('');
+                        }} />
+                        <span><strong style={{ display: 'block', fontSize: '13px', color: '#e2e8f0' }}>深度思考</strong>
+                          <span style={{ display: 'block', fontSize: '12px', lineHeight: 1.6, color: '#94a3b8', marginTop: '4px' }}>深入分析简历和岗位，回答通常需要更长时间。</span>
+                        </span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', borderRadius: '10px', background: '#1e293b', cursor: 'pointer' }}>
+                        <input type="checkbox" aria-label="联网搜索" disabled={isTestingModel} checked={config.llm.webSearch === true} onChange={(event) => {
+                          setConfig({ ...config, llm: { ...config.llm, webSearch: event.target.checked } });
+                          setModelTestMessage('');
+                        }} />
+                        <span><strong style={{ display: 'block', fontSize: '13px', color: '#e2e8f0' }}>联网搜索</strong>
+                          <span style={{ display: 'block', fontSize: '12px', lineHeight: 1.6, color: '#94a3b8', marginTop: '4px' }}>允许模型搜索网页，补充公司或岗位相关信息。</span>
+                        </span>
+                      </label>
+                    </div>
+                  </section>
                 )}
                 {modelTestMessage && (
                   <p role="status" style={{ fontSize: '13px', color: modelTestMessage.startsWith('连接失败') ? '#fda4af' : '#4ade80' }}>

@@ -113,3 +113,37 @@ test('missing login makes no upstream requests; expired / verification / rate li
     await assert.rejects(adapter.acquireToken(), (error) => error.code === expected);
   }
 });
+
+test('thinking and web search reach the website independently in all four combinations', async () => {
+  const { adapter, calls } = mockAdapter();
+  for (const [thinking, search] of [[false, false], [true, false], [false, true], [true, true]]) {
+    await adapter.complete({ model: 'deepseek-v4-flash', thinking, web_search: search,
+      messages: [{ role: 'user', content: '测试独立功能开关' }] }, AbortSignal.timeout(5000));
+    const completion = calls.filter((call) => call.url.endsWith('/chat/completion')).at(-1);
+    assert.equal(completion.body.model_type, 'default');
+    assert.equal(completion.body.thinking_enabled, thinking);
+    assert.equal(completion.body.search_enabled, search);
+  }
+  assert.equal(calls.filter((call) => call.url.endsWith('/chat_session/delete')).length, 4);
+});
+
+test('search metadata and control markers do not corrupt the final JSON or reasoning', async () => {
+  for (const marker of ['SEARCH', 'WEB_SEARCH', 'SEARCHING']) {
+    const events = [
+      { v: { response: { search_results: [{ title: '测试来源', url: 'https://example.com' }], fragments: [
+        { type: 'SEARCH', content: '检索过程' }, { type: 'THINK', content: '思考过程' },
+        { type: 'RESPONSE', content: marker + ' ' },
+      ] } } },
+      { p: 'response/search_results', o: 'APPEND', v: [{ title: '其他来源', url: 'https://example.org' }] },
+      { p: 'response/fragments/-1/content', o: 'APPEND', v: '{"ok":true,"text":"SEARCH 原文"}' },
+      { p: 'response/status', o: 'SET', v: 'FINISHED' },
+    ];
+    const result = await collectCompletion(sse(events), { webSearch: true });
+    assert.deepEqual(JSON.parse(result.content), { ok: true, text: 'SEARCH 原文' });
+    assert.equal(result.reasoning, '思考过程');
+  }
+  const ordinary = await collectCompletion(sse([{ v: { response: { fragments: [
+    { type: 'RESPONSE', content: 'SEARCH 是这段回答的原文' },
+  ] } } }]));
+  assert.equal(ordinary.content, 'SEARCH 是这段回答的原文');
+});

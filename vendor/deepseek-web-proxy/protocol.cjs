@@ -33,7 +33,7 @@ function normalizeToken(raw) {
 function resolveOptions(request) {
   const model = MODELS.find((item) => item.id === request.model);
   if (!model) throw new ProxyError('此网页代理只使用 DeepSeek 网页普通模式', 400, 'invalid_model');
-  return { model_type: model.modelType, search_enabled: false, thinking_enabled: request.thinking === true };
+  return { model_type: model.modelType, search_enabled: request.web_search === true, thinking_enabled: request.thinking === true };
 }
 
 function messagesToPrompt(messages) {
@@ -137,7 +137,7 @@ class DeepSeekAccumulator {
   }
 }
 
-async function collectCompletion(body) {
+async function collectCompletion(body, { webSearch = false } = {}) {
   if (!body) throw new ProxyError('DeepSeek 未返回聊天流');
   const state = new DeepSeekAccumulator();
   const decoder = new TextDecoder();
@@ -172,6 +172,9 @@ async function collectCompletion(body) {
   if (buffer.trim()) line(buffer.replace(/\r$/, ''));
   if (!state.finished) throw new ProxyError('DeepSeek 返回中断，未收到完成标记，请稍后重试', 502, 'incomplete_response');
   const result = state.result();
+  // Search responses may prefix the answer with a control marker. Keep search
+  // metadata separate from the final JSON and preserve ordinary answer text.
+  if (webSearch) result.content = result.content.replace(/^(SEARCH|WEB_SEARCH|SEARCHING)(?:\s+|$)/i, '');
   if (!result.content.trim()) throw new ProxyError('DeepSeek 没有返回最终答案，请关闭深度思考后重试');
   return result;
 }
@@ -292,7 +295,7 @@ class DeepSeekWebAdapter {
         await this.readJson(response);
         throw new ProxyError('DeepSeek 没有返回聊天流，请更新代理');
       }
-      const result = await collectCompletion(response.body);
+      const result = await collectCompletion(response.body, { webSearch: options.search_enabled });
       return {
         id: `${sessionId}@${result.messageId}`, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: request.model,
         choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: result.content,
