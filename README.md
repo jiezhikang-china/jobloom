@@ -10,7 +10,7 @@
 - 新的 BOSS 页面模块按已登录页面的实际 DOM 识别职位卡片、右侧详情、登录提示和安全验证。空白页、加载中、明确无结果是不同状态；单有 `_security_check` 参数但职位卡片正常显示时仍按职位页处理。
 - 批量操作按职位链接定位，发送前再次核对岗位和详情；没有确认沟通成功时停止任务并提示人工检查，避免继续批量操作。
 - 旧的页面内 `fetch` 模拟接口已移除。BOSS 网站页面变动时，流程会停止并报告当前状态。
-- 普通 Chrome 会话使用 `data/boss-profile-v3`，避免旧版进程占用 `data/user-data`。首次使用这个资料目录时需扫码一次，以后优先恢复已保存的会话。
+- 普通 Chrome 会话使用 `data/boss-profile-v3`。首次使用这个资料目录时需扫码一次，以后优先恢复已保存的会话。
 
 ---
 
@@ -56,13 +56,41 @@ npm run dev
 已接入 [Chat2API](https://github.com/xiaoY233/Chat2API) 的 DeepSeek 网页适配器精简版本，在独立本机进程中运行。来源、固定版本、GPL 授权及修改记录见 [组件说明](vendor/deepseek-web-proxy/UPSTREAM.md)。
 
 - 单账号顺序处理，深度思考默认关闭，不开启联网搜索；网页频率或额度受限时暂停任务，由用户检查后恢复。
-- 只保留已验证的网页普通模式，内部使用适配器标识 `deepseek-v4-flash`。AI 设置已移除 GLM 和 Pro 预设。
+- 只保留已验证的网页普通模式，内部使用适配器标识 `deepseek-v4-flash`，实际发送网页参数 `model_type: default`。这个标识不代表已确认网页底层模型版本。AI 设置已移除 GLM 和 Pro 预设。
 - 网页凭据使用当前 Windows 用户的 safeStorage 保存到 `data/deepseek-web-credential.json`，浏览器资料在 `data/deepseek-web-profile`；与 BOSS 会话独立。不会把旧 GLM Key 发送给网页代理。
 - 不保存简历或模型正文到代理日志；JSON 依靠提示词与解析校验，网页接口没有原生 JSON 模式或输出 token 限制。
 - 进入设置时自动准备本机服务；登录窗口关闭不会结束模型服务。退出空闲桌面助手会停止空闲代理，仍打开的登录窗口会继续保留。
 - 也可以选择其他兼容 API 并手动填写地址、模型和对应 Key。网页账号与官方 API Key 是不同凭据。
 
 校验：`node --test vendor/deepseek-web-proxy/tests/protocol.test.cjs`、`cd server; npx tsx tests/deepseek-web.test.ts`。真实 DeepSeek 调用需先由用户完成网页登录。
+
+### 反代与官方 API 的区别
+
+当前调用链：求职助手 → 本机 `/v1/chat/completions` → `https://chat.deepseek.com/api/v0/chat/completion`。本机组件把 OpenAI 格式转换成网页聊天协议，再把网页返回内容包装成 OpenAI 格式。
+
+它读取已保存的网页登录凭据，验证账号后创建临时聊天，完成网页要求的 PoW 请求校验，发送聊天内容并读取返回流。每次请求结束只尝试删除本次临时聊天。本机接口的密钥仅用于本机认证，与 DeepSeek 官方 API Key 无关。
+
+| 项目 | 当前网页反代 | DeepSeek 官方 API |
+| --- | --- | --- |
+| 上游地址 | `chat.deepseek.com/api/v0/chat/completion` | `api.deepseek.com/chat/completions` |
+| 认证 | 网页账号登录凭据 | 开放平台申请的 API Key |
+| 请求转换 | 将消息转成网页提示词，返回流转成完整回答 | 直接使用官方兼容协议 |
+| 本项目支持的接口 | OpenAI 格式的文本、非流式聊天；未实现 Anthropic 接口 | 官方提供 OpenAI 和 Anthropic 兼容入口 |
+| 使用限制 | 跟随网页账号及网页接口限制 | 跟随官方 API 的额度与计费 |
+
+截至 2026-10-01，[DeepSeek 官方文档](https://api-docs.deepseek.com/zh-cn/)列出的模型名为 `deepseek-flash` 和 `deepseek-v4-pro`；旧名 `deepseek-v4-flash` 的官方 API 请求由 V4.1-Flash 提供服务。这是官方 API 的模型规则，不能套用到本机网页适配器的同名标识上。网页底层模型由网站决定，本项目没有确认具体版本。
+
+本机网页代理没有原生 JSON 模式、输出 token 限制或完整的 OpenAI 参数支持。若选择设置中的“其他兼容 API”，可填写官方地址 `https://api.deepseek.com`、模型 `deepseek-flash` 和官方 API Key，改为直接调用官方接口；这个入口使用 OpenAI 格式。
+
+## 项目文件
+
+- `client/`：React 控制台；`server/`：配置、筛选与 BOSS DOM 投递服务。
+- `desktop/`：Electron 桌面入口；`vendor/deepseek-web-proxy/`：当前使用的网页代理源码、WASM、授权与测试。
+- `docs/`：设计依据和历史验证记录；`server/tests/`：回归测试。
+- `data/`：本机账号、简历、配置、运行记录与私有备份，全部排除在 Git 之外。
+- `node_modules/` 和前后端 `dist/` 是当前启动所需的依赖与构建结果。
+
+2026-10-01 已清理旧版及测试浏览器资料、下载的完整上游源码副本、临时探测脚本、历史截图、文档网页快照和安装缓存。旧代码审查与工作日志归档到 `data/private-backups/`；当前登录资料和简历保留。
 
 ## 学历筛选
 
