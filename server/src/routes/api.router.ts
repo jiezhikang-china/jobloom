@@ -10,6 +10,8 @@ import { deliveryService } from '../services/delivery.service.js';
 import { llmService } from '../services/llm.service.js';
 import { bossCatalogService } from '../services/boss.catalog.service.js';
 import { deepseekProxyService } from '../services/deepseek.proxy.service.js';
+import { workConditionReviews } from '../services/work-condition-reviews.js';
+import { configuredWorkRequirements, validateWorkRequirements } from '../services/work-requirements.js';
 
 const uploadDir = path.resolve(process.cwd(), '../data/resumes');
 if (!fs.existsSync(uploadDir)) {
@@ -49,6 +51,9 @@ apiRouter.get('/config', (_req: Request, res: Response) => {
 });
 
 apiRouter.post('/config', (req: Request, res: Response) => {
+  if (req.body?.filter?.workRequirements !== undefined && !validateWorkRequirements(req.body.filter.workRequirements)) {
+    return res.status(400).json({ success: false, message: '工作条件最多20条，每条需2至500字，且不能有重复标识。' });
+  }
   const updated = configManager.updateConfig(req.body || {});
   res.json({ success: true, data: updated });
 });
@@ -215,6 +220,7 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
     const { keywords, resumeText, requirementsText, defaultGreeting } = req.body || {};
     const positionCode = typeof req.body?.positionCode === 'string' ? req.body.positionCode.trim() : '';
     const mode = req.body?.mode === 'manual' ? 'manual' : 'resume';
+    const conditionsOnly = req.body?.conditionsOnly === true && mode === 'manual';
     const candidateText = mode === 'manual' ? requirementsText : resumeText;
     const keywordList: string[] = Array.isArray(keywords)
       ? keywords.map((k: unknown) => String(k ?? '').trim()).filter(Boolean)
@@ -228,7 +234,10 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
       if (!position) return res.status(400).json({ success: false, message: '所选岗位不在 BOSS 官方分类中，请重新选择' });
       targetRole = position.name;
     }
-    if (keywordList.length === 0) keywordList.push(positionCode ? '' : targetRole.trim());
+    if (conditionsOnly && !configuredWorkRequirements(configManager.getConfig().filter).length) {
+      return res.status(400).json({ success: false, message: '请至少启用一条工作条件' });
+    }
+    if (keywordList.length === 0) keywordList.push(conditionsOnly || positionCode ? '' : targetRole.trim());
     if (typeof candidateText !== 'string' || candidateText.trim().length < (mode === 'manual' ? 10 : 50)) {
       return res.status(400).json({ success: false, message: mode === 'manual' ? '请填写至少 10 个字的目标岗位要求' : '简历内容不足，无法进行岗位匹配评估' });
     }
@@ -299,6 +308,16 @@ apiRouter.get('/delivery/status', (_req: Request, res: Response) => {
 });
 
 // 7. SSE 实时事件流
+apiRouter.get('/delivery/work-condition-reviews', (_req: Request, res: Response) => {
+  try { res.json({ success: true, data: workConditionReviews.list() }); }
+  catch { res.status(500).json({ success: false, message: '读取待确认岗位失败，原文件已保留。' }); }
+});
+
+apiRouter.delete('/delivery/work-condition-reviews/:id', (req: Request, res: Response) => {
+  try { workConditionReviews.remove(req.params.id); res.json({ success: true }); }
+  catch { res.status(400).json({ success: false, message: '移除待确认记录失败，请刷新后重试。' }); }
+});
+
 apiRouter.get('/delivery/events', (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');

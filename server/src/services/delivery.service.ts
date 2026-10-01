@@ -3,6 +3,8 @@ import { stateManager, todayStr } from '../config/state.manager.js';
 import { bossPageService } from './boss.page.service.js';
 import { filterService } from './filter.service.js';
 import { browserService } from './browser.service.js';
+import { workConditionReviews } from './work-condition-reviews.js';
+import { configuredWorkRequirements, hasEntryLevelRequirement } from './work-requirements.js';
 import { DeliveryStats, DeliveryLogItem, BossJobItem } from '../types.js';
 
 const LLM_FAILURE_PAUSE_THRESHOLD = 3;
@@ -283,7 +285,7 @@ export class DeliveryService {
               this.log('warn', `[跳过] 无法读取薪资: ${jobCard.companyName} - ${jobCard.jobName}`);
               continue;
             }
-            if (cfg.filter.experience.length && !jobCard.experience) {
+            if (cfg.filter.experience.length && !hasEntryLevelRequirement(cfg.filter) && !jobCard.experience) {
               this.log('warn', `[跳过] 无法读取经验要求: ${jobCard.companyName} - ${jobCard.jobName}`);
               continue;
             }
@@ -367,6 +369,7 @@ export class DeliveryService {
             }
 
             if (detailRes.alreadyChatted) {
+              try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
               this.log('info', `[已沟通跳过] 该岗位此前已在沟通中: ${mockJobItem.brandName} - ${jobCard.jobName}`);
               continue;
             }
@@ -404,6 +407,21 @@ export class DeliveryService {
               continue;
             }
             this.consecutiveLlmFailures = 0;
+
+            if (evaluation.needsReview && evaluation.requirementAssessment) {
+              try {
+                workConditionReviews.add({
+                  jobHref: jobCard.jobHref, jobName: jobCard.jobName, companyName: jobCard.companyName,
+                  salary: jobCard.salary, reason: evaluation.reason,
+                  requirements: configuredWorkRequirements(cfg.filter), assessment: evaluation.requirementAssessment,
+                });
+                this.log('info', '[工作条件待确认·未投递] ' + jobCard.companyName + ' - ' + jobCard.jobName + '：' + evaluation.reason);
+              } catch {
+                this.log('error', '[未投递] 工作条件需要确认，但待确认记录保存失败：' + jobCard.companyName + ' - ' + jobCard.jobName);
+              }
+              this.emit();
+              continue;
+            }
 
             if (!evaluation.passed) {
               this.log('warn', `[AI淘汰 - 得分 ${evaluation.score}] ${mockJobItem.brandName} - ${jobCard.jobName}: ${evaluation.reason}`, {
@@ -516,6 +534,9 @@ export class DeliveryService {
             }
 
             if (chatResult.success) {
+              try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {
+                this.log('warn', '已沟通，但移除旧的待确认记录失败，请手动刷新列表。');
+              }
               this.stats.todayAppliedCount++;
               this.persistQuota();
               batchSuccessCount++;

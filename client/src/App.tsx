@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import BossPositionPicker, { flattenPositions } from './BossPositionPicker.js';
 import DeepSeekAccountPanel from './DeepSeekAccountPanel.js';
+import WorkConditionOptions, { withWorkConditionPresets } from './WorkConditionOptions.js';
+import WorkConditionReviewPanel from './WorkConditionReviewPanel.js';
 import {
   FileText,
   Compass,
@@ -70,6 +72,7 @@ export default function App() {
   const [searchKeywords, setSearchKeywords] = useState<string[]>([]);
   const [newKeywordInput, setNewKeywordInput] = useState('');
   const [deliveryMode, setDeliveryMode] = useState<'resume' | 'manual'>('manual');
+  const [conditionsOnly, setConditionsOnly] = useState(false);
   const [manualRequirements, setManualRequirements] = useState('');
   const [startMessage, setStartMessage] = useState('');
   const [deliveryStats, setDeliveryStats] = useState<DeliveryStats>({
@@ -399,6 +402,9 @@ export default function App() {
 
   // 投递控制
   const isTaskRunning = ['running', 'paused', 'sage_time', 'cool_down'].includes(deliveryStats.status);
+  const selectedConditions = (config?.filter.workRequirements || []).filter((item) => item.enabled);
+  const conditionDescription = selectedConditions.map((item) => item.text).join('、');
+  const searchByConditions = deliveryMode === 'manual' && conditionsOnly;
 
   const handleStartDelivery = async () => {
     setStartMessage('');
@@ -410,11 +416,15 @@ export default function App() {
       setStartMessage('已有投递任务正在运行，请先在运行记录中停止。');
       return;
     }
-    if (!selectedPosition) {
+    if (!searchByConditions && !selectedPosition) {
       setStartMessage('请从 BOSS 官方分类中选择具体岗位。');
       return;
     }
-    if (deliveryMode === 'manual' && manualRequirements.trim().length < 10) {
+    if (searchByConditions && !selectedConditions.length) {
+      setStartMessage('请至少选择一项工作条件。');
+      return;
+    }
+    if (deliveryMode === 'manual' && !searchByConditions && manualRequirements.trim().length < 10) {
       setStartMessage('请填写至少 10 个字的目标岗位要求。');
       return;
     }
@@ -444,12 +454,14 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          targetRole: selectedRole,
-          positionCode: selectedPosition.code,
-          keywords: searchKeywords,
+          targetRole: searchByConditions ? '符合工作条件的岗位' : selectedRole,
+          positionCode: searchByConditions ? undefined : selectedPosition?.code,
+          conditionsOnly: searchByConditions,
+          keywords: searchKeywords.length || !searchByConditions ? searchKeywords
+            : selectedConditions.filter((item) => item.builtin).map((item) => ({ eightHours: '八小时', doubleRest: '双休', noExperience: '经验不限' })[item.builtin!]),
           mode: deliveryMode,
           resumeText: deliveryMode === 'resume' ? (tailoredResult?.targetRole === selectedRole ? tailoredResult.rewrittenResumeMarkdown : resumeText) : undefined,
-          requirementsText: deliveryMode === 'manual' ? manualRequirements : undefined,
+          requirementsText: deliveryMode === 'manual' ? [conditionDescription ? '希望寻找满足以下条件的工作：' + conditionDescription : '', manualRequirements.trim()].filter(Boolean).join('；') : undefined,
           defaultGreeting: deliveryMode === 'resume' && tailoredResult?.targetRole === selectedRole ? customGreeting : undefined,
         }),
       });
@@ -696,6 +708,21 @@ export default function App() {
                 <span className="optional-tag">无需按步骤完成其他页面</span>
               </div>
 
+              {deliveryMode === 'manual' && (
+                <label className="conditions-only-choice">
+                  <input type="checkbox" checked={conditionsOnly} disabled={isTaskRunning}
+                    onChange={(event) => {
+                      setConditionsOnly(event.target.checked);
+                      if (event.target.checked && config) {
+                        setConfig({ ...config, filter: { ...config.filter, workRequirements: selectedConditions.length
+                          ? config.filter.workRequirements : withWorkConditionPresets(config.filter.workRequirements || []) } });
+                        setSearchKeywords([]);
+                      }
+                    }} />
+                  不限岗位，按工作条件找
+                </label>
+              )}
+
               {deliveryMode === 'resume' ? (
                 <div className="launch-source-box">
                   <div>
@@ -709,13 +736,13 @@ export default function App() {
                 </div>
               ) : (
                 <div className="launch-field">
-                  <label htmlFor="manual-requirements">你的岗位要求 <span>必填</span></label>
+                  <label htmlFor="manual-requirements">{searchByConditions ? '补充要求' : '你的岗位要求'} <span>{searchByConditions ? '可选' : '必填'}</span></label>
                   <textarea
                     id="manual-requirements"
                     rows={5}
                     value={manualRequirements}
                     onChange={(e) => setManualRequirements(e.target.value)}
-                    placeholder="例如：希望找上海的前端开发岗位，技术栈以 React、TypeScript 为主，偏产品研发，不考虑外包，期望 20K 以上。"
+                    placeholder={searchByConditions ? '例如：不做销售、不上夜班、希望离地铁近。已选工作条件无需重复填写。' : '例如：希望找上海的前端开发岗位，技术栈以 React、TypeScript 为主，偏产品研发，不考虑外包，期望 20K 以上。'}
                   />
                   <p>AI 会按这里写的条件筛选职位，不会替你编造工作经历。</p>
                 </div>
@@ -723,7 +750,18 @@ export default function App() {
 
               <div className="launch-fields-grid">
                 <div className="launch-field wide">
-                  <BossPositionPicker catalog={bossPositions} value={selectedPosition} loading={isLoadingPositions} error={positionError} disabled={isTaskRunning} onChange={handlePositionChange} onRefresh={() => fetchBossPositions(true)} />
+                  {searchByConditions && config ? (
+                    <>
+                      <WorkConditionOptions value={config.filter.workRequirements} disabled={isTaskRunning}
+                        onChange={(value) => setConfig({ ...config, filter: { ...config.filter, workRequirements: value } })} />
+                      <div className="conditions-salary">
+                        <span>当前薪资：{config.filter.salaryMin || config.filter.salaryMax
+                          ? (config.filter.salaryMin || 0) + '–' + (config.filter.salaryMax || '不限') + 'K/月' : '不限'}</span>
+                        {(config.filter.salaryMin || config.filter.salaryMax) ? <button type="button" disabled={isTaskRunning}
+                          onClick={() => setConfig({ ...config, filter: { ...config.filter, salaryMin: 0, salaryMax: 0 } })}>薪资改为不限</button> : null}
+                      </div>
+                    </>
+                  ) : <BossPositionPicker catalog={bossPositions} value={selectedPosition} loading={isLoadingPositions} error={positionError} disabled={isTaskRunning} onChange={handlePositionChange} onRefresh={() => fetchBossPositions(true)} />}
                 </div>
                 <div className="launch-field">
                   <label htmlFor="target-city">搜索城市</label>
@@ -754,7 +792,7 @@ export default function App() {
                     id="search-keywords"
                     value={searchKeywords.join('，')}
                     onChange={(e) => setSearchKeywords(e.target.value.split(/[，,、]/).map((word) => word.trim()).filter(Boolean))}
-                    placeholder="留空则搜索该官方岗位分类下的全部职位；填写后进一步缩小范围"
+                    placeholder={searchByConditions ? '可填行政、客服等方向；留空时使用预设搜索词，没有预设则浏览该城市岗位' : '留空则搜索该官方岗位分类下的全部职位；填写后进一步缩小范围'}
                   />
                 </div>
               </div>
@@ -768,6 +806,8 @@ export default function App() {
                   <button type="button" onClick={() => setActiveTab('tailor')}><Compass size={16} /> 优化简历与开场语</button>
                 )}
               </div>
+
+              {!searchByConditions && conditionDescription && <p className="work-condition-summary">已启用工作条件：{conditionDescription}</p>}
 
               {startMessage && <p role="status" className={`launch-message ${startMessage.startsWith('投递任务已启动') ? 'success' : ''}`}>{startMessage}</p>}
               <div className="launch-footer">
@@ -1135,8 +1175,11 @@ export default function App() {
               }}
             >
               <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '20px', color: '#f8fafc' }}>
-                岗位双阶段过滤规则配置
+                岗位筛选规则
               </h2>
+
+              <WorkConditionOptions value={config.filter.workRequirements} disabled={isTaskRunning}
+                onChange={(value) => setConfig({ ...config, filter: { ...config.filter, workRequirements: value } })} />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 {/* 城市 */}
@@ -1185,7 +1228,8 @@ export default function App() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <input
                       type="number"
-                      value={config.filter.salaryMin || 15}
+                      min="0" aria-label="期望月薪下限" placeholder="不限"
+                      value={config.filter.salaryMin || ''}
                       onChange={(e) =>
                         setConfig({
                           ...config,
@@ -1197,7 +1241,8 @@ export default function App() {
                     <span>K ~</span>
                     <input
                       type="number"
-                      value={config.filter.salaryMax || 40}
+                      min="0" aria-label="期望月薪上限" placeholder="不限"
+                      value={config.filter.salaryMax || ''}
                       onChange={(e) =>
                         setConfig({
                           ...config,
@@ -1495,7 +1540,7 @@ export default function App() {
               <div>
                 <span style={{ fontSize: '13px', color: '#94a3b8' }}>当前投递职业与检索关键词:</span>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
-                  <strong style={{ fontSize: '18px', color: '#00be68' }}>{selectedRole || '未选择'}</strong>
+                  <strong style={{ fontSize: '18px', color: '#00be68' }}>{searchByConditions ? '按工作条件找岗位' : selectedRole || '未选择'}</strong>
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
                     {searchKeywords.map((kw, i) => (
                       <span
@@ -1956,6 +2001,7 @@ export default function App() {
             </div>
           </div>
         )}
+        {(activeTab === 'delivery' || (activeTab === 'launch' && selectedConditions.length > 0)) && <WorkConditionReviewPanel />}
       </main>
     </div>
   );

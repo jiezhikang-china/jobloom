@@ -64,7 +64,13 @@ async function main(): Promise<void> {
     const invalid = await post({ mode: 'manual', targetRole: '虚构岗位', positionCode: '999999', requirementsText: '希望上海 React 岗位，非外包。' });
     assert.equal(invalid.status, 400);
     assert.equal(calls.length, 4);
-    process.stdout.write('PASS | 两种投递入口与登录故障区分\n');
+    const conditions = await post({ mode: 'manual', targetRole: '符合工作条件的岗位', keywords: ['双休', '经验不限'],
+      requirementsText: '希望每天八小时、每周双休、允许无经验入职。' });
+    assert.equal(conditions.status, 200);
+    assert.equal(calls[4].positionCode, undefined, '按工作条件搜索时无需指定职业分类');
+    assert.deepEqual(calls[4].keywords, ['双休', '经验不限']);
+    assert.equal(calls[4].candidateSource, 'requirements');
+    process.stdout.write('PASS | 简历、手动和按工作条件投递入口与登录故障区分\n');
   } finally {
     (browserService as any).checkLoginStatus = originalLogin;
     (browserService as any).verifyLogin = originalVerify;

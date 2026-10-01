@@ -25,6 +25,9 @@ export interface AppConfig {
     companyBlacklist: string[]; // 外包、劳务、人力资源、某某中介
     requiredKeywords: string[]; // 职位名称、技能标签或完整 JD 命中任意一个才进入 AI 评估
     minLlmMatchScore: number; // 默认 75 分
+    workRequirements?: WorkRequirement[];
+    /** Legacy settings, migrated to the editable requirements list. */
+    workConditions?: WorkConditions;
   };
   delivery: {
     dailyMaxQuota: number; // 每日最大投递数，0~150；0 表示停止自动投递
@@ -32,6 +35,37 @@ export interface AppConfig {
     maxDelaySeconds: number; // 最大等待秒数，默认 20
   };
   targetPosition?: BossPositionSelection;
+}
+
+export interface WorkConditions {
+  eightHours: boolean;
+  doubleRest: boolean;
+  noExperience: boolean;
+}
+export type ConditionStatus = 'met' | 'not_met' | 'unknown';
+export interface ConditionEvidence { status: ConditionStatus; evidence: string; }
+export type WorkConditionAssessment = Record<keyof WorkConditions, ConditionEvidence>;
+export interface WorkRequirement {
+  id: string;
+  text: string;
+  enabled: boolean;
+  builtin?: keyof WorkConditions;
+}
+export interface WorkRequirementAssessment extends ConditionEvidence {
+  requirementId: string;
+  text: string;
+}
+export interface WorkConditionReview {
+  id: string;
+  jobHref: string;
+  jobName: string;
+  companyName: string;
+  salary: string;
+  reason: string;
+  requirements: WorkRequirement[];
+  assessment: WorkRequirementAssessment[];
+  question: string;
+  updatedAt: string;
 }
 
 export interface BossPositionNode {

@@ -3,6 +3,7 @@ import path from 'path';
 import { AppConfig } from '../types.js';
 import { sanitizeApiKey } from './credentials.js';
 import { normalizeCandidateDegrees } from '../services/education.js';
+import { normalizeWorkRequirements } from '../services/work-requirements.js';
 
 const CONFIG_FILE_PATH = path.resolve(process.cwd(), '../data/config.json');
 
@@ -52,6 +53,7 @@ const DEFAULT_CONFIG: AppConfig = {
     ],
     requiredKeywords: [],
     minLlmMatchScore: 75,
+    workRequirements: [],
   },
   delivery: {
     dailyMaxQuota: 80,
@@ -93,6 +95,7 @@ export class ConfigManager {
     const rawModel = String(cfg.llm?.model || '').trim();
     const model = /^glm-4\.7-flash$/i.test(rawModel) ? 'glm-4.7-flash' : rawModel;
     const quota = Number(cfg.delivery?.dailyMaxQuota);
+    const { workConditions: legacyWorkConditions, ...filter } = cfg.filter;
     return {
       ...cfg,
       llm: { ...cfg.llm, connectionMode: isWeb ? 'deepseek-web' : 'api',
@@ -100,10 +103,11 @@ export class ConfigManager {
         model: isWeb ? 'deepseek-v4-flash' : model, thinking: cfg.llm?.thinking === 'enabled' ? 'enabled' : 'disabled',
         webSearch: cfg.llm?.webSearch === true },
       filter: {
-        ...cfg.filter,
+        ...filter,
         degree: normalizeCandidateDegrees(cfg.filter?.degree),
         companyBlacklist: this.splitKeywords(cfg.filter?.companyBlacklist),
         requiredKeywords: this.splitKeywords(cfg.filter?.requiredKeywords),
+        workRequirements: normalizeWorkRequirements(cfg.filter?.workRequirements, legacyWorkConditions),
       },
       delivery: {
         ...cfg.delivery,
@@ -130,7 +134,8 @@ export class ConfigManager {
           ...parsed,
           llm: { ...DEFAULT_CONFIG.llm, ...(parsed.llm || {}),
             connectionMode: parsed.llm?.connectionMode || (parsed.llm ? 'api' : DEFAULT_CONFIG.llm.connectionMode) },
-          filter: { ...DEFAULT_CONFIG.filter, ...(parsed.filter || {}) },
+          filter: { ...DEFAULT_CONFIG.filter, ...(parsed.filter || {}),
+            workRequirements: normalizeWorkRequirements(parsed.filter?.workRequirements, parsed.filter?.workConditions) },
           delivery: { ...DEFAULT_CONFIG.delivery, ...(parsed.delivery || {}) },
         });
         if (JSON.stringify(normalized) !== JSON.stringify(parsed)) this.saveConfigDirect(normalized);

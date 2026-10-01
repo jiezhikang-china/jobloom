@@ -18,6 +18,8 @@
     "test:catalog": "tsx tests/boss-catalog.test.ts",
     "test:llm": "tsx tests/llm-filter-config.test.ts",
     "test:education": "tsx tests/education-filter.test.ts",
+    "test:work-conditions": "tsx tests/work-conditions.test.ts",
+    "test:work-conditions-ui": "tsx tests/work-conditions-ui.test.ts",
     "test:entry": "tsx tests/delivery-entry.test.ts",
     "test:deepseek": "tsx tests/deepseek-web.test.ts",
     "test:deepseek-ui": "tsx tests/deepseek-ui.test.ts",

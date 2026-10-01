@@ -21,6 +21,7 @@ export interface AppConfig {
     companyBlacklist: string[];
     requiredKeywords: string[];
     minLlmMatchScore: number;
+    workRequirements?: WorkRequirement[];
   };
   delivery: {
     dailyMaxQuota: number;
@@ -28,6 +29,27 @@ export interface AppConfig {
     maxDelaySeconds: number;
   };
   targetPosition?: BossPositionSelection;
+}
+
+export interface WorkRequirement {
+  id: string;
+  text: string;
+  enabled: boolean;
+  builtin?: 'eightHours' | 'doubleRest' | 'noExperience';
+}
+export interface ConditionEvidence { status: 'met' | 'not_met' | 'unknown'; evidence: string; }
+export interface WorkRequirementAssessment extends ConditionEvidence { requirementId: string; text: string; }
+export interface WorkConditionReview {
+  id: string;
+  jobHref: string;
+  jobName: string;
+  companyName: string;
+  salary: string;
+  reason: string;
+  requirements: WorkRequirement[];
+  assessment: WorkRequirementAssessment[];
+  question: string;
+  updatedAt: string;
 }
 
 export interface BossPositionNode {
