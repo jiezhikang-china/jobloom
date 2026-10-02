@@ -21,7 +21,7 @@ function log(message) {
     fs.appendFileSync(path.join(dataDir, 'desktop-electron.log'), `${new Date().toISOString()} ${message}\n`);
   } catch {}
 }
-log('main loaded');
+log(`main loaded pid=${process.pid}`);
 process.on('uncaughtException', (error) => log(`uncaughtException: ${error.stack || error}`));
 process.on('unhandledRejection', (error) => log(`unhandledRejection: ${error?.stack || error}`));
 
@@ -31,18 +31,20 @@ let serverPort = null;
 let serverUrl = null;
 let stopping = false;
 let rendererFallbackStarted = false;
+let serverReadyPromise = null;
 
 // 此窗口只显示本机页面。软件绘制兼容远程桌面和无 GPU 的 Windows 会话。
 app.disableHardwareAcceleration();
 
 const hasLock = app.requestSingleInstanceLock();
+log(`single instance lock=${hasLock}`);
 if (!hasLock) {
+  log('requested existing desktop window');
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (!window) return;
-    if (window.isMinimized()) window.restore();
-    window.focus();
+    log('second launch received');
+    void app.whenReady().then(openWindow);
   });
 }
 
@@ -85,14 +87,14 @@ function freePort() {
   });
 }
 
-async function ensureServer() {
+async function startServer() {
   log('checking local service');
   if (!fs.existsSync(clientEntry) || !fs.existsSync(serverEntry)) {
     throw new Error('缺少构建文件。请运行「启动桌面版-调试.cmd」完成构建。');
   }
   fs.mkdirSync(dataDir, { recursive: true });
 
-  for (const port of [rememberedPort(), 3001]) {
+  for (const port of new Set([rememberedPort(), 3001])) {
     if (port && await isOurService(port)) {
       serverPort = port;
       serverUrl = address(port);
@@ -104,6 +106,7 @@ async function ensureServer() {
   serverPort = await freePort();
   serverUrl = address(serverPort);
   const logFd = fs.openSync(path.join(dataDir, 'desktop-server.log'), 'a');
+  let spawnError = null;
   try {
     ownServer = spawn(process.execPath, [serverEntry], {
       cwd: serverDir,
@@ -112,11 +115,13 @@ async function ensureServer() {
       windowsHide: true,
       stdio: ['ignore', logFd, logFd],
     });
+    ownServer.on('error', (error) => { spawnError = error; });
   } finally {
     fs.closeSync(logFd);
   }
 
   for (let attempt = 0; attempt < 100; attempt++) {
+    if (spawnError) break;
     if (await isOurService(serverPort)) {
       fs.writeFileSync(portFile, JSON.stringify({ port: serverPort }), 'utf8');
       log(`started local service on ${serverPort}`);
@@ -127,7 +132,19 @@ async function ensureServer() {
   }
   ownServer.kill();
   ownServer = null;
-  throw new Error('本地服务启动失败。详情见 data/desktop-server.log。');
+  throw new Error(spawnError
+    ? `本地服务启动失败：${spawnError.message}`
+    : '本地服务启动失败。详情见 data/desktop-server.log。');
+}
+
+function ensureServer() {
+  if (!serverReadyPromise) {
+    serverReadyPromise = startServer().catch((error) => {
+      serverReadyPromise = null;
+      throw error;
+    });
+  }
+  return serverReadyPromise;
 }
 
 function openExternal(url) {
@@ -139,15 +156,41 @@ function openExternal(url) {
   } catch {}
 }
 
+function presentWindow(target = window) {
+  if (!target || target.isDestroyed()) return;
+  if (target.isMinimized()) target.restore();
+  target.show();
+  target.moveTop();
+  target.focus();
+  log(`window visible=${target.isVisible()}`);
+}
+
+async function recoverRenderer(target, details) {
+  log(`renderer gone: ${JSON.stringify(details)}`);
+  if (stopping || target.isDestroyed()) return;
+  if (details.reason === 'launch-failed' && !process.argv.includes('--no-sandbox') && !rendererFallbackStarted) {
+    rendererFallbackStarted = true;
+    stopping = true;
+    // 等服务启动完成并记下端口，重启后的窗口复用它，避免留下无人管理的第二个服务。
+    if (serverReadyPromise) await serverReadyPromise.catch(() => {});
+    log('relaunching with compatibility mode after renderer launch failed');
+    app.relaunch({ args: ['--no-sandbox', ...process.argv.slice(1)] });
+    app.exit(0);
+    return;
+  }
+  presentWindow(target);
+  dialog.showErrorBox('BOSS 求职助手页面无法显示', '桌面页面进程意外退出。请关闭窗口后重新打开；详细原因已记录在 data/desktop-electron.log。');
+}
+
 function createWindow() {
   log('creating browser window');
-  window = new BrowserWindow({
+  const target = new BrowserWindow({
     title: 'BOSS 求职助手',
     width: 1320,
     height: 860,
     minWidth: 900,
     minHeight: 640,
-    show: false,
+    show: true,
     backgroundColor: '#0f172a',
     autoHideMenuBar: true,
     webPreferences: {
@@ -157,43 +200,57 @@ function createWindow() {
       webSecurity: true,
     },
   });
+  window = target;
 
-  window.once('ready-to-show', () => { log('ready to show'); window?.show(); });
-  window.webContents.on('render-process-gone', (_event, details) => {
-    log(`renderer gone: ${JSON.stringify(details)}`);
-    if (details.reason === 'launch-failed' && !process.argv.includes('--no-sandbox') && !rendererFallbackStarted) {
-      rendererFallbackStarted = true;
-      log('relaunching with compatibility mode after renderer launch failed');
-      app.relaunch({ args: ['--no-sandbox', ...process.argv.slice(1)] });
-      app.exit(0);
-    }
+  target.once('ready-to-show', () => { log('ready to show'); presentWindow(target); });
+  target.webContents.on('did-finish-load', () => presentWindow(target));
+  target.webContents.on('render-process-gone', (_event, details) => { void recoverRenderer(target, details); });
+  target.webContents.on('did-fail-load', (_event, code, description, url) => {
+    if (code !== -3) log(`load failed: ${code} ${description} ${url}`);
   });
-  window.webContents.on('did-fail-load', (_event, code, description, url) => log(`load failed: ${code} ${description} ${url}`));
-  window.webContents.setWindowOpenHandler(({ url }) => {
+  target.webContents.setWindowOpenHandler(({ url }) => {
     openExternal(url);
     return { action: 'deny' };
   });
-  window.webContents.on('will-navigate', (event, url) => {
+  target.webContents.on('will-navigate', (event, url) => {
     if (serverUrl && url.startsWith(serverUrl + '/')) return;
     if (url.startsWith('file://') && !serverUrl) return;
     event.preventDefault();
     openExternal(url);
   });
-  void window.loadFile(path.join(__dirname, 'splash.html'));
-  window.on('closed', () => { window = null; });
+  target.on('closed', () => { if (window === target) window = null; });
+  presentWindow(target);
+  return target;
 }
 
-async function showApp() {
+async function showApp(target) {
   try {
+    // 启动页可显示后才启动服务；渲染失败重启时不会同时启动两份后台。
+    await target.loadFile(path.join(__dirname, 'splash.html'));
+    if (stopping || target.isDestroyed()) return;
+    presentWindow(target);
     await ensureServer();
+    if (stopping || target.isDestroyed()) return;
     log(`loading ${serverUrl}`);
-    if (window) await window.loadURL(serverUrl + '/');
+    await target.loadURL(serverUrl + '/');
+    presentWindow(target);
     log('app page loaded');
   } catch (error) {
+    if (stopping || target.isDestroyed()) return;
     const message = error instanceof Error ? error.message : String(error);
     log(`startup failed: ${message}`);
+    presentWindow(target);
     dialog.showErrorBox('BOSS 求职助手启动失败', message);
   }
+}
+
+function openWindow() {
+  if (stopping) return;
+  if (window && !window.isDestroyed()) {
+    presentWindow();
+    return;
+  }
+  void showApp(createWindow());
 }
 
 async function shutDown() {
@@ -222,8 +279,8 @@ if (hasLock) {
   app.whenReady().then(() => {
     log('app ready');
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-    createWindow();
-    void showApp();
+    openWindow();
   });
+  app.on('activate', () => { if (app.isReady()) openWindow(); });
   app.on('window-all-closed', () => { void shutDown(); });
 }

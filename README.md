@@ -22,6 +22,8 @@
 
 关闭窗口后，桌面入口启动的空闲服务会退出；若批量任务正在运行，服务会保留，重新双击入口即可查看进度。窗口只访问本机地址，BOSS 账号扫码仍在自动化专用的 Chrome 窗口中进行。项目目前通过 Electron 运行，尚未打包成独立安装程序。
 
+再次双击入口会显示已有窗口，隐藏或最小化的窗口也会恢复。桌面启动测试：在项目根目录运行 `npm run test:desktop`，覆盖窗口恢复、渲染失败重启、服务复用和关闭窗口时保留运行中的投递任务。
+
 ### 1. 运行环境
 - Node.js 18+ (推荐 Node.js 20+)
 - 已安装 Google Chrome（路径：`C:\Program Files\Google\Chrome\Application\chrome.exe`）
