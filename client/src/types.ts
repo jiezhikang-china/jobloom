@@ -50,6 +50,14 @@ export interface WorkConditionReview {
   reason: string;
   requirements: WorkRequirement[];
   assessment: WorkRequirementAssessment[];
+  screening?: {
+    industry: string;
+    jobDetail: string;
+    skills: string[];
+    companyInfo?: { url: string; name: string; industry: string; introduction: string; businessScope: string; checkedAt: string };
+    needsCompanyConfirmation?: boolean;
+    taskExclusions?: Array<{ term: string; literal: boolean }>;
+  };
   question: string;
   updatedAt: string;
 }

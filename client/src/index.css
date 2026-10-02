@@ -235,6 +235,9 @@ input:focus, select:focus, textarea:focus {
 .work-reviews h3 span { padding: 2px 8px; margin-left: 5px; font-size: 12px; background: #254239; color: #a5ebcd; border-radius: 7px; }
 .work-review-empty { padding: 14px 0 2px; }
 .work-reviews p.work-review-error { color: #fca5a5; }
+.work-review-company { margin: 12px 0; color: #adc5ca; font-size: 12px; }
+.work-review-company summary { cursor: pointer; }
+.work-review-company p { white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
 .work-review-list { display: grid; gap: 14px; max-height: 620px; overflow: auto; margin-top: 15px; }
 .work-review-item { background: #1b2c35; border: 1px solid #3c535e; border-radius: 12px; padding: 18px; }
 .work-review-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; }

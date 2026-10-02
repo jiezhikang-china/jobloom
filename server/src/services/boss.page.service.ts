@@ -1,5 +1,7 @@
 import { type CdpLocator, type CdpPage } from './cdp.page.js';
 import { browserService, isSecurityUrl } from './browser.service.js';
+import type { AppConfig, BossCompanyInfo } from '../types.js';
+import { findJobExclusion } from './job-exclusions.js';
 
 const ORIGIN = 'https://www.zhipin.com';
 const CARD = 'ul.rec-job-list li.job-card-box';
@@ -57,9 +59,17 @@ function pathOf(href: string, base: string): string {
   try { return new URL(href, base).pathname; } catch { return ''; }
 }
 
+const normalizedName = (text: string) => text.normalize('NFKC').replace(/\s+/g, '');
+function sameCompany(actual: string, expected: string): boolean {
+  const prefix = normalizedName(expected).replace(/(?:\.{3}|…+)$/, '');
+  return normalizedName(actual) === normalizedName(expected)
+    || (/(?:\.{3}|…+)$/.test(expected) && prefix.length >= 4 && normalizedName(actual).startsWith(prefix));
+}
+
 export class BossPageService {
   private readonly pageReadyTimeoutMs: number;
   private readonly pagePollIntervalMs: number;
+  private companyCache = new Map<string, { expiresAt: number; info: BossCompanyInfo }>();
 
   constructor(options: { pageReadyTimeoutMs?: number; pagePollIntervalMs?: number } = {}) {
     this.pageReadyTimeoutMs = options.pageReadyTimeoutMs ?? 20000;
@@ -236,10 +246,92 @@ export class BossPageService {
     return !!companyName && detail.text.includes(companyName);
   }
 
-  public async loadJobDetail(card: CdpLocator, jobName: string, companyName: string, href?: string): Promise<{
+  public async readCompanyInfo(href: string, companyName: string, refresh = false): Promise<BossCompanyInfo> {
+    const url = new URL(href, ORIGIN);
+    url.search = ''; url.hash = '';
+    const cached = this.companyCache.get(url.href);
+    if (!refresh && cached && cached.expiresAt > Date.now() && sameCompany(cached.info.name, companyName)) return structuredClone(cached.info);
+    return browserService.withCompanyInspection(url.href, async (page) => {
+      const deadline = Date.now() + 6000;
+      while (Date.now() < deadline) {
+        const currentUrl = await page.refreshUrl();
+        if (isSecurityUrl(currentUrl)) throw new Error('CAPTCHA_REQUIRED: 公司页需要安全验证');
+        if (currentUrl.includes('/web/user/')) throw new Error('BOSS 公司页要求登录，请在 Chrome 中完成登录');
+        const data = await page.evaluate(() => {
+          const banner = document.querySelector('.company-banner');
+          const section = [...document.querySelectorAll('.company-info-box .job-sec')].find((item) =>
+            (item.querySelector('h3') as HTMLElement | null)?.innerText?.trim() === '公司简介');
+          const scope = [...document.querySelectorAll('.company-business .business-detail li')].find((item) =>
+            /^经营范围\s*[：:]/.test((item as HTMLElement).innerText?.trim() || ''));
+          return { path: location.pathname,
+            name: (banner?.querySelector('h1.name') as HTMLElement | null)?.innerText?.trim().split('\n')[0]?.replace(/\s*收藏$/, '').trim() || '',
+            industry: (banner?.querySelector('a[href^="/i"]') as HTMLElement | null)?.innerText?.trim() || '',
+            introduction: (section?.querySelector('.text, .job-sec-text') as HTMLElement | null)?.innerText?.trim() || '',
+            businessScope: (scope as HTMLElement | undefined)?.innerText?.trim().replace(/^经营范围\s*[：:]\s*/, '') || '',
+            hasIntroduction: Boolean(section),
+            verifying: /请完成安全验证|请进行安全验证/.test(document.body?.innerText || '') };
+        });
+        if (data.verifying) throw new Error('CAPTCHA_REQUIRED: 公司页需要安全验证');
+        if (data.name && data.industry && (data.hasIntroduction || data.businessScope)) {
+          if (data.path !== url.pathname || !sameCompany(data.name, companyName)) throw new Error('公司页身份与所选岗位所属公司不一致');
+          const info: BossCompanyInfo = { url: url.href, name: data.name, industry: data.industry,
+            introduction: data.introduction, businessScope: data.businessScope, checkedAt: new Date().toISOString() };
+          this.companyCache.set(url.href, { expiresAt: Date.now() + 5 * 60 * 1000, info });
+          while (this.companyCache.size > 100) this.companyCache.delete(this.companyCache.keys().next().value!);
+          return info;
+        }
+        await pause(200);
+      }
+      throw new Error('无法核对该岗位的公司页和业务信息，已跳过该岗位');
+    });
+  }
+
+  /** Read the full job's own company link, then check the company profile before passing exclusions. */
+  public async readJobCompanyInfo(href: string, jobName: string, companyName: string,
+    options: { filter?: AppConfig['filter']; exclusionText?: string; refreshCompany?: boolean } = {}): Promise<{
+    brandIndustry: string; jobDetailText: string; skills: string[]; companyInfo?: BossCompanyInfo;
+  }> {
+    return browserService.withJobInspection(href, async (page) => {
+      const expectedPath = new URL(href, ORIGIN).pathname;
+      const deadline = Date.now() + 6000;
+      while (Date.now() < deadline) {
+        const url = await page.refreshUrl();
+        if (isSecurityUrl(url)) throw new Error('CAPTCHA_REQUIRED: 公司行业核对页需要安全验证');
+        if (url.includes('/web/user/')) throw new Error('BOSS 公司行业核对页要求登录，请在 Chrome 中完成登录');
+        const data = await page.evaluate(() => {
+          const sidebar = document.querySelector('.sider-company');
+          const section = [...document.querySelectorAll('.job-detail-section')].find((item) => (item.querySelector('h3') as HTMLElement | null)?.innerText?.trim() === '职位描述');
+          return { path: location.pathname, name: (document.querySelector('.job-banner .name h1') as HTMLElement | null)?.innerText?.trim() || '',
+            company: sidebar?.querySelector('.company-info a[title]')?.getAttribute('title') || '',
+            companyHref: sidebar?.querySelector('.company-info a[href^="/gongsi/"]')?.getAttribute('href') || '',
+            industry: (sidebar?.querySelector('a[ka="job-detail-brandindustry"]') as HTMLElement | null)?.innerText?.trim() || '',
+            description: (section?.querySelector('.job-sec-text') as HTMLElement | null)?.innerText?.trim() || '',
+            skills: [...(section?.querySelectorAll('.job-tags span') || [])].map((item) => (item as HTMLElement).innerText?.trim() || '').filter(Boolean),
+            verifying: /请完成安全验证|请进行安全验证/.test(document.body?.innerText || '') };
+        });
+        if (data.verifying) throw new Error('CAPTCHA_REQUIRED: 公司行业核对页需要安全验证');
+        if (data.name && data.company && data.industry && data.description.length >= 20) {
+          if (data.path !== expectedPath || normalizedName(data.name) !== normalizedName(jobName) || !sameCompany(data.company, companyName)) {
+            throw new Error('公司行业核对页与所选岗位不一致');
+          }
+          const result = { brandIndustry: data.industry, jobDetailText: data.description, skills: data.skills };
+          if (options.filter && findJobExclusion({ jobName, brandName: data.company, brandIndustry: data.industry,
+            jobDetail: data.description, skills: data.skills }, options.filter, options.exclusionText)) return result;
+          if (!data.companyHref) throw new Error('缺少该岗位的公司页链接，无法核对实际业务');
+          return { ...result, companyInfo: await this.readCompanyInfo(data.companyHref, data.company, options.refreshCompany) };
+        }
+        await pause(200);
+      }
+      throw new Error('无法从当前岗位的公司基本信息读取行业，已跳过该岗位');
+    });
+  }
+
+  public async loadJobDetail(card: CdpLocator, jobName: string, companyName: string, href?: string,
+    options: { readIndustry?: boolean; filter?: AppConfig['filter']; exclusionText?: string; refreshCompany?: boolean } = {}): Promise<{
     jobDetailText: string;
     activeTimeDesc: string;
     brandIndustry: string;
+    companyInfo?: BossCompanyInfo;
     alreadyChatted: boolean;
     chatButtonLocator: CdpLocator | null;
   }> {
@@ -254,15 +346,23 @@ export class BossPageService {
     }
     if (!(await this.isDetailStillTarget(jobName, companyName, href))) throw new Error('右侧详情与所选职位链接不一致');
     const detail = page.locator(DETAIL).first();
-    const jobDetailText = (await detail.locator(DESCRIPTION).innerText()).trim();
+    let jobDetailText = (await detail.locator(DESCRIPTION).innerText()).trim();
     if (jobDetailText.length < 20) throw new Error('职位描述不可读，已停止当前岗位');
     const recruiterText = await detail.locator('.job-boss-info').first().innerText({ timeout: 500 }).catch(() => '');
     const activeTimeDesc = recruiterText.match(/刚刚活跃|今日活跃|今天活跃|在线|\d+\s*日内活跃|\d+\s*周内活跃|本周活跃|本月活跃/)?.[0] || '';
-    const brandIndustry = (await detail.locator('a[href^="/i"]').first().textContent({ timeout: 500 }).catch(() => ''))?.trim() || '';
+    let brandIndustry = (await detail.locator('a[ka="job-detail-brandindustry"]').first().innerText({ timeout: 200 }).catch(() => '')).trim();
+    let companyInfo: BossCompanyInfo | undefined;
+    if (options.readIndustry) {
+      if (!href) throw new Error('缺少岗位链接，无法核对公司行业');
+      const fullPage = await this.readJobCompanyInfo(href, jobName, companyName, options);
+      brandIndustry = fullPage.brandIndustry;
+      jobDetailText = fullPage.jobDetailText;
+      companyInfo = fullPage.companyInfo;
+    }
     const button = page.locator(CHAT).first();
     const visible = await button.isVisible({ timeout: 800 }).catch(() => false);
     const label = visible ? (await button.innerText()).trim() : '';
-    return { jobDetailText, activeTimeDesc, brandIndustry,
+    return { jobDetailText, activeTimeDesc, brandIndustry, ...(companyInfo ? { companyInfo } : {}),
       alreadyChatted: /继续沟通|已在沟通/.test(label), chatButtonLocator: visible ? button : null };
   }
 

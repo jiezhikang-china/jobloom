@@ -26,7 +26,7 @@ export interface AppConfig {
     experience: string[]; // ['应届生', '1-3年', '3-5年', '5-10年']
     degree: string[]; // 用户最高学历，0 或 1 项；空数组不限制，岗位按最低门槛比较
     hrActiveDaysLimit: number; // 3天内活跃为 3；<=0 表示不限制
-    companyBlacklist: string[]; // 外包、劳务、人力资源、某某中介
+    companyBlacklist: string[]; // 公司、行业、岗位与明确业务职责的排除词
     requiredKeywords: string[]; // 职位名称、技能标签或完整 JD 命中任意一个才进入 AI 评估
     minLlmMatchScore: number; // 默认 75 分
     workRequirements?: WorkRequirement[];
@@ -68,6 +68,14 @@ export interface WorkConditionReview {
   reason: string;
   requirements: WorkRequirement[];
   assessment: WorkRequirementAssessment[];
+  screening?: {
+    industry: string;
+    jobDetail: string;
+    skills: string[];
+    companyInfo?: BossCompanyInfo;
+    needsCompanyConfirmation?: boolean;
+    taskExclusions?: Array<{ term: string; literal: boolean }>;
+  };
   question: string;
   updatedAt: string;
 }
@@ -121,6 +129,15 @@ export interface TailoredResumeResult {
   defaultGreetingPitch: string;
 }
 
+export interface BossCompanyInfo {
+  url: string;
+  name: string;
+  industry: string;
+  introduction: string;
+  businessScope: string;
+  checkedAt: string;
+}
+
 export interface BossJobItem {
   securityId: string;
   jobId: string;
@@ -135,6 +152,7 @@ export interface BossJobItem {
   brandName: string;
   brandScaleName: string;
   brandIndustry: string;
+  companyInfo?: BossCompanyInfo;
   bossName: string;
   bossTitle: string;
   activeTimeDesc: string; // 如 "刚刚活跃", "今日活跃", "3日内活跃", "本月活跃"

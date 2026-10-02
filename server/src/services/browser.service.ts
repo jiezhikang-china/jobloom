@@ -58,6 +58,7 @@ export class BrowserService {
   private pages = new Map<string, CdpPage>();
   private loginPage: CdpPage | null = null;
   private workerPage: CdpPage | null = null;
+  private verificationPage: CdpPage | null = null;
   private loginPromise: Promise<void> | null = null;
   private lastSessionRecordAt = 0;
 
@@ -109,6 +110,7 @@ export class BrowserService {
         this.pages.clear();
         this.loginPage = null;
         this.workerPage = null;
+        this.verificationPage = null;
       }
     }
     if (this.launchPromise) return this.launchPromise;
@@ -154,13 +156,57 @@ export class BrowserService {
     return page;
   }
 
-  private async createPage(url: string): Promise<CdpPage> {
+  private async createPage(url: string, background = false): Promise<CdpPage> {
     await this.ensureChrome(false);
+    if (background) {
+      const identity = await this.browserIdentity(this.port!);
+      const connection = await CdpConnection.connect(`ws://127.0.0.1:${this.port}${identity}`);
+      try {
+        const { targetId } = await connection.send('Target.createTarget', { url, background: true });
+        const target = (await this.listTabs()).find((tab) => tab.id === targetId);
+        if (!target) throw new Error('Chrome 无法创建公司行业核对页');
+        return this.pageFor(target);
+      } finally { connection.close(); }
+    }
     const response = await fetch(`http://127.0.0.1:${this.port}/json/new?${encodeURIComponent(url)}`, {
       method: 'PUT', signal: AbortSignal.timeout(3000),
     });
     if (!response.ok) throw new Error('Chrome 无法创建页面');
     return this.pageFor(await response.json() as ChromeTarget);
+  }
+
+  /** Inspect the actual job page in the same profile, without changing the login or delivery tabs. */
+  public async withJobInspection<T>(href: string, read: (page: CdpPage) => Promise<T>): Promise<T> {
+    return this.withBossInspection(href, /^\/job_detail\/[^/]+\.html$/, read);
+  }
+
+  public async withCompanyInspection<T>(href: string, read: (page: CdpPage) => Promise<T>): Promise<T> {
+    return this.withBossInspection(href, /^\/gongsi\/[^/]+\.html$/, read);
+  }
+
+  private async withBossInspection<T>(href: string, allowedPath: RegExp, read: (page: CdpPage) => Promise<T>): Promise<T> {
+    const url = new URL(href, BOSS_ORIGIN);
+    if (url.protocol !== 'https:' || url.hostname !== 'www.zhipin.com' || url.port || url.username || url.password
+      || !allowedPath.test(url.pathname)) throw new Error('公司业务核对链接无效');
+    if (this.verificationPage && !this.verificationPage.isClosed() && await this.checkCaptcha()) {
+      throw new Error('CAPTCHA_REQUIRED: 公司行业核对页需要安全验证');
+    }
+    const page = await this.createPage('about:blank', true);
+    try {
+      await page.goto(url.href, { timeout: 15000 });
+      return await read(page);
+    } finally {
+      const currentUrl = await page.refreshUrl();
+      const verifying = await page.evaluate(() => /请完成安全验证|请进行安全验证/.test(document.body?.innerText || '')).catch(() => false);
+      if (isSecurityUrl(currentUrl) || currentUrl.includes('/web/user/') || verifying) {
+        this.verificationPage = page;
+        await page.bringToFront().catch(() => {});
+      } else {
+        await fetch(`http://127.0.0.1:${this.port}/json/close/${page.id}`, { signal: AbortSignal.timeout(2000) }).catch(() => {});
+        page.closeConnection();
+        this.pages.delete(page.id);
+      }
+    }
   }
 
   private async getLoginPage(): Promise<CdpPage> {
@@ -329,7 +375,7 @@ export class BrowserService {
 
   public async checkCaptcha(): Promise<boolean> {
     const active = this.workerPage && !this.workerPage.isClosed() ? this.workerPage : this.loginPage;
-    const pages = [active].filter((page): page is CdpPage => !!page && !page.isClosed());
+    const pages = [active, this.verificationPage].filter((page): page is CdpPage => !!page && !page.isClosed());
     for (const page of pages) {
       if (isSecurityUrl(await page.refreshUrl())) return true;
       const visible = await page.locator('.geetest_radar_tip, .geetest_popup, [class*="security-check"]').first()
@@ -346,6 +392,7 @@ export class BrowserService {
     this.pages.clear();
     this.loginPage = null;
     this.workerPage = null;
+    this.verificationPage = null;
     this.port = null;
     this.chrome?.kill();
     this.chrome = null;

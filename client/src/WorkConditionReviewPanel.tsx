@@ -43,7 +43,7 @@ export default function WorkConditionReviewPanel() {
   return (
     <section className="work-reviews" aria-label="待确认岗位">
       <div className="work-condition-head">
-        <div><h3>待确认岗位 <span>{items.length}</span></h3><p>记录时未自动投递。请核对最新岗位信息，再决定是否联系。</p></div>
+        <div><h3>待确认岗位 <span>{items.length}</span></h3><p>排除条件先执行；这里只保留其余条件尚需确认的岗位。记录时未自动投递。</p></div>
         <button type="button" aria-label="刷新待确认岗位" onClick={() => setRefresh((value) => value + 1)}><RefreshCw size={14} /> 刷新</button>
       </div>
       {error && <p role="alert" className="work-review-error">{error}</p>}
@@ -54,10 +54,16 @@ export default function WorkConditionReviewPanel() {
           <article key={item.id} className="work-review-item">
             <div className="work-review-title">
               <div><a href={item.jobHref} target="_blank" rel="noreferrer">{item.jobName} <ExternalLink size={13} /></a>
-                <p>{item.companyName} · {item.salary || '薪资未注明'}</p></div>
+                <p>{item.companyName}{item.screening?.industry ? ' · ' + item.screening.industry : ''} · {item.salary || '薪资未注明'}</p></div>
               <button type="button" aria-label={'移除记录：' + item.jobName} onClick={() => void remove(item.id)}><X size={16} /></button>
             </div>
             <p>{item.reason}</p>
+            {item.screening?.companyInfo && <details className="work-review-company">
+              <summary>已核查公司页 · {item.screening.companyInfo.industry}</summary>
+              <p><a href={item.screening.companyInfo.url} target="_blank" rel="noreferrer">查看该公司的 BOSS 页面 <ExternalLink size={12} /></a></p>
+              <p>公司介绍：{item.screening.companyInfo.introduction || '未提供'}</p>
+              <p>经营范围：{item.screening.companyInfo.businessScope || '未提供'}</p>
+            </details>}
             <dl>
               {item.assessment.map((condition) => (
                 <div key={condition.requirementId}><dt>{condition.text} <span className={condition.status}>{statusLabels[condition.status]}</span></dt>

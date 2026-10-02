@@ -1340,7 +1340,7 @@ export default function App() {
               </div>
               <div style={{ marginTop: '20px' }}>
                 <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
-                  淘汰词（公司或行业包含即淘汰，逗号分隔）
+                  排除行业、岗位或公司（逗号分隔）
                 </label>
                 <textarea
                   rows={3}
@@ -1356,6 +1356,9 @@ export default function App() {
                   }
                   style={{ width: '100%', fontSize: '13px' }}
                 />
+                <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>
+                  检查岗位名称、标签、明确职责，以及公司页行业、介绍和经营范围。金融包含银行、证券、信贷、助贷等；销售会识别电销、网销及实际销售任务。
+                </p>
               </div>
 
               {/* 每日投递限制与防封间隔 */}

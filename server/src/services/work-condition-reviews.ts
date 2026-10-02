@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import type { WorkConditionReview, WorkRequirementAssessment, WorkRequirement } from '../types.js';
+import type { AppConfig, WorkConditionReview, WorkRequirementAssessment, WorkRequirement } from '../types.js';
 import { normalizeWorkRequirements, validateWorkRequirements } from './work-requirements.js';
+import { configManager } from '../config/config.manager.js';
+import { findJobExclusion } from './job-exclusions.js';
 
 function canonicalJobUrl(value: string): string {
   const url = new URL(value, 'https://www.zhipin.com');
@@ -37,6 +39,7 @@ export class WorkConditionReviews {
         id: item.id, jobHref, jobName: clipped(item.jobName, 150), companyName: clipped(item.companyName, 150),
         salary: clipped(item.salary, 100), reason: clipped(item.reason), question: clipped(item.question),
         requirements, assessment, updatedAt: item.updatedAt,
+        ...(item.screening ? { screening: this.cleanScreening(item.screening) } : {}),
       };
     }).slice(0, 200);
   }
@@ -44,15 +47,21 @@ export class WorkConditionReviews {
   add(input: Omit<WorkConditionReview, 'id' | 'question' | 'updatedAt'>): WorkConditionReview {
     const jobHref = canonicalJobUrl(input.jobHref);
     const requirements = normalizeWorkRequirements(input.requirements);
-    if (!validateWorkRequirements(requirements) || !requirements.some((item) => item.enabled)) throw new Error('工作条件无效');
+    if (!validateWorkRequirements(requirements) || (!requirements.some((item) => item.enabled)
+      && !(input.screening?.needsCompanyConfirmation === true && input.screening.companyInfo))) throw new Error('工作条件无效');
     const labels = requirements.filter((item) => item.enabled).map((item) => item.text);
     const item: WorkConditionReview = {
       id: reviewId(jobHref), jobHref,
       jobName: clipped(input.jobName, 150), companyName: clipped(input.companyName, 150), salary: clipped(input.salary, 100),
       reason: clipped(input.reason), requirements, assessment: this.cleanAssessment(input.assessment, requirements),
-      question: clipped('您好，想确认这个岗位是否满足：' + labels.join('、') + '？能否说明具体安排及是否有未注明的入职条件？'),
+      ...(input.screening ? { screening: this.cleanScreening(input.screening) } : {}),
+      question: clipped('您好，' + (labels.length ? '想确认这个岗位是否满足：' + labels.join('、') + '？' : '')
+        + (input.screening?.needsCompanyConfirmation ? '请说明公司的主要业务及该岗位的实际工作职责。' : '')
+        + '能否说明具体安排及是否有未注明的入职条件？'),
       updatedAt: new Date().toISOString(),
     };
+    const excluded = this.exclusionFor(item, configManager.getConfig().filter);
+    if (excluded) throw new Error(excluded.reason);
     const existing = this.list().filter((entry) => entry.id !== item.id);
     this.save([item, ...existing].slice(0, 200));
     return item;
@@ -67,6 +76,57 @@ export class WorkConditionReviews {
     const id = reviewId(canonicalJobUrl(jobHref));
     const items = this.list();
     if (items.some((item) => item.id === id)) this.save(items.filter((item) => item.id !== id));
+  }
+
+  listEligible(filter = configManager.getConfig().filter): WorkConditionReview[] {
+    return this.list().filter((item) => !this.exclusionFor(item, filter));
+  }
+
+  /** Keep a recoverable copy before removing records that contradict the current exclusions. */
+  pruneExcluded(filter = configManager.getConfig().filter): { removed: number; backup?: string } {
+    const items = this.list();
+    const remaining = items.filter((item) => !this.exclusionFor(item, filter));
+    if (remaining.length === items.length) return { removed: 0 };
+    const backup = this.file + '.before-exclusions-' + Date.now() + '.bak';
+    fs.copyFileSync(this.file, backup, fs.constants.COPYFILE_EXCL);
+    this.save(remaining);
+    return { removed: items.length - remaining.length, backup };
+  }
+
+  private exclusionFor(item: WorkConditionReview, filter: AppConfig['filter']) {
+    return findJobExclusion({ jobName: item.jobName, brandName: item.companyName,
+      brandIndustry: item.screening?.industry, skills: item.screening?.skills,
+      companyInfo: item.screening?.companyInfo,
+      jobDetail: item.screening?.jobDetail || item.assessment.map((entry) => entry.evidence).join('\n') },
+    filter, '', item.screening?.taskExclusions || []);
+  }
+
+  private cleanScreening(value: NonNullable<WorkConditionReview['screening']>): NonNullable<WorkConditionReview['screening']> {
+    if (typeof value.industry !== 'string' || typeof value.jobDetail !== 'string' || value.jobDetail.length > 100000
+      || !Array.isArray(value.skills) || value.skills.some((item) => typeof item !== 'string')
+      || (value.needsCompanyConfirmation !== undefined && typeof value.needsCompanyConfirmation !== 'boolean')
+      || (value.taskExclusions !== undefined && (!Array.isArray(value.taskExclusions) || value.taskExclusions.length > 100
+        || value.taskExclusions.some((rule) => typeof rule?.term !== 'string' || typeof rule.literal !== 'boolean')))) {
+      throw new Error('岗位排除条件依据无效，已保留原文件');
+    }
+    let companyInfo = value.companyInfo;
+    if (companyInfo) {
+      const url = new URL(companyInfo.url);
+      if (url.protocol !== 'https:' || url.hostname !== 'www.zhipin.com' || url.port || url.username || url.password
+        || !/^\/gongsi\/[^/]+\.html$/.test(url.pathname) || typeof companyInfo.name !== 'string' || typeof companyInfo.industry !== 'string'
+        || typeof companyInfo.introduction !== 'string' || typeof companyInfo.businessScope !== 'string'
+        || companyInfo.introduction.length > 100000 || companyInfo.businessScope.length > 100000
+        || typeof companyInfo.checkedAt !== 'string' || !Number.isFinite(Date.parse(companyInfo.checkedAt))) {
+        throw new Error('公司页业务依据无效，已保留原文件');
+      }
+      url.search = ''; url.hash = '';
+      companyInfo = { url: url.href, name: clipped(companyInfo.name, 200), industry: clipped(companyInfo.industry, 200),
+        introduction: companyInfo.introduction, businessScope: companyInfo.businessScope, checkedAt: companyInfo.checkedAt };
+    }
+    return { industry: clipped(value.industry, 200), jobDetail: value.jobDetail, ...(companyInfo ? { companyInfo } : {}),
+      ...(value.needsCompanyConfirmation ? { needsCompanyConfirmation: true } : {}),
+      skills: value.skills.slice(0, 100).map((item) => clipped(item, 200)),
+      ...(value.taskExclusions ? { taskExclusions: value.taskExclusions.map((rule) => ({ term: clipped(rule.term, 100), literal: rule.literal })) } : {}) };
   }
 
   private cleanAssessment(input: WorkRequirementAssessment[], requirements: WorkRequirement[]): WorkRequirementAssessment[] {

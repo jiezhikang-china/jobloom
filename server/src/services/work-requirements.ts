@@ -54,7 +54,8 @@ export function assessWorkRequirements(
   const active = normalizeWorkRequirements(requirements).filter((item) => item.enabled);
   const sources = [detail, job.jobName, job.brandName, job.brandIndustry, job.brandScaleName, job.cityName,
     job.activeTimeDesc, ...(job.skills || []), ...(job.welfareList || []), job.jobExperience || '',
-    job.jobDegree || '', job.salaryDesc || ''].filter((value) => typeof value === 'string');
+    job.jobDegree || '', job.salaryDesc || '', job.companyInfo?.industry || '', job.companyInfo?.introduction || '',
+    job.companyInfo?.businessScope || ''].filter((value) => typeof value === 'string');
   const proofs: unknown[] = Array.isArray(modelProof) ? modelProof : [];
   return active.map((item) => {
     const local = assessLocalRequirement(job, detail, item);

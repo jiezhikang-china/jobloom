@@ -55,7 +55,12 @@ apiRouter.post('/config', (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: '工作条件最多20条，每条需2至500字，且不能有重复标识。' });
   }
   const updated = configManager.updateConfig(req.body || {});
-  res.json({ success: true, data: updated });
+  try {
+    const cleanup = workConditionReviews.pruneExcluded(updated.filter);
+    res.json({ success: true, data: updated, removedReviews: cleanup.removed });
+  } catch {
+    res.json({ success: true, data: updated, message: '设置已保存；待确认岗位重筛失败，原记录文件已保留。' });
+  }
 });
 
 apiRouter.get('/presets', (_req: Request, res: Response) => {
@@ -312,7 +317,7 @@ apiRouter.get('/delivery/status', (_req: Request, res: Response) => {
 
 // 7. SSE 实时事件流
 apiRouter.get('/delivery/work-condition-reviews', (_req: Request, res: Response) => {
-  try { res.json({ success: true, data: workConditionReviews.list() }); }
+  try { res.json({ success: true, data: workConditionReviews.listEligible() }); }
   catch { res.status(500).json({ success: false, message: '读取待确认岗位失败，原文件已保留。' }); }
 });
 

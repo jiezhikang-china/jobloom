@@ -31,3 +31,15 @@
 - 已登录卡片未出现可验证的“不合适”控件；程序只在实际出现该控件且有反馈时才计标记成功。
 
 BOSS 接入层现由 `server/src/services/browser.service.ts`（会话）、`server/src/services/cdp.page.ts`（页面连接）和 `server/src/services/boss.page.service.ts`（DOM 与交互）组成。旧的页面内接口调用和旧 DOM 驱动已移除。
+
+## 公司行业与公司页补充（2026-10-02）
+
+此次只读取职位页和公司页，没有沟通或发送操作。
+
+- 当前列表右侧 `.job-detail-box` 没有公司行业。完整职位页的 `.sider-company a[ka="job-detail-brandindustry"]` 提供行业；例如深圳信银为“银行”，畅易融为“互联网金融”，上海志盈通信息公司为“投资/融资”。
+- 从 `.sider-company .company-info a[href^="/gongsi/"]` 读取当前公司的链接及 `title` 名称。用完整页 `.job-banner .name h1` 核对职位身份，再用公司页 `.company-banner h1.name` 核对公司身份。
+- 完整职位页只读标题为“职位描述”的 `.job-detail-section .job-sec-text`；公司介绍、薪资说明和推荐岗位使用其他区块，不能混为该岗位职责。
+- 标题存在隐藏干扰字。例如 `h3` 的底层文字为“职位boss描述”，实际显示为“职位描述”。标题和正文都使用可见 `innerText`，不能用底层 `textContent` 比较标题。
+- 公司页行业位于 `.company-banner a[href^="/i"]`；简介是 `.company-info-box .job-sec` 中标题为“公司简介”的 `.text`，经营范围是 `.company-business .business-detail li` 中“经营范围”一项。部分公司没有简介区块，但有工商经营范围，需如实保留缺失状态。
+- 行业标签、简介和经营范围分别保存。普通公司的经营范围可能有“非居住房地产租赁”“互联网销售”等，不能仅靠这些许可项把公司或普通岗位判为房地产、销售。
+- 行业与业务核对在独立后台页完成，沿用原 Chrome 会话。正常读取后关闭核对页；遇到登录或安全验证时保留并显示该页。扫码页和投递页保持各自身份。
