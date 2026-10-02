@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { configManager } from '../src/config/config.manager.js';
-import { llmService } from '../src/services/llm.service.js';
+import { LLMService } from '../src/services/llm.service.js';
+import { AiRequestQueue } from '../src/services/ai-request-queue.js';
 import { deepseekProxyService } from '../src/services/deepseek.proxy.service.js';
 
 const originalConfig = configManager.getConfig;
@@ -8,6 +9,8 @@ const originalConnection = deepseekProxyService.connection;
 const originalFetch = globalThis.fetch;
 const config = configManager.getConfig();
 let requestCount = 0;
+let time = 0;
+const llmService = new LLMService(new AiRequestQueue({ now: () => time, sleep: async (ms) => { time += ms; } }));
 
 async function main() {
   const web = { ...config, llm: { ...config.llm, connectionMode: 'deepseek-web' as const,
@@ -32,6 +35,7 @@ async function main() {
     assert.equal(body.web_search, web.llm.webSearch === true);
     assert.equal(body.max_tokens, undefined);
     assert.equal(body.temperature, undefined);
+    assert.equal(body.min_request_interval_seconds, 30);
     return new Response(JSON.stringify({ choices: [{ message: { content: '```json\n{"score":87,"passed":true}\n```', reasoning_content: '不能用作 JSON' } }] }));
   }) as typeof fetch;
   for (const [thinking, search] of [[false, false], [true, false], [false, true], [true, true]]) {

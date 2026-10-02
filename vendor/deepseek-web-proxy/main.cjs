@@ -7,6 +7,7 @@ const path = require('node:path');
 const { timingSafeEqual } = require('node:crypto');
 const { CredentialVault } = require('./vault.cjs');
 const { MODELS, ProxyError, normalizeToken, DeepSeekWebAdapter } = require('./protocol.cjs');
+const { WebRequestPacing } = require('./pacing.cjs');
 
 const dataDir = path.resolve(process.env.BOSS_DEEPSEEK_DATA_DIR || path.join(__dirname, '../../data'));
 const runtimeFile = path.join(dataDir, 'deepseek-proxy-runtime.json');
@@ -27,8 +28,7 @@ let state = 'not_logged_in';
 let stateMessage = '请登录 DeepSeek 网页账号';
 let busy = false;
 let captureBusy = false;
-let cooldownUntil = 0;
-let lastCompletionAt = 0;
+const pacing = new WebRequestPacing();
 let vault;
 let adapter;
 let closing = false;
@@ -45,7 +45,7 @@ function status() {
   return {
     running: true, state, message: stateMessage, hasCredential: Boolean(token),
     loginWindowOpen: Boolean(loginWindow && !loginWindow.isDestroyed()), busy,
-    retryAfterSeconds: Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000)),
+    retryAfterSeconds: pacing.retryAfterSeconds,
     models: MODELS.map(({ id, name }) => ({ id, name })),
     source: 'Chat2API', sourceUrl: 'https://github.com/xiaoY233/Chat2API',
   };
@@ -140,7 +140,7 @@ async function openLogin() {
 async function handle(req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
   if (url.pathname === '/health' && req.method === 'GET') {
-    return reply(res, 200, { app: 'boss-deepseek-web-proxy', integrationVersion: 2, status: 'ok' });
+    return reply(res, 200, { app: 'boss-deepseek-web-proxy', integrationVersion: 3, status: 'ok' });
   }
   if (!authenticated(req)) return reply(res, 401, { error: { message: '本机代理认证失败', code: 'proxy_unauthorized' } });
   try {
@@ -173,21 +173,22 @@ async function handle(req, res) {
     }
     if (url.pathname === '/v1/chat/completions' && req.method === 'POST') {
       if (busy) throw new ProxyError('DeepSeek 正在处理上一项任务，请稍后重试', 429, 'busy', 3);
-      if (Date.now() < cooldownUntil) throw new ProxyError('DeepSeek 网页正在等待频率恢复，请稍后继续', 429, 'rate_limited', Math.ceil((cooldownUntil - Date.now()) / 1000));
+      if (pacing.retryAfterSeconds) throw new ProxyError('DeepSeek 网页正在等待频率恢复，请稍后继续', 429, 'rate_limited', pacing.retryAfterSeconds);
       busy = true;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 180000);
+      let timeout;
       const abort = () => { if (!res.writableEnded) controller.abort(); };
       res.once('close', abort);
       try {
         const body = await readBody(req);
         if (body.stream) throw new ProxyError('本项目使用非流式模型调用，请设置 stream: false', 400, 'invalid_request');
-        const delay = Math.max(0, 2000 - (Date.now() - lastCompletionAt));
-        if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+        await pacing.wait(body.min_request_interval_seconds, controller.signal);
+        delete body.min_request_interval_seconds;
+        timeout = setTimeout(() => controller.abort(), 180000);
         const completion = await adapter.complete(body, controller.signal);
         setState('ready'); reply(res, 200, completion);
       } finally {
-        busy = false; lastCompletionAt = Date.now(); clearTimeout(timeout); res.removeListener('close', abort);
+        busy = false; pacing.finished(); clearTimeout(timeout); res.removeListener('close', abort);
       }
       return;
     }
@@ -196,7 +197,7 @@ async function handle(req, res) {
     const known = error instanceof ProxyError;
     const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
     const code = known ? error.status : timedOut ? 504 : 502;
-    if (error?.code === 'rate_limited') cooldownUntil = Date.now() + error.retryAfter * 1000;
+    if (error?.code === 'rate_limited') pacing.coolDown(error.retryAfter);
     const message = known ? error.message : timedOut ? 'DeepSeek 网页请求超时，请检查网络或关闭深度思考' : '无法连接 DeepSeek 网页，请检查网络后重试';
     if (code !== 400 && code !== 409) stateMessage = message;
     if (!res.destroyed) reply(res, code, { error: { message, code: known ? error.code : timedOut ? 'timeout' : 'network_error' } },
@@ -229,7 +230,7 @@ if (hasLock && secret.length >= 32) app.whenReady().then(async () => {
   server.requestTimeout = 210000;
   server.on('error', () => { state = 'error'; stateMessage = '本机 DeepSeek 代理无法启动'; void close(); });
   server.listen(0, '127.0.0.1', () => {
-    fs.writeFileSync(runtimeFile, JSON.stringify({ port: server.address().port, secret, pid: process.pid, integrationVersion: 2 }), { mode: 0o600 });
+    fs.writeFileSync(runtimeFile, JSON.stringify({ port: server.address().port, secret, pid: process.pid, integrationVersion: 3 }), { mode: 0o600 });
   });
 }).catch(() => void close());
 app.on('window-all-closed', () => {}); // Login window lifetime does not control the proxy.

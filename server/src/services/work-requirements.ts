@@ -1,5 +1,7 @@
 import type { AppConfig, BossJobItem, WorkConditions, WorkRequirement, WorkRequirementAssessment } from '../types.js';
-import { assessWorkConditions, CONDITION_KEYS, WORK_CONDITION_LABELS } from './work-conditions.js';
+import { CONDITION_KEYS, WORK_CONDITION_LABELS } from './work-conditions.js';
+import { assessLocalRequirement } from './local-work-requirements.js';
+export { assessLocalRequirement } from './local-work-requirements.js';
 
 export const MAX_WORK_REQUIREMENTS = 20;
 
@@ -50,15 +52,13 @@ export function assessWorkRequirements(
   job: BossJobItem, detail: string, requirements: WorkRequirement[], modelProof?: unknown,
 ): WorkRequirementAssessment[] {
   const active = normalizeWorkRequirements(requirements).filter((item) => item.enabled);
-  const builtinFlags = { eightHours: false, doubleRest: false, noExperience: false };
-  for (const item of active) if (item.builtin) builtinFlags[item.builtin] = true;
-  const builtinResult = assessWorkConditions(job, detail, builtinFlags);
   const sources = [detail, job.jobName, job.brandName, job.brandIndustry, job.brandScaleName, job.cityName,
     job.activeTimeDesc, ...(job.skills || []), ...(job.welfareList || []), job.jobExperience || '',
     job.jobDegree || '', job.salaryDesc || ''].filter((value) => typeof value === 'string');
   const proofs: unknown[] = Array.isArray(modelProof) ? modelProof : [];
   return active.map((item) => {
-    if (item.builtin) return { requirementId: item.id, text: item.text, ...builtinResult[item.builtin] };
+    const local = assessLocalRequirement(job, detail, item);
+    if (local) return { requirementId: item.id, text: item.text, ...local };
     const result = { requirementId: item.id, text: item.text, status: 'unknown' as const, evidence: '' };
     const matches = proofs.filter((entry: any) => entry?.requirementId === item.id);
     if (matches.length !== 1) return result;

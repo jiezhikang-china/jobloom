@@ -261,6 +261,9 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
         resumeText: candidateText.trim(),
         defaultGreeting: typeof defaultGreeting === 'string' ? defaultGreeting : undefined,
         candidateSource: mode === 'manual' ? 'requirements' : 'resume',
+        // Extra free-text requirements still need semantic matching.
+        rulesOnly: conditionsOnly && candidateText.trim() === '希望寻找满足以下条件的工作：'
+          + configuredWorkRequirements(configManager.getConfig().filter).map((item) => item.text).join('、'),
       })
       .catch((err: unknown) => {
         deliveryService.log('error', `投递任务异常终止: ${(err as Error).message}`);

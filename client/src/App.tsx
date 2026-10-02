@@ -1733,6 +1733,10 @@ export default function App() {
             </div>
 
             {/* 实时终端日志流 */}
+            <p aria-label="评估用量" style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+              本地处理 {deliveryStats.localDecisionCount || 0} 个 · 待批量评估 {deliveryStats.pendingEvaluationCount || 0} 个 ·
+              AI 请求 {deliveryStats.aiRequestCount || 0} 次 · 复用评估 {deliveryStats.cachedEvaluationCount || 0} 个
+            </p>
             <div
               style={{
                 backgroundColor: '#0f172a',
@@ -1975,6 +1979,27 @@ export default function App() {
                     {modelTestMessage}
                   </p>
                 )}
+                <section aria-label="AI 调用安排" style={{ padding: '18px', border: '1px solid #334155', borderRadius: '12px', background: '#0f172a' }}>
+                  <h3 style={{ fontSize: '15px', margin: '0 0 8px', color: '#e2e8f0' }}>先初筛，再批量评估</h3>
+                  <p style={{ fontSize: '12px', lineHeight: 1.7, color: '#94a3b8', margin: '0 0 16px' }}>
+                    脚本先检查明确条件，攒齐候选岗位后共用一次简历和要求。重复岗位短期复用结果；最后不足一批也会处理。
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                    <label style={{ fontSize: '13px', color: '#cbd5e1' }}>每批岗位数（1–10）
+                      <input type="number" aria-label="每批岗位数" min={1} max={10} value={config.llm.jobBatchSize ?? 5}
+                        disabled={isTestingModel || isTaskRunning} style={{ display: 'block', width: '100%', marginTop: '8px' }}
+                        onChange={(event) => setConfig({ ...config, llm: { ...config.llm, jobBatchSize: Number(event.target.value) } })} />
+                    </label>
+                    {config.llm.connectionMode === 'deepseek-web' && <label style={{ fontSize: '13px', color: '#cbd5e1' }}>请求间隔秒数（10–300）
+                      <input type="number" aria-label="请求间隔秒数" min={10} max={300} value={config.llm.minRequestIntervalSeconds ?? 30}
+                        disabled={isTestingModel || isTaskRunning} style={{ display: 'block', width: '100%', marginTop: '8px' }}
+                        onChange={(event) => setConfig({ ...config, llm: { ...config.llm, minRequestIntervalSeconds: Number(event.target.value) } })} />
+                    </label>}
+                  </div>
+                  <p style={{ fontSize: '12px', lineHeight: 1.7, color: '#94a3b8', margin: '12px 0 0' }}>
+                    网页请求按顺序执行，间隔从上一轮结束算起；限流时暂停，遵守网站给出的等待时间。岗位描述过长会自动缩小批次。
+                  </p>
+                </section>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
                   <button
                     type="button"

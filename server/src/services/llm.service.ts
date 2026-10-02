@@ -1,4 +1,6 @@
-import { configManager } from '../config/config.manager.js';
+import { boundedInteger, configManager } from '../config/config.manager.js';
+import type { AppConfig } from '../types.js';
+import { AiRequestQueue, abortableSleep } from './ai-request-queue.js';
 import { sanitizeApiKey, isApiKeyFormatValid } from '../config/credentials.js';
 import { deepseekProxyService } from './deepseek.proxy.service.js';
 
@@ -7,6 +9,12 @@ export { sanitizeApiKey, isApiKeyFormatValid };
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+}
+
+export interface LLMRequestOptions {
+  signal?: AbortSignal;
+  onWait?: (seconds: number) => void;
+  onRequest?: () => void;
 }
 
 const DEFAULT_MAX_TOKENS = 16384;
@@ -24,8 +32,19 @@ export function chatEndpoint(baseUrl: string): URL {
 }
 
 export class LLMService {
-  public async chat(messages: ChatMessage[], responseFormatJson = false, maxRetries = 3): Promise<string> {
+  constructor(private webQueue = new AiRequestQueue()) {}
+
+  public async chat(messages: ChatMessage[], responseFormatJson = false, maxRetries = 3, options: LLMRequestOptions = {}): Promise<string> {
     const config = configManager.getConfig().llm;
+    const request = () => this.request(config, messages, responseFormatJson, maxRetries, options);
+    return config.connectionMode === 'deepseek-web'
+      ? this.webQueue.run(boundedInteger(config.minRequestIntervalSeconds, 30, 10, 300), request, options)
+      : request();
+  }
+
+  private async request(config: AppConfig['llm'], messages: ChatMessage[], responseFormatJson: boolean,
+    maxRetries: number, options: LLMRequestOptions): Promise<string> {
+    options.signal?.throwIfAborted();
     const isWeb = config.connectionMode === 'deepseek-web';
     if (isWeb) maxRetries = 1;
     // The managed proxy supplies its own local key. Never forward the previous provider's key.
@@ -64,12 +83,13 @@ export class LLMService {
       payload.stream = false;
       payload.thinking = config.thinking === 'enabled';
       payload.web_search = config.webSearch === true;
+      payload.min_request_interval_seconds = boundedInteger(config.minRequestIntervalSeconds, 30, 10, 300);
     }
 
     if (responseFormatJson) {
       payload.response_format = { type: 'json_object' };
     }
-    const requestTimeoutMs = isWeb ? Math.max(timeoutMs, 210000)
+    const requestTimeoutMs = isWeb ? Math.max(timeoutMs, 210000) + boundedInteger(config.minRequestIntervalSeconds, 30, 10, 300) * 1000
       : payload.thinking?.type === 'enabled' ? Math.max(timeoutMs, 180000) : timeoutMs;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -82,13 +102,16 @@ export class LLMService {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       let response: Response;
       try {
+        options.signal?.throwIfAborted();
+        options.onRequest?.();
         response = await fetch(endpoint, {
           method: 'POST',
           headers,
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(requestTimeoutMs),
+          signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(requestTimeoutMs)]) : AbortSignal.timeout(requestTimeoutMs),
         });
       } catch (err: any) {
+        if (options.signal?.aborted) throw options.signal.reason;
         // 超时不重试：投递主循环不能为了一个挂死的请求反复等待
         if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
           throw new Error(`大模型请求超时（${Math.round(requestTimeoutMs / 1000)} 秒），请检查网络或关闭深度思考`);
@@ -96,7 +119,7 @@ export class LLMService {
         lastError = err as Error;
         if (attempt >= maxRetries) break;
         console.warn(`[LLM] 请求异常: ${lastError.message}，正在重试 (${attempt}/${maxRetries})...`);
-        await new Promise((r) => setTimeout(r, 1500 * attempt));
+        await abortableSleep(1500 * attempt, options.signal);
         continue;
       }
 
@@ -108,6 +131,12 @@ export class LLMService {
         if (isWeb) {
           let message = 'DeepSeek 网页请求频率或额度受限，请稍后继续';
           try { message = JSON.parse(rawText)?.error?.message || message; } catch {}
+          const retryAfter = response.headers.get('Retry-After');
+          const numeric = retryAfter ? Number(retryAfter) : NaN;
+          const until = retryAfter ? Date.parse(retryAfter) : NaN;
+          const seconds = Number.isFinite(numeric) && numeric > 0 ? numeric
+            : Number.isFinite(until) && until > Date.now() ? (until - Date.now()) / 1000 : 60;
+          this.webQueue.coolDown(Math.max(1, Math.min(86400, seconds)));
           throw new Error(message);
         }
         const waitSeconds = this.resolveBackoffSeconds(response.headers.get('Retry-After'), attempt);
@@ -115,7 +144,7 @@ export class LLMService {
           console.warn(
             `[LLM] 遭遇免费接口频控 (HTTP ${response.status})，退避 ${waitSeconds.toFixed(1)} 秒后重试 (第 ${attempt}/${maxRetries} 次)...`
           );
-          await new Promise((r) => setTimeout(r, waitSeconds * 1000));
+          await abortableSleep(waitSeconds * 1000, options.signal);
           continue;
         }
         lastError = new Error(`大模型接口限流 (HTTP ${response.status})，重试 ${maxRetries} 次仍失败`);
@@ -175,7 +204,7 @@ export class LLMService {
     return Math.pow(2, attempt) + Math.random() * 0.5;
   }
 
-  public async chatJson<T>(messages: ChatMessage[], maxRetries = 3): Promise<T> {
+  public async chatJson<T>(messages: ChatMessage[], maxRetries = 3, options: LLMRequestOptions = {}): Promise<T> {
     const systemPromptExtra: ChatMessage = {
       role: 'system',
       content: '你必须且只能输出严格合法的 JSON 对象，不要包含任何额外的自然语言解释或 markdown 代码块标记。',
@@ -186,7 +215,7 @@ export class LLMService {
       role: 'system',
       content: [...messages.filter((item) => item.role === 'system').map((item) => item.content), systemPromptExtra.content].join('\n\n'),
     };
-    const raw = await this.chat([system, ...messages.filter((item) => item.role !== 'system')], true, maxRetries);
+    const raw = await this.chat([system, ...messages.filter((item) => item.role !== 'system')], true, maxRetries, options);
     const cleaned = this.stripCodeFence(raw);
 
     try {

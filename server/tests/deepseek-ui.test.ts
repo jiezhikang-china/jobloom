@@ -76,6 +76,9 @@ async function main() {
     assert.equal(config.llm.apiKey, '');
     const features = page.getByRole('region', { name: 'DeepSeek 网页功能' });
     await features.waitFor();
+    const pacing = page.getByRole('region', { name: 'AI 调用安排' });
+    await pacing.getByRole('spinbutton', { name: '每批岗位数', exact: true }).fill('7');
+    await pacing.getByRole('spinbutton', { name: '请求间隔秒数', exact: true }).fill('45');
     for (const [thinking, search] of [[false, false], [true, false], [false, true], [true, true]]) {
       await features.getByRole('checkbox', { name: '深度思考', exact: true }).setChecked(thinking);
       await features.getByRole('checkbox', { name: '联网搜索', exact: true }).setChecked(search);
@@ -85,11 +88,15 @@ async function main() {
       ]);
       assert.equal(config.llm.thinking, thinking ? 'enabled' : 'disabled');
       assert.equal(config.llm.webSearch, search);
+      assert.equal(config.llm.jobBatchSize, 7);
+      assert.equal(config.llm.minRequestIntervalSeconds, 45);
       await page.reload();
       await page.getByRole('button', { name: '设置', exact: true }).click();
       await features.waitFor();
       assert.equal(await features.getByRole('checkbox', { name: '深度思考', exact: true }).isChecked(), thinking);
       assert.equal(await features.getByRole('checkbox', { name: '联网搜索', exact: true }).isChecked(), search);
+      assert.equal(await pacing.getByRole('spinbutton', { name: '每批岗位数', exact: true }).inputValue(), '7');
+      assert.equal(await pacing.getByRole('spinbutton', { name: '请求间隔秒数', exact: true }).inputValue(), '45');
     }
     await Promise.all([
       page.waitForResponse((response) => response.url().endsWith('/api/config') && response.request().method() === 'POST'),

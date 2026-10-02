@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   const originalChat = llmService.chatJson;
   const original = configManager.getConfig();
   const config = { ...original, filter: { ...original.filter, degree: ['本科'], experience: [], companyBlacklist: [],
-    requiredKeywords: [], hrActiveDaysLimit: 0, salaryMin: undefined, salaryMax: undefined } };
+    requiredKeywords: [], hrActiveDaysLimit: 0, salaryMin: undefined, salaryMax: undefined, workRequirements: [], minLlmMatchScore: 75 } };
   const job: BossJobItem = { securityId: '', jobId: '', jobName: '自动化测试', lid: '', salaryDesc: '15-25K',
     jobExperience: '3-5年', jobDegree: '大专', cityName: '上海', areaDistrict: '', brandName: '模拟公司',
     brandScaleName: '', brandIndustry: '软件', bossName: '', bossTitle: '', activeTimeDesc: '',
@@ -40,7 +40,7 @@ async function main(): Promise<void> {
     let messages: any[] = [];
     (llmService as any).chatJson = async (value: any[]) => {
       messages = value;
-      return { score: 90, passed: true, reason: '技能与学历满足要求', customGreeting: '您好' };
+      return { jobs: [{ jobKey: 'job-0', score: 90, passed: true, reason: '技能与学历满足要求', customGreeting: '您好' }] };
     };
     for (const source of ['resume', 'requirements'] as const) {
       const result = await filterService.evaluateStage2(job, '要求大专及以上，使用 Python 和 Selenium 开发自动化测试。',
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
       assert.match(messages[0].content, /本科满足大专\/专科要求/);
       assert.match(messages[0].content, /不得仅因求职者学历高于岗位最低要求而扣分或淘汰/);
       assert.match(messages[1].content, /用户明确设置的最高学历.*本科/);
-      assert.match(messages[1].content, /岗位学历要求：大专/);
+      assert.match(messages[1].content, /"jobDegree":"大专"/);
     }
     const normalize = (configManager as any).normalize.bind(configManager);
     assert.deepEqual(normalize({ ...original, filter: { ...original.filter, degree: ['本科', '硕士'] } }).filter.degree, ['本科']);

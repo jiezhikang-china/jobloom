@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { configManager } from '../src/config/config.manager.js';
-import { filterService } from '../src/services/filter.service.js';
+import { filterService, FilterService } from '../src/services/filter.service.js';
 import { llmService } from '../src/services/llm.service.js';
 import { assessWorkConditions } from '../src/services/work-conditions.js';
 import { WorkConditionReviews } from '../src/services/work-condition-reviews.js';
@@ -94,71 +94,74 @@ async function main() {
   let calls = 0;
   let response: any = { score: 95, passed: true, customGreeting: '您好，希望了解贵司岗位。' };
   let prompt: any[] = [];
+  const evaluate: FilterService['evaluateStage2'] = (...args) => new FilterService().evaluateStage2(...args);
   const temporary = path.join(os.tmpdir(), 'boss-work-reviews-' + process.pid + '-' + Date.now() + '.json');
   try {
     configManager.getConfig = () => config;
-    (llmService as any).chatJson = async (messages: any[]) => { calls++; prompt = messages; return response; };
+    (llmService as any).chatJson = async (messages: any[]) => { calls++; prompt = messages; return { jobs: [{ jobKey: 'job-0', ...response }] }; };
     assert.equal(filterService.evaluateStage1({ ...job, jobExperience: '应届生' }).passed, true,
       '开启无经验后不能被旧的经验白名单挡住');
     const complete = '负责行政文书和办公室日常支持。每天工作8小时，周末双休，接受无经验，入职有培训。';
-    const passing = await filterService.evaluateStage2(job, complete, '希望找每天八小时、双休、允许无经验的工作。', '符合工作条件的岗位', 'requirements');
+    const passing = await evaluate(job, complete, '希望找每天八小时、双休、允许无经验的工作。', '符合工作条件的岗位', 'requirements', { rulesOnly: true });
     assert.equal(passing.passed, true);
     assert.equal(passing.needsReview, undefined);
-    assert.match(prompt[0].content, /覆盖技术与非技术岗位/);
-    assert.match(prompt[0].content, /不得捏造引文/);
-    assert.match(prompt[1].content, /岗位经验要求/);
+    assert.equal(calls, 0, '已完整验证的纯工作条件投递不必询问 AI');
+    assert.equal(passing.evaluationSource, 'rules');
     const before = calls;
-    const fail = await filterService.evaluateStage2(job, complete + '必须加班到深夜。', '同上', '行政助理');
+    const fail = await evaluate(job, complete + '必须加班到深夜。', '同上', '行政助理');
     assert.equal(fail.passed, false);
     assert.equal(calls, before, '明确不符合的岗位不必请求模型');
     response = { score: 99, passed: true, workRequirements: selectedRequirements.map((item) => ({
       requirementId: item.id, status: 'met', evidence: '每天工作8小时，周末双休，经验不限',
     })) };
-    const unknown = await filterService.evaluateStage2(job, '负责行政支持，接受无经验，详细作息面议。', '想找八小时双休工作', '行政助理');
+    const unknown = await evaluate(job, '负责行政支持，接受无经验，详细作息面议。', '想找八小时双休工作', '行政助理');
     assert.equal(unknown.passed, false);
     assert.equal(unknown.needsReview, true, 'AI 高分和虚构引文不能补齐缺失的条件');
     assert.equal(unknown.requirementAssessment?.find((item) => item.requirementId === 'preset-eightHours')?.status, 'unknown');
-    const contradictory = await filterService.evaluateStage2({ ...job, jobExperience: '3-5年' }, complete, '同上', '行政助理');
+    assert.equal(calls, before, '缺失作息的岗位也不必询问 AI');
+    const contradictory = await evaluate({ ...job, jobExperience: '3-5年' }, complete, '同上', '行政助理');
     assert.equal(contradictory.needsReview, true);
-    const overtime = await filterService.evaluateStage2(job, complete + '旺季偶尔加班。', '同上', '行政助理');
+    const overtime = await evaluate(job, complete + '旺季偶尔加班。', '同上', '行政助理');
     assert.equal(overtime.needsReview, true, '只截取八小时引文不能忽略不确定加班');
-    const long = await filterService.evaluateStage2(job, complete + '岗位信息。'.repeat(3000), '同上', '行政助理');
+    const long = await evaluate(job, complete + '岗位信息。'.repeat(3000), '同上', '行政助理');
     assert.equal(long.needsReview, true, '不能将被截断的岗位描述视为完整验证');
     response = { score: 99, passed: false, reason: '缺少岗位要求的证书' };
-    const unfit = await filterService.evaluateStage2(job, complete, '同上', '行政助理');
+    const unfit = await evaluate(job, complete, '同上', '行政助理');
     assert.equal(unfit.passed, false, '工作条件符合仍需通过其他资格要求');
     config.filter.workRequirements = [];
     assert.equal(filterService.evaluateStage1({ ...job, jobExperience: '应届生' }).passed, false, '未启用时保留原经验筛选');
-    response = { score: 90, reason: '要求匹配' };
-    assert.equal((await filterService.evaluateStage2(job, '行政支持。', '希望行政工作', '行政助理')).passed, true,
+    response = { score: 90, passed: true, reason: '要求匹配' };
+    assert.equal((await evaluate(job, '行政支持。', '希望行政工作', '行政助理')).passed, true,
       '旧配置未启用工作条件时保持兼容');
     config.filter.workRequirements = [
-      { id: 'no-sales', text: '不做销售', enabled: true },
-      { id: 'insurance', text: '入职缴纳五险一金', enabled: true },
+      { id: 'no-sales', text: '销售工作不适合我，仅限提供行政支持的职位', enabled: true },
+      { id: 'insurance', text: '入职福利必须覆盖社保与住房公积金', enabled: true },
     ];
     const customDetail = '负责行政支持。工作内容仅为资料整理，不涉及销售。入职即缴纳五险一金。';
     response = { score: 90, passed: true, workRequirements: [
       { requirementId: 'no-sales', status: 'met', evidence: '工作内容仅为资料整理，不涉及销售' },
       { requirementId: 'insurance', status: 'met', evidence: '入职即缴纳五险一金' },
     ] };
-    const customPassed = await filterService.evaluateStage2(job, customDetail, '不做销售，需要五险一金。', '行政助理', 'requirements');
+    const customPassed = await evaluate(job, customDetail, '不做销售，需要五险一金。', '行政助理', 'requirements');
     assert.equal(customPassed.passed, true, '新加条件须进入实际评估，不能只支持三个预设');
-    assert.match(prompt[0].content, /不做销售/);
-    assert.match(prompt[0].content, /入职缴纳五险一金/);
+    assert.match(prompt[0].content, /行政支持/);
+    assert.match(prompt[0].content, /社保与住房公积金/);
+    assert.match(prompt[0].content, /覆盖技术与非技术岗位/);
+    assert.match(prompt[0].content, /不得捏造引文/);
     response.workRequirements.pop();
-    assert.equal((await filterService.evaluateStage2(job, customDetail, '同上', '行政助理')).needsReview, true,
+    assert.equal((await evaluate(job, customDetail, '同上', '行政助理')).needsReview, true,
       '模型漏评任何一条新加条件都不能投递');
     response.workRequirements = [
       { requirementId: 'no-sales', status: 'met', evidence: '不存在的销售描述' },
       { requirementId: 'insurance', status: 'met', evidence: '入职即缴纳五险一金' },
     ];
-    assert.equal((await filterService.evaluateStage2(job, customDetail, '同上', '行政助理')).needsReview, true);
+    assert.equal((await evaluate(job, customDetail, '同上', '行政助理')).needsReview, true);
     response.workRequirements[0] = { requirementId: 'no-sales', status: 'not_met', evidence: '负责行政支持' };
-    assert.equal((await filterService.evaluateStage2(job, customDetail, '同上', '行政助理')).passed, false,
+    assert.equal((await evaluate(job, customDetail, '同上', '行政助理')).passed, false,
       '新加条件明确不符时，即使高分也不能投递');
     const edited = normalizeWorkRequirements([{ ...selectedRequirements[0], text: '每天工作不超过七小时' }]);
     assert.equal(edited[0].builtin, undefined, '修改预设文本后不能继续套用八小时判定');
-    assert.equal(assessWorkRequirements(job, '每天工作8小时。', edited)[0].status, 'unknown');
+    assert.equal(assessWorkRequirements(job, '每天工作8小时。', edited)[0].status, 'not_met', '工时按编辑后的七小时阈值判断');
     assert.equal(validateWorkRequirements([{ id: 'a', text: '有效条件', enabled: true }, { id: 'a', text: '其他条件', enabled: true }]), false);
     const duplicateProof = assessWorkRequirements(job, customDetail, config.filter.workRequirements, [
       { requirementId: 'no-sales', status: 'met', evidence: '不涉及销售' },

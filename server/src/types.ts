@@ -13,6 +13,10 @@ export interface AppConfig {
     thinking?: 'enabled' | 'disabled';
     /** DeepSeek 网页联网搜索；与深度思考独立，默认关闭。 */
     webSearch?: boolean;
+    /** Time from the previous webpage response to the next request. */
+    minRequestIntervalSeconds?: number;
+    /** Jobs evaluated together after local filtering. */
+    jobBatchSize?: number;
   };
   filter: {
     cityCode: string; // 城市代码，如 101010100 (北京), 101020100 (上海), 101280100 (广州), 101280600 (深圳), 101210100 (杭州)
@@ -172,5 +176,9 @@ export interface DeliveryStats {
   passedFilterCount: number;
   markedNotSuitCount: number;
   skippedByLlmErrorCount: number; // 因大模型不可用而跳过的岗位数
+  localDecisionCount?: number;
+  aiRequestCount?: number;
+  cachedEvaluationCount?: number;
+  pendingEvaluationCount?: number;
   currentProcessingJob?: string;
 }

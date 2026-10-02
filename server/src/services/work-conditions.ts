@@ -15,7 +15,7 @@ function hoursIn(text: string): number | undefined {
   const match = text.match(/(\d+(?:\.\d+)?|十二|十一|[一二两三四五六七八九十])\s*(?:个)?小时/);
   return match ? (numbers[match[1]] ?? Number(match[1])) : undefined;
 }
-function inspectHours(text: string): ConditionEvidence {
+export function assessDailyWorkHours(text: string, maxHours = 8): ConditionEvidence {
   const uncheckedOvertime = matchProof(text, /(?:无法|不能|不)保证.{0,4}(?:不|无).{0,3}加班/, 'unknown');
   if (uncheckedOvertime) return uncheckedOvertime;
   const checkedText = text.replace(/(?:无需|不需要|不要求|不强制|不必|不用|禁止|拒绝|没有).{0,4}加班|无(?:强制)?加班|(?:不实行|不执行|拒绝|告别|非|不是|不)(?:996|007)/g, (value) => ' '.repeat(value.length));
@@ -39,7 +39,7 @@ function inspectHours(text: string): ConditionEvidence {
         const after = line.slice(duration.index! + duration[0].length);
         if (/(?:不少于|不低于|至少|最少|不保证)\s*$/.test(before) || /^\s*(?:以上|起|及以上)/.test(after)) return proof('unknown', line);
         const value = hoursIn(duration[0].replace(/^\d+(?:\.\d+)?\s*[-~至]\s*/, ''));
-        if (value != null && value > 8) return proof('not_met', line);
+        if (value != null && value > maxHours) return proof('not_met', line);
         if (value != null && value > 0) positive = proof('met', line);
       }
     }
@@ -57,9 +57,9 @@ function inspectHours(text: string): ConditionEvidence {
       const rest = line.match(/(?:午休|中午休息|休息时间)\s*[:：]?\s*(\d+(?:\.\d+)?|[一二两三])\s*(?:个)?小时/);
       const restHours = rest ? hoursIn(rest[0]) : undefined;
       if (restHours != null && restHours >= span) return proof('unknown', line);
-      if (restHours != null || span <= 8) {
+      if (restHours != null || span <= maxHours) {
         const actual = span - (restHours || 0);
-        if (actual > 8) return proof('not_met', line);
+        if (actual > maxHours) return proof('not_met', line);
         if (actual > 0) positive = proof('met', line);
       }
     }
@@ -110,7 +110,7 @@ export function assessWorkConditions(
 ): WorkConditionAssessment {
   const source = detail + '\n' + (job.welfareList || []).join('\n');
   const local = {
-    eightHours: inspectHours(source),
+    eightHours: assessDailyWorkHours(source),
     doubleRest: inspectRest(source),
     noExperience: inspectExperience(source, job.jobExperience || ''),
   };

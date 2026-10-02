@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const config = {
     ...originalConfig,
     llm: { ...originalConfig.llm, connectionMode: 'api' as const, apiKey: 'test-api-key-123456', model: 'GLM-4.7-Flash', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
-    filter: { ...originalConfig.filter, requiredKeywords: ['React', 'TypeScript'] },
+    filter: { ...originalConfig.filter, requiredKeywords: ['React', 'TypeScript'], workRequirements: [], minLlmMatchScore: 75 },
     delivery: { ...originalConfig.delivery, dailyMaxQuota: 0 },
   };
   const normalize = (configManager as any).normalize.bind(configManager);
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   let llmCalls = 0;
   (llmService as any).chatJson = async () => {
     llmCalls++;
-    return { score: 90, passed: true, reason: '匹配', customGreeting: '您好' };
+    return { jobs: [{ jobKey: 'job-0', score: 90, passed: true, reason: '匹配', customGreeting: '您好' }] };
   };
   const miss = await filterService.evaluateStage2(job, '只需 Java 开发', '简历', '前端工程师');
   assert.equal(miss.passed, false);
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
   let manualMessages: any[] = [];
   (llmService as any).chatJson = async (messages: any[]) => {
     manualMessages = messages;
-    return { score: 90, reason: '岗位符合要求' };
+    return { jobs: [{ jobKey: 'job-0', score: 90, passed: true, reason: '岗位符合要求' }] };
   };
   const manual = await filterService.evaluateStage2(job, '熟悉 React 项目开发', '希望找 React 岗位', '前端工程师', 'requirements');
   assert.equal(manual.passed, true);

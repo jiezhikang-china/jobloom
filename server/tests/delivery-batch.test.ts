@@ -48,6 +48,9 @@ async function main(): Promise<void> {
     stub(bossPageService, 'scrollDownForMore', async () => {});
     stub(filterService, 'evaluateStage1', () => ({ passed: true }));
     stub(filterService, 'evaluateStage2', async () => ({ passed: true, score: 90, reason: '匹配', customGreeting: '你好' }));
+    stub(filterService, 'evaluateLocally', () => undefined);
+    stub(filterService, 'evaluateBatch', async (items: any[]) => Promise.all(items.map((item) =>
+      filterService.evaluateStage2(item.job, item.jobDetail, '测试简历', '测试岗位'))));
 
     const service = new DeliveryService();
     await service.startDelivery({ targetRole: '前端开发', positionCode: '100901', keywords: ['前端开发'], resumeText: '完整简历'.repeat(20) });

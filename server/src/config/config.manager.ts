@@ -7,6 +7,12 @@ import { normalizeWorkRequirements } from '../services/work-requirements.js';
 
 const CONFIG_FILE_PATH = path.resolve(process.cwd(), '../data/config.json');
 
+export function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
+  if (value === undefined || value === null || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(min, Math.min(max, Math.trunc(parsed))) : fallback;
+}
+
 export interface ModelPreset {
   connectionMode?: 'api' | 'deepseek-web';
   id: string;
@@ -38,6 +44,8 @@ const DEFAULT_CONFIG: AppConfig = {
     timeoutMs: 210000,
     thinking: 'disabled',
     webSearch: false,
+    minRequestIntervalSeconds: 30,
+    jobBatchSize: 5,
   },
   filter: {
     cityCode: '101010100', // 默认北京
@@ -101,7 +109,9 @@ export class ConfigManager {
       llm: { ...cfg.llm, connectionMode: isWeb ? 'deepseek-web' : 'api',
         baseUrl: isWeb ? '' : cfg.llm.baseUrl, apiKey: isWeb ? '' : cleanedKey,
         model: isWeb ? 'deepseek-v4-flash' : model, thinking: cfg.llm?.thinking === 'enabled' ? 'enabled' : 'disabled',
-        webSearch: cfg.llm?.webSearch === true },
+        webSearch: cfg.llm?.webSearch === true,
+        minRequestIntervalSeconds: boundedInteger(cfg.llm?.minRequestIntervalSeconds, 30, 10, 300),
+        jobBatchSize: boundedInteger(cfg.llm?.jobBatchSize, 5, 1, 10) },
       filter: {
         ...filter,
         degree: normalizeCandidateDegrees(cfg.filter?.degree),

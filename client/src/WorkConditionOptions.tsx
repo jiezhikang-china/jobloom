@@ -64,6 +64,7 @@ export default function WorkConditionOptions({ value, onChange, disabled = false
         <button type="button" disabled={disabled || conditions.length >= 20 || draft.trim().length < 2} onClick={() => add(draft)}>添加条件</button>
       </div>
       <p>最多20条，每条写一个明确要求。缺少依据或描述冲突时留待确认；预设文字也可修改。</p>
+      <p>简单条件先用本地脚本判断，复杂要求合并交给 AI。也可写文本规则，例如“必须包含：React”或“不得包含：劳务派遣”，按原词是否出现筛选。</p>
       <p>城市、学历、薪资和其他筛选条件仍然生效。招聘描述代表招聘方的说法，实际执行需向招聘方核实。</p>
     </section>
   );

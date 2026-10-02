@@ -9,6 +9,8 @@ export interface AppConfig {
     timeoutMs?: number;
     thinking?: 'enabled' | 'disabled';
     webSearch?: boolean;
+    minRequestIntervalSeconds?: number;
+    jobBatchSize?: number;
   };
   filter: {
     cityCode: string;
@@ -134,5 +136,9 @@ export interface DeliveryStats {
   passedFilterCount: number;
   markedNotSuitCount: number;
   skippedByLlmErrorCount: number;
+  localDecisionCount?: number;
+  aiRequestCount?: number;
+  cachedEvaluationCount?: number;
+  pendingEvaluationCount?: number;
   currentProcessingJob?: string;
 }
