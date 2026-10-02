@@ -19,7 +19,8 @@ function verifyExplicit(text: string, yes: RegExp, no: RegExp, uncertain?: RegEx
 }
 
 /** Compile only a complete, unambiguous requirement; compound/semantic rules stay with AI. */
-export function assessLocalRequirement(job: BossJobItem, detail: string, requirement: WorkRequirement): ConditionEvidence | undefined {
+export function assessLocalRequirement(job: BossJobItem, detail: string, requirement: WorkRequirement,
+  experienceMode: 'flexible' | 'strict' = 'flexible'): ConditionEvidence | undefined {
   const text = requirement.text.trim().replace(/[。！!\s]+$/g, '').replace(/\s+/g, '');
   const source = detail + '\n' + (job.welfareList || []).join('\n');
   const flags = { eightHours: false, doubleRest: false, noExperience: false };
@@ -27,7 +28,7 @@ export function assessLocalRequirement(job: BossJobItem, detail: string, require
   if (!preset && /^(?:每周|周末)?(?:必须|固定)?双休$|^每周休(?:息)?[两二2]天$/.test(text)) preset = 'doubleRest';
   if (!preset && /^(?:(?:允许|接受|欢迎|可接受)(?:无(?:工作)?经验|零经验|小白)(?:入职|上岗)?|经验不限|(?:不要求|无需)(?:工作)?经验)$/.test(text)) preset = 'noExperience';
   if (!preset && /^(?:每天工作不超过八小时|[八8]小时工作制)$/.test(text)) preset = 'eightHours';
-  if (preset) { flags[preset] = true; return assessWorkConditions(job, detail, flags)[preset]; }
+  if (preset) { flags[preset] = true; return assessWorkConditions(job, detail, flags, experienceMode)[preset]; }
   const hours = text.match(/^(?:每天|每日|日工时)(?:工作)?(?:不超过|最多|至多|小于等于)(\d+(?:\.\d+)?|[一二两三四五六七八])(?:个)?小时$/);
   if (hours) {
     const limit = numberWords[hours[1]] ?? Number(hours[1]);

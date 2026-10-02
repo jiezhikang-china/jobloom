@@ -68,12 +68,12 @@ const cases: Array<[keyof WorkConditions, string, ConditionStatus, string?]> = [
   ['noExperience', '', 'met', '经验不限'],
   ['noExperience', '', 'unknown', '应届生'],
   ['noExperience', '无经验可入职。', 'met', '1年以内'],
-  ['noExperience', '无经验可入职。', 'unknown', '1-3年'],
+  ['noExperience', '无经验可入职。', 'met', '1-3年'],
   ['noExperience', '必须有三年以上相关经验。', 'not_met'],
   ['noExperience', '需要有销售工作经验。', 'not_met'],
   ['noExperience', '不接受无经验。', 'not_met'],
   ['noExperience', '不接受无工作经验。', 'not_met'],
-  ['noExperience', '必须有3年经验。', 'unknown', '经验不限'],
+  ['noExperience', '必须有3年经验。', 'not_met', '经验不限'],
   ['noExperience', '不要求工作经验，但必须有3年相关经验。', 'unknown'],
 ];
 
@@ -90,7 +90,7 @@ async function main() {
   const selectedRequirements = normalizeWorkRequirements(undefined, selected);
   const config = { ...original, filter: { ...original.filter, workRequirements: selectedRequirements, degree: ['本科'],
     salaryMin: undefined, salaryMax: undefined, experience: ['3-5年'], hrActiveDaysLimit: 0,
-    requiredKeywords: [], companyBlacklist: [], minLlmMatchScore: 75 } };
+    requiredKeywords: [], companyBlacklist: [], minLlmMatchScore: 75, experienceMatchMode: 'flexible' as 'flexible' | 'strict' } };
   let calls = 0;
   let response: any = { score: 95, passed: true, customGreeting: '您好，希望了解贵司岗位。' };
   let prompt: any[] = [];
@@ -119,8 +119,8 @@ async function main() {
     assert.equal(unknown.needsReview, true, 'AI 高分和虚构引文不能补齐缺失的条件');
     assert.equal(unknown.requirementAssessment?.find((item) => item.requirementId === 'preset-eightHours')?.status, 'unknown');
     assert.equal(calls, before, '缺失作息的岗位也不必询问 AI');
-    const contradictory = await evaluate({ ...job, jobExperience: '3-5年' }, complete, '同上', '行政助理');
-    assert.equal(contradictory.needsReview, true);
+    const contradictory = await evaluate({ ...job, jobExperience: '3-5年' }, complete, '同上', '行政助理', 'requirements', { rulesOnly: true });
+    assert.equal(contradictory.passed, true, '宽泛模式下，正文明确接受无经验优先于经验区间标签');
     const overtime = await evaluate(job, complete + '旺季偶尔加班。', '同上', '行政助理');
     assert.equal(overtime.needsReview, true, '只截取八小时引文不能忽略不确定加班');
     const long = await evaluate(job, complete + '岗位信息。'.repeat(3000), '同上', '行政助理');
@@ -129,7 +129,10 @@ async function main() {
     const unfit = await evaluate(job, complete, '同上', '行政助理');
     assert.equal(unfit.passed, false, '工作条件符合仍需通过其他资格要求');
     config.filter.workRequirements = [];
-    assert.equal(filterService.evaluateStage1({ ...job, jobExperience: '应届生' }).passed, false, '未启用时保留原经验筛选');
+    assert.equal(filterService.evaluateStage1({ ...job, jobExperience: '应届生' }).passed, true, '宽泛模式不能受旧经验白名单影响');
+    config.filter.experienceMatchMode = 'strict';
+    assert.equal(filterService.evaluateStage1({ ...job, jobExperience: '应届生' }).passed, false, '用户选择严格模式后才使用原经验筛选');
+    config.filter.experienceMatchMode = 'flexible';
     response = { score: 90, passed: true, reason: '要求匹配' };
     assert.equal((await evaluate(job, '行政支持。', '希望行政工作', '行政助理')).passed, true,
       '旧配置未启用工作条件时保持兼容');

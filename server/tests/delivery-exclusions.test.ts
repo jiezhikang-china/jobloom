@@ -16,7 +16,7 @@ const filter = { ...original.filter, cityName: '上海', salaryMin: 0, salaryMax
   workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true }] };
 const config = { ...original, filter, delivery: { dailyMaxQuota: 1, minDelaySeconds: 0, maxDelaySeconds: 0 } };
 const card = (key: string, name = '行政助理'): DOMJobCardInfo => ({ index: 0, jobHref: '/job_detail/' + key + '.html',
-  jobName: name, companyName: key, cityName: '上海', salary: '6-8K', experience: '经验不限', degree: '大专', skills: [],
+  jobName: name, companyName: key, cityName: '上海', salary: '6-8K', experience: '1-3年', degree: '大专', skills: [],
   activeTimeDesc: '今日活跃', cardLocator: { key } as any });
 let cards = [card('销售标题', '纯网销客服'), card('银行岗位'), card('助贷公司', '纯客服'), card('信贷中介'),
   card('课程营销', '纯邀约客服'), card('作息待定'), card('明确符合')];

@@ -51,6 +51,10 @@ apiRouter.get('/config', (_req: Request, res: Response) => {
 });
 
 apiRouter.post('/config', (req: Request, res: Response) => {
+  const experienceMode = req.body?.filter?.experienceMatchMode;
+  if (experienceMode !== undefined && !['flexible', 'strict'].includes(experienceMode)) {
+    return res.status(400).json({ success: false, message: '经验筛选方式无效，请选择宽泛或严格。' });
+  }
   if (req.body?.filter?.workRequirements !== undefined && !validateWorkRequirements(req.body.filter.workRequirements)) {
     return res.status(400).json({ success: false, message: '工作条件最多20条，每条需2至500字，且不能有重复标识。' });
   }

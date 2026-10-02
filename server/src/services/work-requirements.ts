@@ -50,6 +50,7 @@ const compact = (text: string) => text.replace(/\s+/g, '').toLowerCase();
 /** Each arbitrary user requirement needs its own status and a quote from this job. */
 export function assessWorkRequirements(
   job: BossJobItem, detail: string, requirements: WorkRequirement[], modelProof?: unknown,
+  experienceMode: 'flexible' | 'strict' = 'flexible',
 ): WorkRequirementAssessment[] {
   const active = normalizeWorkRequirements(requirements).filter((item) => item.enabled);
   const sources = [detail, job.jobName, job.brandName, job.brandIndustry, job.brandScaleName, job.cityName,
@@ -58,7 +59,7 @@ export function assessWorkRequirements(
     job.companyInfo?.businessScope || ''].filter((value) => typeof value === 'string');
   const proofs: unknown[] = Array.isArray(modelProof) ? modelProof : [];
   return active.map((item) => {
-    const local = assessLocalRequirement(job, detail, item);
+    const local = assessLocalRequirement(job, detail, item, experienceMode);
     if (local) return { requirementId: item.id, text: item.text, ...local };
     const result = { requirementId: item.id, text: item.text, status: 'unknown' as const, evidence: '' };
     const matches = proofs.filter((entry: any) => entry?.requirementId === item.id);

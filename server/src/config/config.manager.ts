@@ -52,7 +52,8 @@ const DEFAULT_CONFIG: AppConfig = {
     cityName: '北京',
     salaryMin: 15,
     salaryMax: 40,
-    experience: ['1-3年', '3-5年', '5-10年'],
+    experience: [],
+    experienceMatchMode: 'flexible',
     degree: ['本科'],
     hrActiveDaysLimit: 3,
     companyBlacklist: [
@@ -114,6 +115,7 @@ export class ConfigManager {
         jobBatchSize: boundedInteger(cfg.llm?.jobBatchSize, 5, 1, 10) },
       filter: {
         ...filter,
+        experienceMatchMode: filter.experienceMatchMode === 'strict' ? 'strict' : 'flexible',
         degree: normalizeCandidateDegrees(cfg.filter?.degree),
         companyBlacklist: this.splitKeywords(cfg.filter?.companyBlacklist),
         requiredKeywords: this.splitKeywords(cfg.filter?.requiredKeywords),

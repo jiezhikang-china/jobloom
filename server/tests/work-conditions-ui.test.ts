@@ -112,6 +112,26 @@ async function main() {
     await page.getByRole('button', { name: '筛选规则', exact: true }).click();
     assert.equal(await page.getByLabel('期望月薪下限').inputValue(), '');
     assert.equal(await page.getByLabel('期望月薪上限').inputValue(), '');
+    assert.equal(await page.getByLabel('经验筛选方式', { exact: true }).inputValue(), 'flexible');
+    await page.getByLabel('经验筛选方式', { exact: true }).selectOption('strict');
+    await Promise.all([
+      page.waitForResponse((response) => response.url().endsWith('/api/config') && response.request().method() === 'POST'),
+      page.getByRole('button', { name: '保存配置', exact: true }).click(),
+    ]);
+    assert.equal(config.filter.experienceMatchMode, 'strict');
+    await page.reload();
+    await page.getByRole('button', { name: '筛选规则', exact: true }).click();
+    assert.equal(await page.getByLabel('经验筛选方式', { exact: true }).inputValue(), 'strict', '严格模式须可保存并恢复');
+    await page.getByLabel('经验筛选方式', { exact: true }).selectOption('flexible');
+    await Promise.all([
+      page.waitForResponse((response) => response.url().endsWith('/api/config') && response.request().method() === 'POST'),
+      page.getByRole('button', { name: '保存配置', exact: true }).click(),
+    ]);
+    assert.equal(config.filter.experienceMatchMode, 'flexible');
+    const invalidMode = await fetch(base + '/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filter: { experienceMatchMode: 'invalid' } }) });
+    assert.equal(invalidMode.status, 400);
+    assert.equal(config.filter.experienceMatchMode, 'flexible', '非法筛选方式不能改变已保存的设置');
     await conditions.getByRole('checkbox', { name: '启用条件：' + labels[0], exact: true }).uncheck();
     await conditions.getByRole('textbox', { name: '工作条件1', exact: true }).fill('每天工作不超过七小时');
     await Promise.all([

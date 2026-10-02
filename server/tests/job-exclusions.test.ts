@@ -17,6 +17,7 @@ const base: BossJobItem = { securityId: '', jobId: '', jobName: '行政助理', 
   brandScaleName: '', brandIndustry: '企业服务', bossName: '', bossTitle: '', activeTimeDesc: '今日活跃', skills: [], welfareList: [] };
 const cases: Array<[string, Partial<BossJobItem>, string, string | undefined]> = [
   ['银行归属金融', { jobName: '客户经理', brandName: '深圳信银', brandIndustry: '银行' }, '工作作息面议。', '金融'],
+  ['互联网金融归属金融', { jobName: '纯客服', brandIndustry: '互联网金融' }, '每天工作8小时、双休、无经验可入职。', '金融'],
   ['证券归属金融', { brandIndustry: '证券/期货' }, '', '金融'],
   ['保险归属金融', { jobName: '行政助理', brandIndustry: '保险' }, '', '金融'],
   ['信贷归属金融', { brandIndustry: '消费金融' }, '', '金融'],

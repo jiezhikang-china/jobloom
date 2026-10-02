@@ -24,6 +24,7 @@ export interface AppConfig {
     salaryMin?: number;
     salaryMax?: number;
     experience: string[]; // ['应届生', '1-3年', '3-5年', '5-10年']
+    experienceMatchMode?: 'flexible' | 'strict'; // 默认宽泛，经验标签仅供参考；严格模式使用标签范围
     degree: string[]; // 用户最高学历，0 或 1 项；空数组不限制，岗位按最低门槛比较
     hrActiveDaysLimit: number; // 3天内活跃为 3；<=0 表示不限制
     companyBlacklist: string[]; // 公司、行业、岗位与明确业务职责的排除词

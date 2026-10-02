@@ -82,23 +82,31 @@ function inspectRest(text: string): ConditionEvidence {
   if (uncertain) return uncertain;
   return matchProof(text, /(?:周末)?双休|周六[、和及与]?周日(?:固定)?休息|每周.{0,3}休(?:息)?[两二2](?:天|日)|周休[两二2](?:天|日)|(?:一周|每周)(?:只)?工作[五5]天|五天(?:八|8)?小时?(?:工作)?制|五天工作制/, 'met') || proof('unknown');
 }
-function inspectExperience(text: string, cardExperience: string): ConditionEvidence {
+function inspectExperience(text: string, cardExperience: string, mode: 'flexible' | 'strict'): ConditionEvidence {
   const denied = /无(?:工作|相关)?经验[^。，,；;\n]{0,4}(?:勿投|请勿|不接受|不能|不考虑|不行|不可)|无(?:工作|相关)?经验(?:者|人员)?不收|(?:不接受|不招|不考虑|不欢迎|不能接受|不可接受|拒绝).{0,3}(?:无(?:工作|相关)?经验|零经验|小白)|(?:并非|不是|非)经验不限/g;
   const bad = matchProof(text, denied, 'not_met');
   const positiveText = text.replace(denied, (value) => ' '.repeat(value.length));
   const positive = matchProof(positiveText, /经验不限|不(?:要求|需要)(?:具备|有)?(?:相关|工作|行业)?经验|无需(?:具备|有)?(?:相关|工作|行业)?经验|(?:无|没有)(?:相关|工作)?经验要求|有无(?:工作)?经验(?:均|都)?可|(?:无|没有)(?:相关|工作)?经验(?:者|人员|也|均|都)?(?:可|能)|(?:接受|欢迎|可接受)(?:无(?:工作)?经验|零经验|小白)|(?:无(?:工作)?经验|零经验|小白).{0,4}(?:入职|上岗|带薪培训|可培训)|零经验可/, 'met');
   const cardAllows = /^(?:经验不限|不限|无经验)$/.test(cardExperience.trim());
   let mandatory = bad;
+  let preference: ConditionEvidence | undefined;
   for (const line of text.split(/[。，,；;\n]|但是|但|不过|然而|且必须/)) {
     if (/不要求|不需要|无需|经验不限|无经验.*可/.test(line)) continue;
     if (/优先|加分/.test(line) && !/必须|至少|最低/.test(line)) continue;
-    const years = matchProof(line, /(?:\d+\s*[-~至]\s*)?[一二三四五六七八九十\d]+年(?:以上|及以上)?.{0,8}(?:工作|行业|相关)?经验|(?:工作经验|经验要求).{0,5}(?:\d+\s*[-~至]\s*)?[一二三四五六七八九十\d]+年|(?:必须|需具备|要求具备|需要有|要求有).{0,12}经验/, 'not_met');
-    if (years) mandatory = years;
+    const years = matchProof(line, /(?:\d+\s*[-~至]\s*)?[一二三四五六七八九十\d]+年(?:以上|及以上)?.{0,8}(?:工作|行业|相关)?经验|(?:工作经验|经验要求).{0,5}(?:\d+\s*[-~至]\s*)?[一二三四五六七八九十\d]+年|(?:必须|需具备|需要具备|要求具备|需要有|要求有|需有|硬性要求).{0,12}经验/, 'not_met');
+    if (years) {
+      if (mode === 'strict' || /必须|至少|最低|硬性|必备|需具备|需要具备|要求具备|需要有|要求有|需有/.test(line)) mandatory = years;
+      else preference = proof('unknown', '正文经验条件需确认：' + line.trim());
+    }
   }
   const cardRequires = /\d+\s*(?:[-~至]\s*\d+)?\s*年|[一二三四五六七八九十]年以上/.test(cardExperience)
     && !/不限|以内|以下/.test(cardExperience);
-  if ((mandatory && (positive || cardAllows)) || (cardRequires && positive)) {
+  if ((mandatory && (positive || (mode === 'strict' && cardAllows))) || (mode === 'strict' && cardRequires && positive)) {
     return proof('unknown', '经验要求有冲突：' + (positive?.evidence || '岗位经验要求：' + cardExperience) + '；' + (mandatory?.evidence || '岗位经验要求：' + cardExperience));
+  }
+  if (mode === 'flexible') {
+    return mandatory || positive || preference || (cardAllows ? proof('met', '岗位经验要求：' + cardExperience)
+      : proof('unknown', cardExperience.trim() ? '经验标签仅供参考「' + cardExperience.trim() + '」，需确认是否接受无经验' : ''));
   }
   return mandatory || (cardRequires ? proof('not_met', '岗位经验要求：' + cardExperience) : undefined)
     || positive || (cardAllows ? proof('met', '岗位经验要求：' + cardExperience) : proof('unknown'));
@@ -106,13 +114,13 @@ function inspectExperience(text: string, cardExperience: string): ConditionEvide
 
 /** Additional checks for the three convenience presets; custom conditions use work-requirements.ts. */
 export function assessWorkConditions(
-  job: BossJobItem, detail: string, conditions: WorkConditions,
+  job: BossJobItem, detail: string, conditions: WorkConditions, experienceMode: 'flexible' | 'strict' = 'flexible',
 ): WorkConditionAssessment {
   const source = detail + '\n' + (job.welfareList || []).join('\n');
   const local = {
     eightHours: assessDailyWorkHours(source),
     doubleRest: inspectRest(source),
-    noExperience: inspectExperience(source, job.jobExperience || ''),
+    noExperience: inspectExperience(source, job.jobExperience || '', experienceMode),
   };
   for (const key of CONDITION_KEYS) {
     if (!conditions[key]) local[key] = proof('unknown');

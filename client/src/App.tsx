@@ -1270,6 +1270,31 @@ export default function App() {
                   </p>
                 </div>
 
+                <div>
+                  <label htmlFor="experience-match-mode" style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                    经验筛选方式
+                  </label>
+                  <select id="experience-match-mode" value={config.filter.experienceMatchMode || 'flexible'} onChange={(event) =>
+                    setConfig({ ...config, filter: { ...config.filter, experienceMatchMode: event.target.value === 'strict' ? 'strict' : 'flexible' } })
+                  } style={{ width: '100%' }}>
+                    <option value="flexible">宽泛：经验标签作参考（推荐）</option>
+                    <option value="strict">严格：按经验标签和条件筛选</option>
+                  </select>
+                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px', lineHeight: 1.6 }}>
+                    {config.filter.experienceMatchMode === 'strict'
+                      ? '启用“允许无经验”时核对标签与正文，冲突留待确认；否则按下方经验范围筛选，留空表示不限。'
+                      : '“1—3年”标签和“经验优先”不直接淘汰。正文明确允许无经验可继续筛选；经验条件不清楚时留待确认。'}
+                  </p>
+                  {config.filter.experienceMatchMode === 'strict' && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                    {['应届生', '1年以内', '1-3年', '3-5年', '5-10年', '10年以上'].map((experience) => <label key={experience} style={{ fontSize: '12px', color: '#94a3b8' }}>
+                      <input type="checkbox" checked={(config.filter.experience || []).includes(experience)} onChange={(event) =>
+                        setConfig({ ...config, filter: { ...config.filter, experience: event.target.checked
+                          ? [...(config.filter.experience || []), experience] : (config.filter.experience || []).filter((item) => item !== experience) } })
+                      } /> {experience}
+                    </label>)}
+                  </div>}
+                </div>
+
                 {/* HR活跃度 */}
                 <div>
                   <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
