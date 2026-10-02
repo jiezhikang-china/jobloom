@@ -70,9 +70,9 @@ async function main(): Promise<void> {
 
     await bossPageService.initJobPage('前端开发', '101020100', '100901');
     assert.equal(new URL(page.url()).searchParams.get('position'), '100901');
-    assert.equal((await bossPageService.inspectPage(page)).kind, 'jobs');
+    assert.equal((await bossPageService.inspectPage(page as any)).kind, 'jobs');
     await page.evaluate(() => history.replaceState(null, '', location.href + '&_security_check=1_123'));
-    assert.equal((await bossPageService.inspectPage(page)).kind, 'jobs', '带安全检查参数但显示职位卡片时仍是职位页');
+    assert.equal((await bossPageService.inspectPage(page as any)).kind, 'jobs', '带安全检查参数但显示职位卡片时仍是职位页');
     const cards = await bossPageService.getVisibleJobCards();
     assert.equal(cards.length, 2, '缺少卡片活跃时间不应让岗位消失');
     assert.equal(cards[0].companyName, '甲公司');
@@ -109,16 +109,16 @@ async function main(): Promise<void> {
       document.body.innerHTML = ${JSON.stringify(fixture.match(/<body>([\s\S]*?)<script>/)![1])};
     }, 450);</script></body></html>`;
     await page.goto('https://www.zhipin.com/web/geek/jobs?query=delay', { waitUntil: 'domcontentloaded' });
-    assert.equal((await readyService.inspectPage(page)).kind, 'loading', 'SPA 暂时空白属于加载状态');
+    assert.equal((await readyService.inspectPage(page as any)).kind, 'loading', 'SPA 暂时空白属于加载状态');
     await readyService.initJobPage('前端开发', '101020100', '100901').catch((error) => {
       throw new Error(`${error.message}; 模拟页面脚本错误：${pageErrors.join('; ')}`);
     });
-    assert.equal((await readyService.inspectPage(page)).kind, 'jobs', '等待异步职位卡片出现后正常进入列表');
+    assert.equal((await readyService.inspectPage(page as any)).kind, 'jobs', '等待异步职位卡片出现后正常进入列表');
     assert.deepEqual(pageErrors, [], '模拟页面必须正常执行脚本');
 
     pageBody = '<html><body><input placeholder="搜索职位、公司" value="前端开发"><div class="search-empty">暂无相关职位</div></body></html>';
     await readyService.initJobPage('前端开发');
-    assert.equal((await readyService.inspectPage(page)).kind, 'empty', '真实无结果不应判为加载失败');
+    assert.equal((await readyService.inspectPage(page as any)).kind, 'empty', '真实无结果不应判为加载失败');
 
     pageBody = '<html><body></body></html>';
     const timeoutService = new BossPageService({ pageReadyTimeoutMs: 200, pagePollIntervalMs: 25 });
@@ -138,7 +138,7 @@ async function main(): Promise<void> {
 
     await page.route('**/web/passport/zp/security.html**', (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: '<body>安全验证</body>' }));
     await page.goto('https://www.zhipin.com/web/passport/zp/security.html?code=37');
-    assert.equal((await bossPageService.inspectPage(page)).kind, 'captcha');
+    assert.equal((await bossPageService.inspectPage(page as any)).kind, 'captcha');
     process.stdout.write('PASS | 离线 BOSS DOM：延迟渲染、持续空白、无结果、登录、安全验证、卡片、重排、详情、目标校验、发送确认\n');
   } finally {
     (browserService as any).getWorkerPage = originalGetWorkerPage;

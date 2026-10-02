@@ -5,6 +5,7 @@ import type { AppConfig, WorkConditionReview, WorkRequirementAssessment, WorkReq
 import { normalizeWorkRequirements, validateWorkRequirements } from './work-requirements.js';
 import { configManager } from '../config/config.manager.js';
 import { findJobExclusion } from './job-exclusions.js';
+import { jobInformationIssue } from './job-information.js';
 
 function canonicalJobUrl(value: string): string {
   const url = new URL(value, 'https://www.zhipin.com');
@@ -61,7 +62,7 @@ export class WorkConditionReviews {
       updatedAt: new Date().toISOString(),
     };
     const excluded = this.exclusionFor(item, configManager.getConfig().filter);
-    if (excluded) throw new Error(excluded.reason);
+    if (excluded) throw new Error(typeof excluded === 'string' ? excluded : excluded.reason);
     const existing = this.list().filter((entry) => entry.id !== item.id);
     this.save([item, ...existing].slice(0, 200));
     return item;
@@ -94,7 +95,8 @@ export class WorkConditionReviews {
   }
 
   private exclusionFor(item: WorkConditionReview, filter: AppConfig['filter']) {
-    return findJobExclusion({ jobName: item.jobName, brandName: item.companyName,
+    return (item.screening && jobInformationIssue({ jobDetail: item.screening.jobDetail, companyInfo: item.screening.companyInfo }, filter))
+      || findJobExclusion({ jobName: item.jobName, brandName: item.companyName,
       brandIndustry: item.screening?.industry, skills: item.screening?.skills,
       companyInfo: item.screening?.companyInfo,
       jobDetail: item.screening?.jobDetail || item.assessment.map((entry) => entry.evidence).join('\n') },

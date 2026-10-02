@@ -5,6 +5,7 @@ import { filterService, Stage2Result } from './filter.service.js';
 import { browserService } from './browser.service.js';
 import { workConditionReviews } from './work-condition-reviews.js';
 import { exclusionsFromText, findJobExclusion, needsCompanyIndustry } from './job-exclusions.js';
+import { jobInformationIssue } from './job-information.js';
 import { configuredWorkRequirements, hasEntryLevelRequirement } from './work-requirements.js';
 import { DeliveryStats, DeliveryLogItem, BossJobItem } from '../types.js';
 
@@ -198,17 +199,23 @@ export class DeliveryService {
         this.emit();
         return;
       }
-      for (const keyword of params.keywords) {
+      const useSavedExpectations = cfg.delivery.jobSource === 'saved_expectations';
+      const sources = useSavedExpectations ? await bossPageService.getSavedExpectationNames() : params.keywords;
+      const openList = (source: string) => useSavedExpectations
+        ? bossPageService.initJobPage(undefined, cfg.filter.cityCode, undefined, { expectationName: source })
+        : bossPageService.initJobPage(source, cfg.filter.cityCode, params.positionCode);
+      if (useSavedExpectations) this.log('info', 'BOSS 自选求职期望：' + sources.join('、'));
+      for (const keyword of sources) {
         if (this.isStopRequested) {
           stoppedByUser = true;
           break;
         }
-        this.log('info', `🌐 [DOM Driver] 正在打开推荐/搜索页面，关键词:【${keyword}】...`);
+        this.log('info', useSavedExpectations ? '正在打开 BOSS 自选岗位：' + keyword : '正在搜索岗位：' + keyword);
 
         let pageReady = false;
         for (let attempt = 0; attempt < 2 && !this.isStopRequested; attempt++) {
           try {
-            await bossPageService.initJobPage(keyword, cfg.filter.cityCode, params.positionCode);
+            await openList(keyword);
             pageReady = true;
             break;
           } catch (error) {
@@ -226,15 +233,16 @@ export class DeliveryService {
         const pending: PendingCandidate[] = [];
         const aiBatchSize = boundedInteger(cfg.llm.jobBatchSize, 5, 1, 10);
         const exclusionText = params.candidateSource === 'requirements' ? params.resumeText : '';
-        const detailOptions = { readIndustry: needsCompanyIndustry(cfg.filter, exclusionText), filter: cfg.filter, exclusionText };
+        const detailOptions = { readIndustry: cfg.filter.skipMissingCompanyIntro === true || needsCompanyIndustry(cfg.filter, exclusionText), filter: cfg.filter, exclusionText };
         const processEvaluation = async (candidate: PendingCandidate, evaluation: Stage2Result, reopen: boolean): Promise<void> => {
           const { jobCard, job: mockJobItem } = candidate;
           if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) {
             throw new Error('筛选条件已变化，请重新启动任务以重新评估岗位');
           }
           const exclusion = findJobExclusion({ ...mockJobItem, jobDetail: candidate.jobDetail }, cfg.filter, exclusionText);
-          if (exclusion) {
-            evaluation = { passed: false, score: 0, customGreeting: '', reason: exclusion.reason, evaluationSource: 'rules' };
+          const informationIssue = jobInformationIssue({ jobDetail: candidate.jobDetail, companyInfo: mockJobItem.companyInfo }, cfg.filter);
+          if (exclusion || informationIssue) {
+            evaluation = { passed: false, score: 0, customGreeting: '', reason: exclusion?.reason || informationIssue!, evaluationSource: 'rules' };
             try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
           }
           let cardLocator = jobCard.cardLocator;
@@ -290,7 +298,7 @@ export class DeliveryService {
             throw new Error('筛选条件已变化，请重新启动任务以重新评估岗位');
           }
           if (evaluation.passed && reopen) {
-            if (!(await bossPageService.isJobListPage())) await bossPageService.initJobPage(keyword, cfg.filter.cityCode, params.positionCode);
+            if (!(await bossPageService.isJobListPage())) await openList(keyword);
             const freshCard = (await bossPageService.getVisibleJobCards()).find((card) =>
               new URL(card.jobHref, 'https://www.zhipin.com').pathname === new URL(jobCard.jobHref, 'https://www.zhipin.com').pathname
               && card.jobName === jobCard.jobName && card.companyName === jobCard.companyName);
@@ -316,7 +324,12 @@ export class DeliveryService {
             const recheck = filterService.evaluateStage1({ ...mockJobItem, brandIndustry: detailRes.brandIndustry,
               companyInfo: detailRes.companyInfo,
               activeTimeDesc: detailRes.activeTimeDesc || freshCard.activeTimeDesc }, detailRes.jobDetailText, cfg.filter, exclusionText);
-            if (!recheck.passed) { this.log('warn', '[暂存跳过] 最新岗位已不符合筛选：' + recheck.reason); return; }
+            if (!recheck.passed) {
+              this.log('warn', '[暂存淘汰] 最新岗位已不符合筛选：' + recheck.reason);
+              try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
+              if (await bossPageService.markJobNotSuit(cardLocator, jobCard, recheck.reason)) this.stats.markedNotSuitCount++;
+              this.emit(); return;
+            }
             const companyFacts = (info: typeof detailRes.companyInfo) => {
               if (!info) return undefined;
               const { checkedAt: _checkedAt, ...facts } = info;
@@ -328,13 +341,14 @@ export class DeliveryService {
           }
 
           if (!evaluation.passed) {
+            try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
             this.log('warn', `[${sourceLabel}${scoreLabel}] ${mockJobItem.brandName} - ${jobCard.jobName}: ${evaluation.reason}`, {
               jobName: jobCard.jobName,
               companyName: jobCard.companyName,
               ...scoreExtra,
             });
             const marked = await bossPageService.isCardStillTarget(cardLocator, jobCard.jobName, jobCard.companyName, jobCard.jobHref)
-              && await bossPageService.markJobNotSuit(cardLocator);
+              && await bossPageService.markJobNotSuit(cardLocator, jobCard, evaluation.reason);
             if (marked) this.stats.markedNotSuitCount++;
             this.emit();
             return;
@@ -405,7 +419,7 @@ export class DeliveryService {
               return;
             }
             if (!(await bossPageService.isJobListPage())) {
-              await bossPageService.initJobPage(keyword, cfg.filter.cityCode, params.positionCode);
+              await openList(keyword);
               return;
             }
             return;
@@ -432,7 +446,7 @@ export class DeliveryService {
             this.stats.status = 'running';
             this.emit();
             if (!(await bossPageService.isJobListPage())) {
-              await bossPageService.initJobPage(keyword, cfg.filter.cityCode, params.positionCode);
+              await openList(keyword);
               return;
             }
             return;
@@ -470,7 +484,7 @@ export class DeliveryService {
 
           // 有些页面在开聊后跳到会话页。回到搜索页重新扫描，并用职位链接去重。
           if (!(await bossPageService.isJobListPage())) {
-            await bossPageService.initJobPage(keyword, cfg.filter.cityCode, params.positionCode);
+            await openList(keyword);
             return;
           }
         };
@@ -483,7 +497,7 @@ export class DeliveryService {
           this.log('info', '[批量评估] 已攒齐 ' + candidates.length + ' 个初筛岗位，共用一份简历/求职要求');
           const evaluations = await filterService.evaluateBatch(candidates.map((item) => ({
             job: item.job, jobDetail: item.jobDetail, jobHref: item.jobCard.jobHref,
-          })), params.resumeText, params.targetRole, params.candidateSource || 'resume', {
+          })), params.resumeText, useSavedExpectations ? keyword : params.targetRole, params.candidateSource || 'resume', {
             rulesOnly: params.rulesOnly,
             signal: this.evaluationAbort?.signal,
             onWait: (seconds) => this.log('info', '[AI 间隔] 等待 ' + seconds + ' 秒后再请求，可随时停止'),
@@ -582,6 +596,7 @@ export class DeliveryService {
             }
             if (cfg.filter.cityName && jobCard.cityName !== cfg.filter.cityName) {
               this.log('warn', `[跳过] 岗位城市与目标城市不符或无法读取: ${jobCard.companyName} - ${jobCard.jobName} (${jobCard.cityName || '未知'})`);
+              if (jobCard.cityName && await bossPageService.markJobNotSuit(cardLocator, jobCard, '岗位城市与目标城市不符')) this.stats.markedNotSuitCount++;
               continue;
             }
 
@@ -593,10 +608,11 @@ export class DeliveryService {
               bossName: '', bossTitle: '', activeTimeDesc: jobCard.activeTimeDesc, skills: jobCard.skills, welfareList: [],
             }, '', cfg.filter, exclusionText);
             if (!cardCheck.passed) {
+              try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
               this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
               this.log('info', '[初筛淘汰] ' + jobCard.companyName + ' - ' + jobCard.jobName + '：' + cardCheck.reason);
               if (await bossPageService.isCardStillTarget(cardLocator, jobCard.jobName, jobCard.companyName, jobCard.jobHref)
-                && await bossPageService.markJobNotSuit(cardLocator)) this.stats.markedNotSuitCount++;
+                && await bossPageService.markJobNotSuit(cardLocator, jobCard, cardCheck.reason)) this.stats.markedNotSuitCount++;
               this.emit(); continue;
             }
 
@@ -617,7 +633,7 @@ export class DeliveryService {
               if (/登录/.test(message)) throw err;
               this.log('warn', `[跳过] 职位详情无法读取: ${jobCard.companyName} - ${jobCard.jobName}: ${message}`);
               if (!(await bossPageService.isJobListPage())) {
-                await bossPageService.initJobPage(keyword, cfg.filter.cityCode, params.positionCode);
+                await openList(keyword);
                 break;
               }
               continue;
@@ -625,11 +641,6 @@ export class DeliveryService {
 
             if (!(await bossPageService.isDetailStillTarget(jobCard.jobName, jobCard.companyName, jobCard.jobHref))) {
               this.log('warn', `[跳过] 右侧详情与岗位卡片不一致: ${jobCard.companyName} - ${jobCard.jobName}`);
-              continue;
-            }
-
-            if (!detailRes.jobDetailText || detailRes.jobDetailText.length < 20) {
-              this.log('warn', `[跳过] 职位描述不完整: ${jobCard.companyName} - ${jobCard.jobName}`);
               continue;
             }
 
@@ -663,10 +674,11 @@ export class DeliveryService {
             // 阶段一：硬规则过滤
             const stage1 = filterService.evaluateStage1(mockJobItem, detailRes.jobDetailText, cfg.filter, exclusionText);
             if (!stage1.passed) {
+              try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
               this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
               this.log('info', `[初筛淘汰] ${mockJobItem.brandName} - ${jobCard.jobName}: ${stage1.reason}`);
               const marked = await bossPageService.isCardStillTarget(cardLocator, jobCard.jobName, jobCard.companyName, jobCard.jobHref)
-                && await bossPageService.markJobNotSuit(cardLocator);
+                && await bossPageService.markJobNotSuit(cardLocator, jobCard, stage1.reason);
               if (marked) this.stats.markedNotSuitCount++;
               this.emit();
               continue;

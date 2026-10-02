@@ -10,6 +10,7 @@ const base: BossJobItem = { securityId: '', jobId: '', jobName: '行政助理', 
   jobExperience: '1-3年', jobDegree: '大专', cityName: '上海', areaDistrict: '', brandName: '测试公司',
   brandScaleName: '', brandIndustry: '企业服务', bossName: '', bossTitle: '', activeTimeDesc: '今日活跃', skills: [], welfareList: [] };
 const filter = { ...original.filter, experience: ['3-5年'], experienceMatchMode: 'flexible' as 'flexible' | 'strict',
+  skipMissingCompanyIntro: false, skipVagueJobDescription: false,
   companyBlacklist: ['金融', '销售'], requiredKeywords: [], degree: ['本科'], salaryMin: 0, salaryMax: 0, hrActiveDaysLimit: 0,
   workRequirements: [{ id: 'experience', text: '允许无经验入职', enabled: true }] };
 const cases: Array<[string, string, string, ConditionStatus]> = [

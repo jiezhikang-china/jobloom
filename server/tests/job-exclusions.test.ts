@@ -10,6 +10,7 @@ import type { BossJobItem, WorkConditionReview } from '../src/types.js';
 
 const original = configManager.getConfig();
 const filter = { ...original.filter, companyBlacklist: ['金融', '房地产', '销售'], requiredKeywords: [],
+  skipMissingCompanyIntro: false, skipVagueJobDescription: false,
   workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true }],
   salaryMin: 0, salaryMax: 0, degree: [], experience: [], hrActiveDaysLimit: 0 };
 const base: BossJobItem = { securityId: '', jobId: '', jobName: '行政助理', lid: '', salaryDesc: '6-8K',

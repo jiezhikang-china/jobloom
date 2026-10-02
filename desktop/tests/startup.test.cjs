@@ -4,10 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
+const { profileDirectory } = require('../user-profile.cjs');
 
 const entry = path.resolve(__dirname, '..', 'electron-main.cjs');
 const source = fs.readFileSync(entry, 'utf8');
-const health = { app: 'boss-job-agent', integrationVersion: 17, status: 'ok' };
+const health = { app: 'boss-job-agent', integrationVersion: 18, status: 'ok' };
 
 function desktop(options = {}) {
   const windows = [];
@@ -19,9 +20,15 @@ function desktop(options = {}) {
   let removedPort = false;
   const app = new EventEmitter();
   Object.assign(app, {
-    setPath() {},
+    setPath(name, value) { app[name] = value; },
     disableHardwareAcceleration() {},
-    requestSingleInstanceLock: () => options.hasLock !== false,
+    requestSingleInstanceLock() {
+      if (options.locks) {
+        if (options.locks.has(app.userData)) return false;
+        options.locks.add(app.userData);
+      }
+      return options.hasLock !== false;
+    },
     whenReady: () => Promise.resolve(),
     isReady: () => true,
     quit() { app.quitCount = (app.quitCount || 0) + 1; },
@@ -95,6 +102,9 @@ function desktop(options = {}) {
     },
     'node:fs': fakeFs,
     'node:path': path,
+    './user-profile.cjs': {
+      profileDirectory: (dataDir) => profileDirectory(dataDir, options.account || 'S-1-5-21-100-500'),
+    },
     'node:net': {
       createServer() {
         const probe = new EventEmitter();
@@ -260,4 +270,19 @@ test('关闭窗口保留正在投递的后台和端口', async () => {
   assert.equal(run.removedPort(), false);
   assert.equal(run.app.quitCount, 1);
   assert.equal(run.requests.filter((request) => request.method === 'POST').length, 0);
+});
+
+test('Windows 账号分别持有桌面启动锁，不共用测试账号的窗口', async () => {
+  const locks = new Set();
+  const admin = desktop({ account: 'S-1-5-21-100-500', locks });
+  const sandbox = desktop({ account: 'S-1-5-21-100-1001', locks });
+  const adminAgain = desktop({ account: 'S-1-5-21-100-500', locks });
+  await settled();
+  assert.notEqual(admin.app.userData, sandbox.app.userData);
+  assert.equal(admin.app.userData, adminAgain.app.userData);
+  assert.equal(admin.windows[0].visible, true);
+  assert.equal(sandbox.windows[0].visible, true);
+  assert.equal(adminAgain.windows.length, 0, '同账号再次启动仍只恢复已有窗口');
+  assert.equal(adminAgain.app.quitCount, 1);
+  assert.equal(admin.windows[0].url, sandbox.windows[0].url, '桌面目录分开后仍复用原后台配置');
 });

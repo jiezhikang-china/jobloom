@@ -5,6 +5,7 @@ import { AppConfig, BossJobItem, JobFilterResult, WorkRequirementAssessment } fr
 import { checkEducationRequirement, normalizeCandidateDegrees } from './education.js';
 import { assessLocalRequirement, assessWorkRequirements, configuredWorkRequirements, hasEntryLevelRequirement, summarizeWorkRequirements } from './work-requirements.js';
 import { findJobExclusion, unresolvedCompanyBusiness } from './job-exclusions.js';
+import { jobInformationIssue } from './job-information.js';
 
 const EXPERIENCE_TOKENS = ['应届生', '在校/应届', '在校', '应届', '1年以内', '1-3年', '3-5年', '5-10年', '10年以上', '10年及以上'];
 
@@ -43,6 +44,8 @@ export class FilterService {
     exclusionText = ''): { passed: boolean; reason?: string } {
     const exclusion = findJobExclusion({ ...job, jobDetail }, filterCfg, exclusionText);
     if (exclusion) return { passed: false, reason: exclusion.reason };
+    const informationIssue = jobInformationIssue({ ...(jobDetail ? { jobDetail } : {}), companyInfo: job.companyInfo }, filterCfg);
+    if (informationIssue) return { passed: false, reason: informationIssue };
 
     // 1. HR 活跃度：按配置要求的天数阈值判定
     const activeDays = this.resolveActiveDays(job.activeTimeDesc || '');
@@ -155,6 +158,8 @@ export class FilterService {
     filterCfg = configManager.getConfig().filter, exclusionText = ''): Stage2Result | undefined {
     const exclusion = findJobExclusion({ ...job, jobDetail }, filterCfg, exclusionText);
     if (exclusion) return { passed: false, score: 0, reason: exclusion.reason, customGreeting: '', evaluationSource: 'rules' };
+    const informationIssue = jobInformationIssue({ jobDetail, companyInfo: job.companyInfo }, filterCfg);
+    if (informationIssue) return { passed: false, score: 0, reason: informationIssue, customGreeting: '', evaluationSource: 'rules' };
     const required = filterCfg.requiredKeywords || [];
     const searchable = [job.jobName, ...(job.skills || []), jobDetail].join(' ').toLocaleLowerCase();
     if (required.length && !required.some((word) => searchable.includes(word.toLocaleLowerCase()))) {

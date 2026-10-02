@@ -405,6 +405,7 @@ export default function App() {
   const selectedConditions = (config?.filter.workRequirements || []).filter((item) => item.enabled);
   const conditionDescription = selectedConditions.map((item) => item.text).join('、');
   const searchByConditions = deliveryMode === 'manual' && conditionsOnly;
+  const usesSavedExpectations = config?.delivery.jobSource !== 'search';
 
   const handleStartDelivery = async () => {
     setStartMessage('');
@@ -416,7 +417,7 @@ export default function App() {
       setStartMessage('已有投递任务正在运行，请先在运行记录中停止。');
       return;
     }
-    if (!searchByConditions && !selectedPosition) {
+    if (!usesSavedExpectations && !searchByConditions && !selectedPosition) {
       setStartMessage('请从 BOSS 官方分类中选择具体岗位。');
       return;
     }
@@ -424,7 +425,7 @@ export default function App() {
       setStartMessage('请至少选择一项工作条件。');
       return;
     }
-    if (deliveryMode === 'manual' && !searchByConditions && manualRequirements.trim().length < 10) {
+    if (deliveryMode === 'manual' && !searchByConditions && !(usesSavedExpectations && selectedConditions.length) && manualRequirements.trim().length < 10) {
       setStartMessage('请填写至少 10 个字的目标岗位要求。');
       return;
     }
@@ -454,15 +455,15 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          targetRole: searchByConditions ? '符合工作条件的岗位' : selectedRole,
-          positionCode: searchByConditions ? undefined : selectedPosition?.code,
+          targetRole: usesSavedExpectations ? 'BOSS 自选求职期望' : searchByConditions ? '符合工作条件的岗位' : selectedRole,
+          positionCode: usesSavedExpectations || searchByConditions ? undefined : selectedPosition?.code,
           conditionsOnly: searchByConditions,
           keywords: searchKeywords.length || !searchByConditions ? searchKeywords
             : selectedConditions.filter((item) => item.builtin).map((item) => ({ eightHours: '八小时', doubleRest: '双休', noExperience: '经验不限' })[item.builtin!]),
           mode: deliveryMode,
-          resumeText: deliveryMode === 'resume' ? (tailoredResult?.targetRole === selectedRole ? tailoredResult.rewrittenResumeMarkdown : resumeText) : undefined,
+          resumeText: deliveryMode === 'resume' ? (!usesSavedExpectations && tailoredResult?.targetRole === selectedRole ? tailoredResult.rewrittenResumeMarkdown : resumeText) : undefined,
           requirementsText: deliveryMode === 'manual' ? [conditionDescription ? '希望寻找满足以下条件的工作：' + conditionDescription : '', manualRequirements.trim()].filter(Boolean).join('；') : undefined,
-          defaultGreeting: deliveryMode === 'resume' && tailoredResult?.targetRole === selectedRole ? customGreeting : undefined,
+          defaultGreeting: deliveryMode === 'resume' && !usesSavedExpectations && tailoredResult?.targetRole === selectedRole ? customGreeting : undefined,
         }),
       });
       const json = await res.json();
@@ -708,6 +709,17 @@ export default function App() {
                 <span className="optional-tag">无需按步骤完成其他页面</span>
               </div>
 
+              <div className="launch-field">
+                <label htmlFor="boss-job-source">BOSS 职位来源</label>
+                <select id="boss-job-source" value={config?.delivery.jobSource || 'saved_expectations'} disabled={isTaskRunning}
+                  onChange={(event) => config && setConfig({ ...config, delivery: { ...config.delivery,
+                    jobSource: event.target.value === 'search' ? 'search' : 'saved_expectations' } })}>
+                  <option value="saved_expectations">推荐旁的自选求职期望（全部遍历）</option>
+                  <option value="search">按官方分类和关键词搜索</option>
+                </select>
+                <p>{usesSavedExpectations ? '读取你在 BOSS 保存的期望岗位。明确不符合的职位会在右侧详情点“不合适”。' : '按下方分类和搜索词查找职位；平台未提供“不合适”时只记录淘汰。'}</p>
+              </div>
+
               {deliveryMode === 'manual' && (
                 <label className="conditions-only-choice">
                   <input type="checkbox" checked={conditionsOnly} disabled={isTaskRunning}
@@ -719,7 +731,7 @@ export default function App() {
                         setSearchKeywords([]);
                       }
                     }} />
-                  不限岗位，按工作条件找
+                  {usesSavedExpectations ? '只按工作条件筛选自选岗位' : '不限岗位，按工作条件找'}
                 </label>
               )}
 
@@ -736,7 +748,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="launch-field">
-                  <label htmlFor="manual-requirements">{searchByConditions ? '补充要求' : '你的岗位要求'} <span>{searchByConditions ? '可选' : '必填'}</span></label>
+                  <label htmlFor="manual-requirements">{searchByConditions || usesSavedExpectations ? '补充要求' : '你的岗位要求'} <span>{searchByConditions || (usesSavedExpectations && selectedConditions.length) ? '可选' : '必填'}</span></label>
                   <textarea
                     id="manual-requirements"
                     rows={5}
@@ -750,7 +762,7 @@ export default function App() {
 
               <div className="launch-fields-grid">
                 <div className="launch-field wide">
-                  {searchByConditions && config ? (
+                  {(searchByConditions || usesSavedExpectations) && config ? (
                     <>
                       <WorkConditionOptions value={config.filter.workRequirements} disabled={isTaskRunning}
                         onChange={(value) => setConfig({ ...config, filter: { ...config.filter, workRequirements: value } })} />
@@ -764,7 +776,7 @@ export default function App() {
                   ) : <BossPositionPicker catalog={bossPositions} value={selectedPosition} loading={isLoadingPositions} error={positionError} disabled={isTaskRunning} onChange={handlePositionChange} onRefresh={() => fetchBossPositions(true)} />}
                 </div>
                 <div className="launch-field">
-                  <label htmlFor="target-city">搜索城市</label>
+                  <label htmlFor="target-city">{usesSavedExpectations ? '筛选城市' : '搜索城市'}</label>
                   <select
                     id="target-city"
                     value={config?.filter.cityCode || '101010100'}
@@ -786,7 +798,7 @@ export default function App() {
                     <option value="101200100">武汉</option>
                   </select>
                 </div>
-                <div className="launch-field wide">
+                {!usesSavedExpectations && <div className="launch-field wide">
                   <label htmlFor="search-keywords">搜索词 <span>可选</span></label>
                   <input
                     id="search-keywords"
@@ -794,7 +806,7 @@ export default function App() {
                     onChange={(e) => setSearchKeywords(e.target.value.split(/[，,、]/).map((word) => word.trim()).filter(Boolean))}
                     placeholder={searchByConditions ? '可填行政、客服等方向；留空时使用预设搜索词，没有预设则浏览该城市岗位' : '留空则搜索该官方岗位分类下的全部职位；填写后进一步缩小范围'}
                   />
-                </div>
+                </div>}
               </div>
 
               <div className="launch-options">
@@ -1295,6 +1307,20 @@ export default function App() {
                   </div>}
                 </div>
 
+                <div>
+                  <label className="conditions-only-choice">
+                    <input type="checkbox" checked={config.filter.skipMissingCompanyIntro !== false} disabled={isTaskRunning}
+                      onChange={(event) => setConfig({ ...config, filter: { ...config.filter, skipMissingCompanyIntro: event.target.checked } })} />
+                    排除公司页没有公司介绍的岗位
+                  </label>
+                  <label className="conditions-only-choice">
+                    <input type="checkbox" checked={config.filter.skipVagueJobDescription !== false} disabled={isTaskRunning}
+                      onChange={(event) => setConfig({ ...config, filter: { ...config.filter, skipVagueJobDescription: event.target.checked } })} />
+                    排除职责语焉不详的岗位
+                  </label>
+                  <p style={{ fontSize: '12px', color: '#94a3b8' }}>本地先核对职责和公司介绍，再评估其他条件。简短但写明具体工作内容的描述可以继续筛选。</p>
+                </div>
+
                 {/* HR活跃度 */}
                 <div>
                   <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
@@ -1568,7 +1594,7 @@ export default function App() {
               <div>
                 <span style={{ fontSize: '13px', color: '#94a3b8' }}>当前投递职业与检索关键词:</span>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
-                  <strong style={{ fontSize: '18px', color: '#00be68' }}>{searchByConditions ? '按工作条件找岗位' : selectedRole || '未选择'}</strong>
+                  <strong style={{ fontSize: '18px', color: '#00be68' }}>{usesSavedExpectations ? 'BOSS 自选求职期望' : searchByConditions ? '按工作条件找岗位' : selectedRole || '未选择'}</strong>
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
                     {searchKeywords.map((kw, i) => (
                       <span

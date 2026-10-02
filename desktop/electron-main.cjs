@@ -3,6 +3,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
+const { profileDirectory } = require('./user-profile.cjs');
 
 const root = path.resolve(__dirname, '..');
 const dataDir = path.join(root, 'data');
@@ -12,8 +13,10 @@ const clientEntry = path.join(root, 'client', 'dist', 'index.html');
 const portFile = path.join(dataDir, 'desktop-port.json');
 const activeStatuses = new Set(['running', 'paused', 'sage_time', 'cool_down']);
 fs.mkdirSync(dataDir, { recursive: true });
-fs.mkdirSync(path.join(dataDir, 'electron-profile-v2'), { recursive: true });
-app.setPath('userData', path.join(dataDir, 'electron-profile-v2'));
+const userDataDir = profileDirectory(dataDir);
+fs.mkdirSync(userDataDir, { recursive: true });
+// Electron 的实例锁依赖 userData。同一项目下不同 Windows 账号必须使用各自目录。
+app.setPath('userData', userDataDir);
 
 function log(message) {
   try {
@@ -21,7 +24,7 @@ function log(message) {
     fs.appendFileSync(path.join(dataDir, 'desktop-electron.log'), `${new Date().toISOString()} ${message}\n`);
   } catch {}
 }
-log(`main loaded pid=${process.pid}`);
+log(`main loaded pid=${process.pid} desktopProfile=${path.basename(userDataDir)}`);
 process.on('uncaughtException', (error) => log(`uncaughtException: ${error.stack || error}`));
 process.on('unhandledRejection', (error) => log(`unhandledRejection: ${error?.stack || error}`));
 
@@ -61,7 +64,7 @@ async function readJson(url, timeout = 1500) {
 async function isOurService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
-    return health.app === 'boss-job-agent' && health.integrationVersion === 17 && health.status === 'ok';
+    return health.app === 'boss-job-agent' && health.integrationVersion === 18 && health.status === 'ok';
   } catch {
     return false;
   }

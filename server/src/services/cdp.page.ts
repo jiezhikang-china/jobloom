@@ -1,7 +1,7 @@
 const WebSocket = require('ws') as any;
 
 type CommandResult = { result?: any; error?: { message: string } };
-type LocatorStep = { selector: string; position?: 'first' | 'last'; hasSelector?: string };
+type LocatorStep = { selector: string; position?: 'first' | 'last' | number; hasSelector?: string; visible?: boolean };
 type DocumentLifecycle = { frameId: string; loaderId: string; committedAt?: number; events: Set<string> };
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -100,8 +100,10 @@ function resolveElements(steps: LocatorStep[]): Element[] {
     }
     found = [...new Set(found)];
     if (step.hasSelector) found = found.filter((element) => !!element.querySelector(step.hasSelector!));
+    if (step.visible !== undefined) found = found.filter((element) => Boolean((element as HTMLElement).getClientRects().length) === step.visible);
     if (step.position === 'first') found = found.slice(0, 1);
     if (step.position === 'last') found = found.slice(-1);
+    if (typeof step.position === 'number') found = found.slice(step.position, step.position + 1);
     roots = found;
   }
   return roots as Element[];
@@ -244,9 +246,14 @@ export class CdpLocator {
   locator(selector: string): CdpLocator { return new CdpLocator(this.owner, [...this.steps, { selector }]); }
   first(): CdpLocator { return new CdpLocator(this.owner, [...this.steps.slice(0, -1), { ...this.steps.at(-1)!, position: 'first' }]); }
   last(): CdpLocator { return new CdpLocator(this.owner, [...this.steps.slice(0, -1), { ...this.steps.at(-1)!, position: 'last' }]); }
-  filter(options: { has: CdpLocator }): CdpLocator {
-    const selector = options.has.steps.at(-1)?.selector || '';
-    return new CdpLocator(this.owner, [...this.steps.slice(0, -1), { ...this.steps.at(-1)!, hasSelector: selector }]);
+  nth(index: number): CdpLocator {
+    if (!Number.isInteger(index) || index < 0) throw new Error('页面元素序号无效');
+    return new CdpLocator(this.owner, [...this.steps.slice(0, -1), { ...this.steps.at(-1)!, position: index }]);
+  }
+  filter(options: { has?: CdpLocator; visible?: boolean }): CdpLocator {
+    const selector = options.has?.steps.at(-1)?.selector;
+    return new CdpLocator(this.owner, [...this.steps.slice(0, -1), { ...this.steps.at(-1)!,
+      ...(selector ? { hasSelector: selector } : {}), ...(options.visible !== undefined ? { visible: options.visible } : {}) }]);
   }
   async evaluate<T>(fn: (element: Element) => T): Promise<T> {
     return this.owner.elements(this.steps, fn, undefined, true);
@@ -278,11 +285,11 @@ export class CdpLocator {
   }
   async inputValue(): Promise<string> { return this.evaluate((element) => (element as HTMLInputElement).value); }
   async scrollIntoViewIfNeeded(): Promise<void> {
-    await this.evaluate((element) => { element.scrollIntoView({ block: 'center', inline: 'center' }); return true; });
+    await this.evaluate((element) => { element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }); return true; });
   }
   private async point(): Promise<{ x: number; y: number }> {
     return this.evaluate((element) => {
-      element.scrollIntoView({ block: 'center', inline: 'center' });
+      element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
       const rect = element.getBoundingClientRect();
       if (!rect.width || !rect.height) throw new Error('元素不可见');
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -300,10 +307,11 @@ export class CdpLocator {
   }
   async fill(value: string): Promise<void> {
     await this.click();
-    await this.owner.input('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Control', code: 'ControlLeft', windowsVirtualKeyCode: 17, modifiers: 2 });
-    await this.owner.input('Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 2 });
-    await this.owner.input('Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 2 });
-    await this.owner.input('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Control', code: 'ControlLeft', windowsVirtualKeyCode: 17 });
+    await this.evaluate((element) => {
+      if (!(element instanceof HTMLInputElement) && !(element instanceof HTMLTextAreaElement)) throw new Error('当前元素不是文本输入框');
+      element.focus(); element.select(); return true;
+    });
     await this.owner.input('Input.insertText', { text: value });
+    if (await this.inputValue() !== value) throw new Error('页面输入未成功，已停止确认操作');
   }
 }

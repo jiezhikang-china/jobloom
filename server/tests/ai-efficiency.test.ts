@@ -15,6 +15,7 @@ const originalConfig = configManager.getConfig();
 const config = { ...originalConfig, llm: { ...originalConfig.llm, connectionMode: 'deepseek-web' as const,
   jobBatchSize: 5, minRequestIntervalSeconds: 30, thinking: 'disabled' as const, webSearch: false },
   filter: { ...originalConfig.filter, workRequirements: [] as WorkRequirement[], requiredKeywords: [],
+    skipMissingCompanyIntro: false, skipVagueJobDescription: false,
     companyBlacklist: [], degree: ['本科'], experience: [], salaryMin: 0, salaryMax: 0, hrActiveDaysLimit: 0, minLlmMatchScore: 75 } };
 const job: BossJobItem = { securityId: '', jobId: '', jobName: '行政助理', lid: '', salaryDesc: '4-6K',
   jobExperience: '经验不限', jobDegree: '大专', cityName: '上海', areaDistrict: '', brandName: '模拟公司',

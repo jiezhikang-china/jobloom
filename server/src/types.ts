@@ -25,6 +25,8 @@ export interface AppConfig {
     salaryMax?: number;
     experience: string[]; // ['应届生', '1-3年', '3-5年', '5-10年']
     experienceMatchMode?: 'flexible' | 'strict'; // 默认宽泛，经验标签仅供参考；严格模式使用标签范围
+    skipMissingCompanyIntro?: boolean;
+    skipVagueJobDescription?: boolean;
     degree: string[]; // 用户最高学历，0 或 1 项；空数组不限制，岗位按最低门槛比较
     hrActiveDaysLimit: number; // 3天内活跃为 3；<=0 表示不限制
     companyBlacklist: string[]; // 公司、行业、岗位与明确业务职责的排除词
@@ -35,6 +37,7 @@ export interface AppConfig {
     workConditions?: WorkConditions;
   };
   delivery: {
+    jobSource?: 'saved_expectations' | 'search';
     dailyMaxQuota: number; // 每日最大投递数，0~150；0 表示停止自动投递
     minDelaySeconds: number; // 最小等待秒数，默认 8
     maxDelaySeconds: number; // 最大等待秒数，默认 20

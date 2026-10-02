@@ -3,13 +3,17 @@ import express from 'express';
 import { apiRouter } from '../src/routes/api.router.js';
 import { browserService } from '../src/services/browser.service.js';
 import { deliveryService } from '../src/services/delivery.service.js';
+import { configManager } from '../src/config/config.manager.js';
 
 const originalLogin = browserService.checkLoginStatus;
 const originalVerify = browserService.verifyLogin;
 const originalActive = deliveryService.isActive;
 const originalStart = deliveryService.startDelivery;
+const originalGetConfig = configManager.getConfig;
+const originalConfig = configManager.getConfig();
 
 async function main(): Promise<void> {
+  configManager.getConfig = () => ({ ...originalConfig, delivery: { ...originalConfig.delivery, jobSource: 'search' } });
   const app = express();
   app.use(express.json());
   app.use('/api', apiRouter);
@@ -72,6 +76,7 @@ async function main(): Promise<void> {
     assert.equal(calls[4].candidateSource, 'requirements');
     process.stdout.write('PASS | 简历、手动和按工作条件投递入口与登录故障区分\n');
   } finally {
+    configManager.getConfig = originalGetConfig;
     (browserService as any).checkLoginStatus = originalLogin;
     (browserService as any).verifyLogin = originalVerify;
     (deliveryService as any).isActive = originalActive;

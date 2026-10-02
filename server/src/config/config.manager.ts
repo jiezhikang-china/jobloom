@@ -54,6 +54,8 @@ const DEFAULT_CONFIG: AppConfig = {
     salaryMax: 40,
     experience: [],
     experienceMatchMode: 'flexible',
+    skipMissingCompanyIntro: true,
+    skipVagueJobDescription: true,
     degree: ['本科'],
     hrActiveDaysLimit: 3,
     companyBlacklist: [
@@ -65,6 +67,7 @@ const DEFAULT_CONFIG: AppConfig = {
     workRequirements: [],
   },
   delivery: {
+    jobSource: 'saved_expectations',
     dailyMaxQuota: 80,
     minDelaySeconds: 8,
     maxDelaySeconds: 18,
@@ -116,6 +119,8 @@ export class ConfigManager {
       filter: {
         ...filter,
         experienceMatchMode: filter.experienceMatchMode === 'strict' ? 'strict' : 'flexible',
+        skipMissingCompanyIntro: filter.skipMissingCompanyIntro !== false,
+        skipVagueJobDescription: filter.skipVagueJobDescription !== false,
         degree: normalizeCandidateDegrees(cfg.filter?.degree),
         companyBlacklist: this.splitKeywords(cfg.filter?.companyBlacklist),
         requiredKeywords: this.splitKeywords(cfg.filter?.requiredKeywords),
@@ -123,6 +128,7 @@ export class ConfigManager {
       },
       delivery: {
         ...cfg.delivery,
+        jobSource: cfg.delivery?.jobSource === 'search' ? 'search' : 'saved_expectations',
         dailyMaxQuota: Number.isFinite(quota) ? Math.max(0, Math.min(150, Math.trunc(quota))) : DEFAULT_CONFIG.delivery.dailyMaxQuota,
       },
     };

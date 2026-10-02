@@ -1,6 +1,7 @@
 import { type CdpLocator, type CdpPage } from './cdp.page.js';
 import { browserService, isSecurityUrl } from './browser.service.js';
 import type { AppConfig, BossCompanyInfo } from '../types.js';
+import { jobInformationIssue } from './job-information.js';
 import { findJobExclusion } from './job-exclusions.js';
 
 const ORIGIN = 'https://www.zhipin.com';
@@ -145,9 +146,28 @@ export class BossPageService {
     }
   }
 
-  public async initJobPage(keyword?: string, cityCode?: string, positionCode?: string): Promise<CdpPage> {
+  public async getSavedExpectationNames(): Promise<string[]> {
     const page = await browserService.getWorkerPage();
-    await page.goto(searchUrl(keyword, cityCode, positionCode), { timeout: 30000, waitUntil: 'domcontentloaded' });
+    const current = new URL(typeof page.refreshUrl === 'function' ? await page.refreshUrl() : page.url());
+    if (current.searchParams.has('query') || current.searchParams.has('position') || !(await this.isJobListPage())) await this.initJobPage();
+    await this.ensureLoggedIn(page);
+    const names = await page.locator('.c-expect-select .expect-list .expect-item').evaluateAll((elements) =>
+      elements.filter((item) => (item as HTMLElement).getClientRects().length > 0)
+        .map((item) => (item as HTMLElement).innerText.trim()).filter(Boolean));
+    if (!names.length) throw new Error('未读取到 BOSS 自选求职期望，请先在 BOSS「推荐」旁边设置期望岗位。');
+    return [...new Set(names)];
+  }
+
+  public async initJobPage(keyword?: string, cityCode?: string, positionCode?: string,
+    options: { expectationName?: string } = {}): Promise<CdpPage> {
+    const page = await browserService.getWorkerPage();
+    const current = new URL(typeof page.refreshUrl === 'function' ? await page.refreshUrl() : page.url());
+    const reuseSavedList = options.expectationName && current.hostname === 'www.zhipin.com'
+      && current.pathname === '/web/geek/jobs' && !current.searchParams.has('query') && !current.searchParams.has('position')
+      && await this.isJobListPage();
+    if (!reuseSavedList) await page.goto(searchUrl(options.expectationName ? undefined : keyword,
+      options.expectationName ? undefined : cityCode, options.expectationName ? undefined : positionCode),
+      { timeout: 30000, waitUntil: 'domcontentloaded' });
     const deadline = Date.now() + this.pageReadyTimeoutMs;
     let state = await this.inspectPage(page);
     while ((state.kind === 'loading' || state.kind === 'other') && Date.now() < deadline) {
@@ -159,6 +179,29 @@ export class BossPageService {
       throw new Error(`职位页加载超时：${this.pageReadyTimeoutMs / 1000} 秒内未出现职位卡片或无结果提示；${state.reason}（${state.url}）`);
     }
     await this.ensureLoggedIn(page);
+    if (options.expectationName) {
+      const names = await this.getSavedExpectationNames();
+      const index = names.indexOf(options.expectationName);
+      if (index < 0) throw new Error('BOSS 自选期望已变化，请重新开始：' + options.expectationName);
+      const tab = page.locator('.c-expect-select .expect-list .expect-item').filter({ visible: true }).nth(index);
+      if ((await tab.innerText()).trim() !== options.expectationName) throw new Error('BOSS 自选岗位顺序已变化');
+      const before = await page.evaluate(() => ({
+        selected: (document.querySelector('.expect-item.active') as HTMLElement | null)?.innerText.trim() || '',
+        jobs: [...document.querySelectorAll('li.job-card-box a.job-name')].map((item) => item.getAttribute('href')).join('|'),
+      }));
+      if (before.selected !== options.expectationName) {
+        await tab.click();
+        await page.waitForFunction(({ name, previousJobs }) => {
+          const selected = (document.querySelector('.expect-item.active') as HTMLElement | null)?.innerText.trim();
+          const jobs = [...document.querySelectorAll('li.job-card-box a.job-name')].map((item) => item.getAttribute('href')).join('|');
+          const empty = [...document.querySelectorAll('.search-empty, .job-list-empty, [class*="empty-result"]')]
+            .some((item) => (item as HTMLElement).getClientRects().length && /暂无|没有|无相关|未找到/.test(item.textContent || ''));
+          return selected === name && ((!!jobs && jobs !== previousJobs) || empty);
+        }, { name: options.expectationName, previousJobs: before.jobs }, { timeout: this.pageReadyTimeoutMs });
+      }
+      await this.ensureLoggedIn(page);
+      return page;
+    }
     const actualUrl = typeof page.refreshUrl === 'function' ? await page.refreshUrl() : page.url();
     if (positionCode && new URL(actualUrl).searchParams.get('position') !== positionCode) {
       throw new Error('BOSS 岗位分类未生效，请重新选择岗位后启动');
@@ -241,7 +284,7 @@ export class BossPageService {
       text: (element as HTMLElement).innerText,
       description: (element.querySelector('.job-detail-body p.desc') as HTMLElement | null)?.innerText?.trim() || '',
     })).catch(() => null);
-    if (!detail || detail.name !== jobName || detail.description.length < 20) return false;
+    if (!detail || detail.name !== jobName) return false;
     if (href) return !!detail.href && pathOf(detail.href, page.url()) === pathOf(href, page.url());
     return !!companyName && detail.text.includes(companyName);
   }
@@ -269,10 +312,11 @@ export class BossPageService {
             introduction: (section?.querySelector('.text, .job-sec-text') as HTMLElement | null)?.innerText?.trim() || '',
             businessScope: (scope as HTMLElement | undefined)?.innerText?.trim().replace(/^经营范围\s*[：:]\s*/, '') || '',
             hasIntroduction: Boolean(section),
+            profileReady: document.readyState === 'complete' && Boolean(document.querySelector('.company-info-box, .company-business')),
             verifying: /请完成安全验证|请进行安全验证/.test(document.body?.innerText || '') };
         });
         if (data.verifying) throw new Error('CAPTCHA_REQUIRED: 公司页需要安全验证');
-        if (data.name && data.industry && (data.hasIntroduction || data.businessScope)) {
+        if (data.name && data.industry && (data.hasIntroduction || data.businessScope || data.profileReady)) {
           if (data.path !== url.pathname || !sameCompany(data.name, companyName)) throw new Error('公司页身份与所选岗位所属公司不一致');
           const info: BossCompanyInfo = { url: url.href, name: data.name, industry: data.industry,
             introduction: data.introduction, businessScope: data.businessScope, checkedAt: new Date().toISOString() };
@@ -347,17 +391,25 @@ export class BossPageService {
     if (!(await this.isDetailStillTarget(jobName, companyName, href))) throw new Error('右侧详情与所选职位链接不一致');
     const detail = page.locator(DETAIL).first();
     let jobDetailText = (await detail.locator(DESCRIPTION).innerText()).trim();
-    if (jobDetailText.length < 20) throw new Error('职位描述不可读，已停止当前岗位');
     const recruiterText = await detail.locator('.job-boss-info').first().innerText({ timeout: 500 }).catch(() => '');
     const activeTimeDesc = recruiterText.match(/刚刚活跃|今日活跃|今天活跃|在线|\d+\s*日内活跃|\d+\s*周内活跃|本周活跃|本月活跃/)?.[0] || '';
     let brandIndustry = (await detail.locator('a[ka="job-detail-brandindustry"]').first().innerText({ timeout: 200 }).catch(() => '')).trim();
     let companyInfo: BossCompanyInfo | undefined;
-    if (options.readIndustry) {
+    const rejectEarly = options.filter && (findJobExclusion({ jobName, brandName: companyName, brandIndustry,
+      jobDetail: jobDetailText }, options.filter, options.exclusionText) || jobInformationIssue({ jobDetail: jobDetailText }, options.filter));
+    if (options.readIndustry && !rejectEarly) {
       if (!href) throw new Error('缺少岗位链接，无法核对公司行业');
-      const fullPage = await this.readJobCompanyInfo(href, jobName, companyName, options);
-      brandIndustry = fullPage.brandIndustry;
-      jobDetailText = fullPage.jobDetailText;
-      companyInfo = fullPage.companyInfo;
+      const companyHref = await card.locator('a.boss-info[href*="/gongsi/"]').first()
+        .evaluate((element) => element.getAttribute('href')).catch(() => null);
+      if (companyHref) {
+        companyInfo = await this.readCompanyInfo(companyHref, companyName, options.refreshCompany);
+        brandIndustry = companyInfo.industry;
+      } else {
+        const fullPage = await this.readJobCompanyInfo(href, jobName, companyName, options);
+        brandIndustry = fullPage.brandIndustry;
+        jobDetailText = fullPage.jobDetailText;
+        companyInfo = fullPage.companyInfo;
+      }
     }
     const button = page.locator(CHAT).first();
     const visible = await button.isVisible({ timeout: 800 }).catch(() => false);
@@ -371,17 +423,82 @@ export class BossPageService {
     return state.kind === 'jobs' || state.kind === 'empty';
   }
 
-  /** 仅对真实出现的“不合适”控件执行操作。 */
-  public async markJobNotSuit(card: CdpLocator): Promise<boolean> {
+  /** BOSS 自选期望中的“不合适”位于右侧详情；点击前再次核对岗位链接。 */
+  public async markJobNotSuit(card: CdpLocator, target: { jobName: string; companyName: string; jobHref: string },
+    reason = '该职位不符合当前求职条件'): Promise<boolean> {
     const page = card.page();
-    await card.hover().catch(() => {});
-    const button = card.locator('[ka*="not_match"]').first();
-    if (!(await button.isVisible({ timeout: 500 }).catch(() => false))) return false;
+    const dialog = page.locator('.zp-feedback-dialog').filter({ visible: true }).first();
+    if (await dialog.isVisible()) return false;
+    if (!(await this.isCardStillTarget(card, target.jobName, target.companyName, target.jobHref))) return false;
+    if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) {
+      await card.click();
+      const deadline = Date.now() + 6000;
+      while (Date.now() < deadline && !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) {
+        this.throwIfUnavailable(await this.inspectPage(page));
+        await pause(200);
+      }
+    }
+    const button = page.locator('.job-detail-box .job-detail-operate .not-suitable').first();
+    if (!(await button.isVisible({ timeout: 300 }).catch(() => false))
+      || !(await this.isCardStillTarget(card, target.jobName, target.companyName, target.jobHref))
+      || !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) return false;
+    const previousMessage = await page.locator('.zp-toast').filter({ visible: true }).first().innerText({ timeout: 100 }).catch(() => '');
+    if (/已进行反馈|反馈成功/.test(previousMessage)) {
+      const cleared = await page.waitForFunction(() => ![...document.querySelectorAll('.zp-toast')]
+        .some((item) => (item as HTMLElement).getClientRects().length && /已进行反馈|反馈成功/.test(item.textContent || '')),
+      null, { timeout: 3000 }).then(() => true).catch(() => false);
+      if (!cleared || !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) return false;
+    }
+    const before = await page.evaluate(() => [...document.querySelectorAll('.toast-content, .toast, .message-content, .zp-toast')]
+      .filter((item) => (item as HTMLElement).getClientRects().length).map((item) => item.textContent?.trim()).join('|'));
+    const selected = await page.locator('.expect-item.active').first().innerText({ timeout: 200 }).catch(() => '');
     await button.click();
-    const confirm = page.locator('.dialog-wrap button:has-text("确定"), .dialog-wrap button:has-text("确认")').first();
-    if (await confirm.isVisible({ timeout: 500 }).catch(() => false)) await confirm.click();
-    const feedback = await page.locator('.toast-content, .toast').first().innerText({ timeout: 1200 }).catch(() => '');
-    return /已标记|不再推荐|减少推荐|操作成功/.test(feedback);
+    const deadline = Date.now() + 4500;
+    let confirmed = false;
+    while (Date.now() < deadline) {
+      const feedback = await page.evaluate(({ href, oldFeedback, selectedName }) => {
+        const visible = (item: Element) => (item as HTMLElement).getClientRects().length > 0;
+        const messages = [...document.querySelectorAll('.toast-content, .toast, .message-content, .zp-toast')]
+          .filter(visible).map((item) => item.textContent?.trim()).join('|');
+        const targetRemains = [...document.querySelectorAll('li.job-card-box a.job-name')]
+          .some((item) => item.getAttribute('href') === href);
+        const sameList = location.pathname === '/web/geek/jobs'
+          && ((document.querySelector('.expect-item.active') as HTMLElement | null)?.innerText || '') === selectedName;
+        const dialog = [...document.querySelectorAll('.zp-feedback-dialog')].find(visible);
+        return { targetRemains, sameList, success: messages !== oldFeedback && /已标记|不再推荐|减少推荐|操作成功|反馈成功|已进行反馈|感谢.{0,8}反馈/.test(messages),
+          failed: messages !== oldFeedback && /失败|频繁|稍后|上限|提交内容为空/.test(messages), needsConfirmation: Boolean(dialog && visible(dialog)) };
+      }, { href: target.jobHref, oldFeedback: before, selectedName: selected });
+      if (feedback.failed) break;
+      if (confirmed && feedback.sameList && (feedback.success || !feedback.targetRemains)) {
+        await page.waitForFunction(() => ![...document.querySelectorAll('.zp-feedback-dialog')]
+          .some((item) => (item as HTMLElement).getClientRects().length > 0), null, { timeout: 2000 }).catch(() => {});
+        return true;
+      }
+      if (feedback.needsConfirmation && !confirmed) {
+        const title = (await dialog.locator('.zp-title').innerText({ timeout: 200 }).catch(() => '')).trim();
+        if (title !== '选择原因，减少不合适职位推荐') return false;
+        const confirm = dialog.locator('[ka="dialog_sure"].zp-btn-sure').first();
+        if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))
+          || !(await this.isCardStillTarget(card, target.jobName, target.companyName, target.jobHref))
+          || !(await confirm.isVisible())) return false;
+        if (/公司页|公司介绍|公司经营|公司行业|公司名称/.test(reason)) {
+          const options = await dialog.locator('.zp-type-item').evaluateAll((items) => items.map((item) => item.textContent?.trim() || ''));
+          const companyIndex = options.findIndex((label) => label.includes(target.companyName) && /公司$/.test(label));
+          if (companyIndex >= 0) await dialog.locator('.zp-type-item').nth(companyIndex).click();
+        }
+        const comment = dialog.locator('textarea.zp-type-textarea').first();
+        if (!(await comment.isVisible())) return false;
+        await comment.fill(reason.trim().slice(0, 50) || '该职位不符合当前求职条件');
+        if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) return false;
+        await confirm.click();
+        confirmed = true;
+      }
+      await pause(200);
+    }
+    if (await dialog.isVisible() && (await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) {
+      await dialog.locator('[ka="dialog_cancel"]').first().click().catch(() => {});
+    }
+    return false;
   }
 
   private async chatInterruption(page: CdpPage): Promise<ChatResult | null> {

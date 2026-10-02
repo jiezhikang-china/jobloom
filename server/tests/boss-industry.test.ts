@@ -84,6 +84,19 @@ async function main() {
       companyInfo: companyDetail.companyInfo }, exclusions)?.field, '公司介绍', '助贷公司行业写商务服务，也须按公司页实际业务排除');
     profileName = '不相关公司';
     await assert.rejects(new BossPageService().readCompanyInfo('/gongsi/example-company.html', fullCompany), /公司页身份/);
+    profileName = '深圳信银'; companyIntroduction = ''; companyIndustry = '企业服务';
+    await page.evaluate(() => {
+      const link = document.createElement('a'); link.className = 'boss-info'; link.href = '/gongsi/direct-company.html';
+      document.querySelector('.job-card-box')!.appendChild(link);
+    });
+    const directService = new BossPageService();
+    const oldInspection = browserService.withJobInspection;
+    (browserService as any).withJobInspection = async () => { throw new Error('卡片已有公司链接，不应再打开完整职位页'); };
+    const direct = await directService.loadJobDetail(card as any, '客户经理', '深圳信银', href,
+      { readIndustry: true, filter: { ...exclusions, companyBlacklist: [], skipMissingCompanyIntro: true } });
+    assert.equal(direct.companyInfo?.introduction, '', '已加载但没有介绍的公司页应返回明确的空简介');
+    assert.equal(direct.companyInfo?.name, '深圳信银');
+    browserService.withJobInspection = oldInspection;
     console.log('PASS | 完整职位页行业/隐藏干扰文字、公司页简介/经营范围/身份、助贷识别、排除推荐区域、公司信息复用、保持投递页、缺失信息不放行');
   } finally {
     browserService.getWorkerPage = getWorker; browserService.withJobInspection = inspection;

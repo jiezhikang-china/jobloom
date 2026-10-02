@@ -51,6 +51,14 @@ apiRouter.get('/config', (_req: Request, res: Response) => {
 });
 
 apiRouter.post('/config', (req: Request, res: Response) => {
+  for (const key of ['skipMissingCompanyIntro', 'skipVagueJobDescription']) {
+    if (req.body?.filter?.[key] !== undefined && typeof req.body.filter[key] !== 'boolean') {
+      return res.status(400).json({ success: false, message: '资料筛选选项必须为开启或关闭。' });
+    }
+  }
+  if (req.body?.delivery?.jobSource !== undefined && !['saved_expectations', 'search'].includes(req.body.delivery.jobSource)) {
+    return res.status(400).json({ success: false, message: '请选择 BOSS 自选期望或搜索岗位。' });
+  }
   const experienceMode = req.body?.filter?.experienceMatchMode;
   if (experienceMode !== undefined && !['flexible', 'strict'].includes(experienceMode)) {
     return res.status(400).json({ success: false, message: '经验筛选方式无效，请选择宽泛或严格。' });
@@ -230,15 +238,17 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
     const positionCode = typeof req.body?.positionCode === 'string' ? req.body.positionCode.trim() : '';
     const mode = req.body?.mode === 'manual' ? 'manual' : 'resume';
     const conditionsOnly = req.body?.conditionsOnly === true && mode === 'manual';
+    const useSavedExpectations = configManager.getConfig().delivery.jobSource === 'saved_expectations';
     const candidateText = mode === 'manual' ? requirementsText : resumeText;
     const keywordList: string[] = Array.isArray(keywords)
       ? keywords.map((k: unknown) => String(k ?? '').trim()).filter(Boolean)
       : [];
 
+    if (!targetRole && useSavedExpectations) targetRole = 'BOSS 自选求职期望';
     if (!targetRole || typeof targetRole !== 'string') {
       return res.status(400).json({ success: false, message: '请指定目标职业' });
     }
-    if (positionCode) {
+    if (positionCode && !useSavedExpectations) {
       const position = await bossCatalogService.findPosition(positionCode);
       if (!position) return res.status(400).json({ success: false, message: '所选岗位不在 BOSS 官方分类中，请重新选择' });
       targetRole = position.name;
@@ -261,17 +271,19 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
       return res.status(409).json({ success: false, message: '投递任务已在运行中，请先停止当前任务' });
     }
 
+    if (useSavedExpectations) await bossPageService.getSavedExpectationNames();
+
     // 异步执行投递任务，不阻塞 HTTP 响应；必须接管 promise，否则一次异常会带走整个进程
     deliveryService
       .startDelivery({
         targetRole,
-        positionCode: positionCode || undefined,
+        positionCode: useSavedExpectations ? undefined : positionCode || undefined,
         keywords: keywordList,
         resumeText: candidateText.trim(),
         defaultGreeting: typeof defaultGreeting === 'string' ? defaultGreeting : undefined,
         candidateSource: mode === 'manual' ? 'requirements' : 'resume',
         // Extra free-text requirements still need semantic matching.
-        rulesOnly: conditionsOnly && candidateText.trim() === '希望寻找满足以下条件的工作：'
+        rulesOnly: (conditionsOnly || useSavedExpectations) && candidateText.trim() === '希望寻找满足以下条件的工作：'
           + configuredWorkRequirements(configManager.getConfig().filter).map((item) => item.text).join('、'),
       })
       .catch((err: unknown) => {

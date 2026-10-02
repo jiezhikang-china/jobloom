@@ -28,7 +28,7 @@
 ## 尚未在线验证的动作
 
 - 没有向真实招聘者发送消息；沟通浮层、发送后状态和频控反馈只通过本地模拟页面测试。结果不明时任务会停止，避免重复发送。
-- 已登录卡片未出现可验证的“不合适”控件；程序只在实际出现该控件且有反馈时才计标记成功。
+- 自选期望的“不合适”反馈已于 2026-10-02 完成在线验证，见下方补充。
 
 BOSS 接入层现由 `server/src/services/browser.service.ts`（会话）、`server/src/services/cdp.page.ts`（页面连接）和 `server/src/services/boss.page.service.ts`（DOM 与交互）组成。旧的页面内接口调用和旧 DOM 驱动已移除。
 
@@ -43,3 +43,13 @@ BOSS 接入层现由 `server/src/services/browser.service.ts`（会话）、`ser
 - 公司页行业位于 `.company-banner a[href^="/i"]`；简介是 `.company-info-box .job-sec` 中标题为“公司简介”的 `.text`，经营范围是 `.company-business .business-detail li` 中“经营范围”一项。部分公司没有简介区块，但有工商经营范围，需如实保留缺失状态。
 - 行业标签、简介和经营范围分别保存。普通公司的经营范围可能有“非居住房地产租赁”“互联网销售”等，不能仅靠这些许可项把公司或普通岗位判为房地产、销售。
 - 行业与业务核对在独立后台页完成，沿用原 Chrome 会话。正常读取后关闭核对页；遇到登录或安全验证时保留并显示该页。扫码页和投递页保持各自身份。
+
+## 自选期望与“不合适”反馈（2026-10-02）
+
+- 「推荐」旁自选期望是 `.c-expect-select .expect-list .expect-item`，当前选中项为 `.expect-item.active`。数量和名称直接读取可见 DOM，切换后等待该期望选中且列表变化。自选期望在原职位页切换，不附加搜索关键词或岗位分类。
+- `.job-detail-box .job-detail-operate .not-suitable` 是右侧详情的“不合适”，并非卡片上的控件。
+- 点击后出现 `.zp-feedback-dialog`，标题为“选择原因，减少不合适职位推荐”。页面会保留隐藏副本，必须定位可见弹窗。
+- 反馈选项在 `.zp-type-item`；其他反馈为 `textarea.zp-type-textarea`，最多 50 字。确定按钮是 `[ka="dialog_sure"].zp-btn-sure`，取消是 `[ka="dialog_cancel"]`。
+- 实测填写淘汰原因并确认后，`.zp-toast` 显示“已进行反馈”，内含 `.zp-toast-icon-success`。卡片不一定立即移除。没有内容会提示“提交内容为空”，不能计成功。
+- 读取、打开详情和反馈前均核对岗位名、公司名和链接。此次提交了缺失公司介绍岗位的反馈，没有向招聘者发送消息。
+- 卡片的 `a.boss-info[href*="/gongsi/"]` 可直达公司资料页，优先使用可省去完整职位页的一次打开。公司页已加载但没有介绍时返回空简介。

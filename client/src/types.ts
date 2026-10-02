@@ -19,6 +19,8 @@ export interface AppConfig {
     salaryMax?: number;
     experience: string[];
     experienceMatchMode?: 'flexible' | 'strict';
+    skipMissingCompanyIntro?: boolean;
+    skipVagueJobDescription?: boolean;
     degree: string[]; // 用户最高学历，0 或 1 项
     hrActiveDaysLimit: number;
     companyBlacklist: string[];
@@ -27,6 +29,7 @@ export interface AppConfig {
     workRequirements?: WorkRequirement[];
   };
   delivery: {
+    jobSource?: 'saved_expectations' | 'search';
     dailyMaxQuota: number;
     minDelaySeconds: number;
     maxDelaySeconds: number;
