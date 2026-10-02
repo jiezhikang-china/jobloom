@@ -3,6 +3,7 @@ import { browserService, isSecurityUrl } from './browser.service.js';
 import type { AppConfig, BossCompanyInfo } from '../types.js';
 import { jobInformationIssue } from './job-information.js';
 import { findJobExclusion } from './job-exclusions.js';
+import { decodeBossText, readableBossSalary } from './boss-text.js';
 
 const ORIGIN = 'https://www.zhipin.com';
 const CARD = 'ul.rec-job-list li.job-card-box';
@@ -60,7 +61,7 @@ function pathOf(href: string, base: string): string {
   try { return new URL(href, base).pathname; } catch { return ''; }
 }
 
-const normalizedName = (text: string) => text.normalize('NFKC').replace(/\s+/g, '');
+const normalizedName = (text: string) => decodeBossText(text).normalize('NFKC').replace(/\s+/g, '');
 function sameCompany(actual: string, expected: string): boolean {
   const prefix = normalizedName(expected).replace(/(?:\.{3}|…+)$/, '');
   return normalizedName(actual) === normalizedName(expected)
@@ -236,7 +237,9 @@ export class BossPageService {
       };
     }).filter((item) => item !== null));
     const result: DOMJobCardInfo[] = [];
-    for (const row of rows) {
+    for (const raw of rows) {
+      const row = { ...raw, name: decodeBossText(raw.name), company: decodeBossText(raw.company),
+        location: decodeBossText(raw.location), salary: readableBossSalary(raw.salary), tags: raw.tags.map(decodeBossText) };
       if (!row.href || !row.name || !row.company) throw new Error(`第 ${row.index + 1} 张职位卡片缺少链接、职位名或公司名`);
       const href = new URL(row.href, page.url());
       if (href.hostname !== 'www.zhipin.com' || !href.pathname.startsWith('/job_detail/')) {
@@ -264,7 +267,7 @@ export class BossPageService {
       name: element.querySelector('a.job-name')?.textContent?.trim() || '',
       company: element.querySelector('.job-card-footer .boss-name')?.textContent?.trim() || '',
     })).catch(() => null);
-    return !!data && data.href === href && data.name === jobName && data.company === companyName;
+    return !!data && data.href === href && decodeBossText(data.name) === jobName && decodeBossText(data.company) === companyName;
   }
 
   public async relocateCard(href: string, jobName: string, companyName: string): Promise<CdpLocator | null> {
@@ -284,7 +287,7 @@ export class BossPageService {
       text: (element as HTMLElement).innerText,
       description: (element.querySelector('.job-detail-body p.desc') as HTMLElement | null)?.innerText?.trim() || '',
     })).catch(() => null);
-    if (!detail || detail.name !== jobName) return false;
+    if (!detail || decodeBossText(detail.name) !== jobName) return false;
     if (href) return !!detail.href && pathOf(detail.href, page.url()) === pathOf(href, page.url());
     return !!companyName && detail.text.includes(companyName);
   }
@@ -318,8 +321,8 @@ export class BossPageService {
         if (data.verifying) throw new Error('CAPTCHA_REQUIRED: 公司页需要安全验证');
         if (data.name && data.industry && (data.hasIntroduction || data.businessScope || data.profileReady)) {
           if (data.path !== url.pathname || !sameCompany(data.name, companyName)) throw new Error('公司页身份与所选岗位所属公司不一致');
-          const info: BossCompanyInfo = { url: url.href, name: data.name, industry: data.industry,
-            introduction: data.introduction, businessScope: data.businessScope, checkedAt: new Date().toISOString() };
+          const info: BossCompanyInfo = { url: url.href, name: decodeBossText(data.name), industry: decodeBossText(data.industry),
+            introduction: decodeBossText(data.introduction), businessScope: decodeBossText(data.businessScope), checkedAt: new Date().toISOString() };
           this.companyCache.set(url.href, { expiresAt: Date.now() + 5 * 60 * 1000, info });
           while (this.companyCache.size > 100) this.companyCache.delete(this.companyCache.keys().next().value!);
           return info;
@@ -358,9 +361,9 @@ export class BossPageService {
           if (data.path !== expectedPath || normalizedName(data.name) !== normalizedName(jobName) || !sameCompany(data.company, companyName)) {
             throw new Error('公司行业核对页与所选岗位不一致');
           }
-          const result = { brandIndustry: data.industry, jobDetailText: data.description, skills: data.skills };
-          if (options.filter && findJobExclusion({ jobName, brandName: data.company, brandIndustry: data.industry,
-            jobDetail: data.description, skills: data.skills }, options.filter, options.exclusionText)) return result;
+          const result = { brandIndustry: data.industry, jobDetailText: decodeBossText(data.description), skills: data.skills.map(decodeBossText) };
+          if (options.filter && findJobExclusion({ jobName, brandName: decodeBossText(data.company), brandIndustry: data.industry,
+            jobDetail: result.jobDetailText, skills: result.skills }, options.filter, options.exclusionText)) return result;
           if (!data.companyHref) throw new Error('缺少该岗位的公司页链接，无法核对实际业务');
           return { ...result, companyInfo: await this.readCompanyInfo(data.companyHref, data.company, options.refreshCompany) };
         }
@@ -390,8 +393,8 @@ export class BossPageService {
     }
     if (!(await this.isDetailStillTarget(jobName, companyName, href))) throw new Error('右侧详情与所选职位链接不一致');
     const detail = page.locator(DETAIL).first();
-    let jobDetailText = (await detail.locator(DESCRIPTION).innerText()).trim();
-    const recruiterText = await detail.locator('.job-boss-info').first().innerText({ timeout: 500 }).catch(() => '');
+    let jobDetailText = decodeBossText((await detail.locator(DESCRIPTION).innerText()).trim());
+    const recruiterText = decodeBossText(await detail.locator('.job-boss-info').first().innerText({ timeout: 500 }).catch(() => ''));
     const activeTimeDesc = recruiterText.match(/刚刚活跃|今日活跃|今天活跃|在线|\d+\s*日内活跃|\d+\s*周内活跃|本周活跃|本月活跃/)?.[0] || '';
     let brandIndustry = (await detail.locator('a[ka="job-detail-brandindustry"]').first().innerText({ timeout: 200 }).catch(() => '')).trim();
     let companyInfo: BossCompanyInfo | undefined;

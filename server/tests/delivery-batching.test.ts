@@ -70,7 +70,7 @@ async function main() {
   const service = new DeliveryService();
   const params = { targetRole: '行政助理', keywords: ['行政'], resumeText: '虚构简历，行政支持经验。'.repeat(8) };
   await service.startDelivery(params);
-  assert.deepEqual(batches, [['甲', '乙', '丙']], '只有三个初筛合格的岗位进入同一模型请求');
+  assert.deepEqual(batches, [['作息未注明', '甲', '乙']], '未知作息与两个合格岗位一起评估；硬拒绝仍不请求，达到配额停止下一批');
   assert.deepEqual(sent, ['甲', '乙'], '同批返回乱序时依旧正确对应，达到配额不发第三个岗位');
   assert.equal(loaded.includes('薪资不符'), false, '薪资初筛失败甚至不需要打开完整JD');
   assert.deepEqual(reviewed, ['作息未注明']); assert.equal(marked, 2);

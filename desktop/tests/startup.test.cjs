@@ -8,7 +8,7 @@ const { profileDirectory } = require('../user-profile.cjs');
 
 const entry = path.resolve(__dirname, '..', 'electron-main.cjs');
 const source = fs.readFileSync(entry, 'utf8');
-const health = { app: 'boss-job-agent', integrationVersion: 18, status: 'ok' };
+const health = { app: 'boss-job-agent', integrationVersion: 19, status: 'ok' };
 
 function desktop(options = {}) {
   const windows = [];

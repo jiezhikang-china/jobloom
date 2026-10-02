@@ -6,6 +6,7 @@ import { normalizeWorkRequirements, validateWorkRequirements } from './work-requ
 import { configManager } from '../config/config.manager.js';
 import { findJobExclusion } from './job-exclusions.js';
 import { jobInformationIssue } from './job-information.js';
+import { decodeBossText, readableBossSalary } from './boss-text.js';
 
 function canonicalJobUrl(value: string): string {
   const url = new URL(value, 'https://www.zhipin.com');
@@ -38,8 +39,10 @@ export class WorkConditionReviews {
       const assessment = this.cleanAssessment(previousAssessment, requirements);
       return {
         id: item.id, jobHref, jobName: clipped(item.jobName, 150), companyName: clipped(item.companyName, 150),
-        salary: clipped(item.salary, 100), reason: clipped(item.reason), question: clipped(item.question),
+        salary: readableBossSalary(clipped(item.salary, 100)), reason: decodeBossText(clipped(item.reason)), question: clipped(item.question),
         requirements, assessment, updatedAt: item.updatedAt,
+        ...(['rules', 'ai', 'cache'].includes(item.evaluationSource) ? { evaluationSource: item.evaluationSource } : {}),
+        ...(Number.isFinite(item.score) && item.score >= 0 && item.score <= 100 ? { score: item.score } : {}),
         ...(item.screening ? { screening: this.cleanScreening(item.screening) } : {}),
       };
     }).slice(0, 200);
@@ -53,8 +56,10 @@ export class WorkConditionReviews {
     const labels = requirements.filter((item) => item.enabled).map((item) => item.text);
     const item: WorkConditionReview = {
       id: reviewId(jobHref), jobHref,
-      jobName: clipped(input.jobName, 150), companyName: clipped(input.companyName, 150), salary: clipped(input.salary, 100),
+      jobName: clipped(input.jobName, 150), companyName: clipped(input.companyName, 150), salary: readableBossSalary(clipped(input.salary, 100)),
       reason: clipped(input.reason), requirements, assessment: this.cleanAssessment(input.assessment, requirements),
+      ...(input.evaluationSource ? { evaluationSource: input.evaluationSource } : {}),
+      ...(input.score !== undefined ? { score: input.score } : {}),
       ...(input.screening ? { screening: this.cleanScreening(input.screening) } : {}),
       question: clipped('您好，' + (labels.length ? '想确认这个岗位是否满足：' + labels.join('、') + '？' : '')
         + (input.screening?.needsCompanyConfirmation ? '请说明公司的主要业务及该岗位的实际工作职责。' : '')
@@ -139,7 +144,7 @@ export class WorkConditionReviews {
       if (matches.length !== 1 || !value || !['met', 'not_met', 'unknown'].includes(value.status) || typeof value.evidence !== 'string') {
         throw new Error('工作条件依据无效');
       }
-      return { requirementId: requirement.id, text: requirement.text, status: value.status, evidence: clipped(value.evidence) };
+      return { requirementId: requirement.id, text: requirement.text, status: value.status, evidence: decodeBossText(clipped(value.evidence)) };
     });
   }
 

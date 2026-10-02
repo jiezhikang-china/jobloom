@@ -17,11 +17,12 @@ interface Props {
   loading: boolean;
   error: string;
   disabled?: boolean;
+  optional?: boolean;
   onChange: (value: BossPositionSelection | undefined) => void;
   onRefresh: () => void;
 }
 
-export default function BossPositionPicker({ catalog, value, loading, error, disabled, onChange, onRefresh }: Props) {
+export default function BossPositionPicker({ catalog, value, loading, error, disabled, optional, onChange, onRefresh }: Props) {
   const [categoryCode, setCategoryCode] = useState(value?.categoryCode || '');
   const [subcategoryCode, setSubcategoryCode] = useState(value?.subcategoryCode || '');
   const [search, setSearch] = useState('');
@@ -49,7 +50,7 @@ export default function BossPositionPicker({ catalog, value, loading, error, dis
   return (
     <div className="position-picker" aria-label="BOSS 官方岗位分类">
       <div className="position-picker-head">
-        <strong>目标岗位 <span>必填 · BOSS 官方分类</span></strong>
+        <strong>目标岗位 <span>{optional ? '可选 · 留空由 AI 规划' : '必填'} · BOSS 官方分类</span></strong>
         <button type="button" onClick={onRefresh} disabled={loading || disabled} title="重新获取 BOSS 官网分类">
           <RefreshCw size={13} className={loading ? 'spin' : ''} /> {loading ? '正在更新' : '更新分类'}
         </button>

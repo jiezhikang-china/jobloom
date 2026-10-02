@@ -7,7 +7,9 @@ import { workConditionReviews } from './work-condition-reviews.js';
 import { exclusionsFromText, findJobExclusion, needsCompanyIndustry } from './job-exclusions.js';
 import { jobInformationIssue } from './job-information.js';
 import { configuredWorkRequirements, hasEntryLevelRequirement } from './work-requirements.js';
-import { DeliveryStats, DeliveryLogItem, BossJobItem } from '../types.js';
+import { bossExpectationsService } from './boss-expectations.js';
+import { planTargetPositions } from './target-planner.js';
+import { DeliveryStats, DeliveryLogItem, BossJobItem, BossPositionSelection } from '../types.js';
 
 const LLM_FAILURE_PAUSE_THRESHOLD = 3;
 const COOL_DOWN_SECONDS = 15 * 60;
@@ -150,6 +152,7 @@ export class DeliveryService {
   public async startDelivery(params: {
     targetRole: string;
     positionCode?: string;
+    targetPositions?: BossPositionSelection[];
     keywords: string[];
     resumeText: string;
     defaultGreeting?: string;
@@ -181,6 +184,7 @@ export class DeliveryService {
       aiRequestCount: 0,
       cachedEvaluationCount: 0,
       pendingEvaluationCount: 0,
+      phase: 'planning',
     };
 
     this.log(
@@ -200,7 +204,34 @@ export class DeliveryService {
         return;
       }
       const useSavedExpectations = cfg.delivery.jobSource === 'saved_expectations';
-      const sources = useSavedExpectations ? await bossPageService.getSavedExpectationNames() : params.keywords;
+      let sources = params.keywords;
+      if (useSavedExpectations) {
+        let targets = params.targetPositions || [];
+        if (!targets.length) {
+          this.log('info', '[AI 目标规划] 根据当前简历/求职条件选择最多3个 BOSS 官方岗位');
+          targets = await planTargetPositions(params.resumeText, params.candidateSource || 'resume', {
+            signal: this.evaluationAbort?.signal,
+            onWait: seconds => this.log('info', '[AI 间隔] 等待 ' + seconds + ' 秒后规划目标'),
+            onRequest: () => { this.stats.aiRequestCount = (this.stats.aiRequestCount || 0) + 1; this.emit(); },
+          });
+        }
+        this.evaluationAbort?.signal.throwIfAborted();
+        this.stats.targetRoles = targets.map(item => item.name);
+        this.stats.phase = 'configuring'; this.emit();
+        this.log('info', '[设置自选岗位] 正在按目标修改 BOSS 推荐旁的求职期望：' + this.stats.targetRoles.join('、'));
+        const configured = await bossExpectationsService.configure(targets, { code: cfg.filter.cityCode, name: cfg.filter.cityName }, {
+          signal: this.evaluationAbort?.signal, onChange: message => this.log('info', message),
+        });
+        this.evaluationAbort?.signal.throwIfAborted();
+        await bossPageService.initJobPage();
+        const saved = await bossPageService.getSavedExpectationNames();
+        sources = configured.map(name => {
+          const actual = saved.find(value => value.normalize('NFKC') === name.normalize('NFKC'));
+          if (!actual) throw new Error('BOSS 职位页未显示已设置的目标：' + name);
+          return actual;
+        });
+      } else this.stats.targetRoles = [params.targetRole];
+      this.stats.phase = 'screening'; this.emit();
       const openList = (source: string) => useSavedExpectations
         ? bossPageService.initJobPage(undefined, cfg.filter.cityCode, undefined, { expectationName: source })
         : bossPageService.initJobPage(source, cfg.filter.cityCode, params.positionCode);
@@ -276,6 +307,7 @@ export class DeliveryService {
               workConditionReviews.add({
                 jobHref: jobCard.jobHref, jobName: jobCard.jobName, companyName: jobCard.companyName,
                 salary: jobCard.salary, reason: evaluation.reason,
+                evaluationSource: evaluation.evaluationSource, ...(evaluation.evaluationSource !== 'rules' ? { score: evaluation.score } : {}),
                 requirements: configuredWorkRequirements(cfg.filter), assessment: evaluation.requirementAssessment,
                 screening: { industry: mockJobItem.brandIndustry, jobDetail: candidate.jobDetail, skills: mockJobItem.skills,
                   ...(mockJobItem.companyInfo ? { companyInfo: mockJobItem.companyInfo } : {}),
@@ -494,7 +526,8 @@ export class DeliveryService {
           if (this.isStopRequested) return;
           const candidates = pending.splice(0);
           this.stats.pendingEvaluationCount = candidates.length;
-          this.log('info', '[批量评估] 已攒齐 ' + candidates.length + ' 个初筛岗位，共用一份简历/求职要求');
+          this.stats.phase = 'evaluating';
+          this.log('info', '[AI 批量评估] 已攒齐 ' + candidates.length + ' 个初筛岗位，正在评估职责、资格与工作条件');
           const evaluations = await filterService.evaluateBatch(candidates.map((item) => ({
             job: item.job, jobDetail: item.jobDetail, jobHref: item.jobCard.jobHref,
           })), params.resumeText, useSavedExpectations ? keyword : params.targetRole, params.candidateSource || 'resume', {
@@ -510,6 +543,7 @@ export class DeliveryService {
             this.emit();
           }
           this.stats.pendingEvaluationCount = 0;
+          this.stats.phase = 'screening'; this.emit();
         };
 
 

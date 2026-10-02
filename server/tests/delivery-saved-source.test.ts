@@ -5,6 +5,7 @@ import { DeliveryService } from '../src/services/delivery.service.js';
 import { bossPageService } from '../src/services/boss.page.service.js';
 import { workConditionReviews } from '../src/services/work-condition-reviews.js';
 import { llmService } from '../src/services/llm.service.js';
+import { bossExpectationsService } from '../src/services/boss-expectations.js';
 
 const restores: Array<() => void> = [];
 function stub(object: any, key: string, replacement: any) { const old = object[key]; object[key] = replacement; restores.push(() => { object[key] = old; }); }
@@ -14,6 +15,8 @@ const config = { ...base, filter: { ...base.filter, skipMissingCompanyIntro: tru
   degree: [], experience: [], workRequirements: [] },
   delivery: { ...base.delivery, jobSource: 'saved_expectations' as const, dailyMaxQuota: 150, minDelaySeconds: 0, maxDelaySeconds: 0 } };
 const names = ['客服(上海)', '数据采集(上海)', '行政(上海)', '新加的岗位(上海)'];
+const selected = names.slice(0, 3);
+const targets = selected.map((name, index) => ({ code: String(130100 + index), name: name.split('(')[0], categoryCode: '1', categoryName: '客服/运营', subcategoryCode: '2', subcategoryName: '客服' }));
 
 async function main() {
   let active = ''; const opened: string[] = []; const marked: string[] = [];
@@ -21,8 +24,12 @@ async function main() {
   stub(configManager, 'getConfig', () => config);
   stub(stateManager, 'loadQuota', () => ({ date: todayStr(), count: 0 })); stub(stateManager, 'saveQuota', () => {});
   stub(bossPageService, 'getSavedExpectationNames', async () => names);
+  stub(bossExpectationsService, 'configure', async (input: any, city: any) => {
+    assert.deepEqual(input, targets); assert.equal(city.name, '上海'); return selected;
+  });
   stub(bossPageService, 'initJobPage', async (query: unknown, _city: string, position: unknown, options: any) => {
-    assert.equal(query, undefined); assert.equal(position, undefined); active = options.expectationName; opened.push(active); return {};
+    assert.equal(query, undefined); assert.equal(position, undefined);
+    if (options?.expectationName) { active = options.expectationName; opened.push(active); } return {};
   });
   stub(bossPageService, 'getVisibleJobCards', async () => [{ index: 0, jobHref: '/job_detail/' + names.indexOf(active) + '.html',
     jobName: '资料整理', companyName: active, salary: '6-8K', experience: '1-3年', degree: '大专',
@@ -43,10 +50,10 @@ async function main() {
   stub(llmService, 'chatJson', async () => { requests++; throw new Error('不应问 AI'); });
   const service = new DeliveryService();
   await service.startDelivery({ targetRole: 'BOSS 自选求职期望', keywords: ['不使用的搜索词'], positionCode: '100901',
-    resumeText: '希望寻找工作内容明确并且公司有介绍的岗位。', candidateSource: 'requirements', rulesOnly: true });
-  assert.deepEqual(opened, names); assert.deepEqual(marked, names);
+    resumeText: '希望寻找工作内容明确并且公司有介绍的岗位。', candidateSource: 'requirements', targetPositions: targets });
+  assert.deepEqual(opened, selected); assert.deepEqual(marked, selected);
   assert.equal(requests, 0); assert.equal(greetings, 0); assert.equal(reviews, 0);
-  assert.equal(service.getStats().markedNotSuitCount, 4); assert.equal(service.getStats().totalScanned, 4);
-  console.log('PASS | 投递主循环遍历动态自选期望、忽略搜索分类、缺失介绍先淘汰、提交真实原因、零 AI 和零发送');
+  assert.equal(service.getStats().markedNotSuitCount, 3); assert.equal(service.getStats().totalScanned, 3);
+  console.log('PASS | 按三个目标设置并遍历自选期望、忽略无关期望与搜索分类、缺失介绍先淘汰、零 AI 和零发送');
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => restores.reverse().forEach((restore) => restore()));

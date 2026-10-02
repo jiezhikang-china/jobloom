@@ -61,6 +61,7 @@ export default function App() {
   const [selectedRole, setSelectedRole] = useState<string>('');
   const [bossPositions, setBossPositions] = useState<BossPositionCatalog | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<BossPositionSelection | undefined>();
+  const [targetSlots, setTargetSlots] = useState<Array<BossPositionSelection | undefined>>([undefined]);
   const [isLoadingPositions, setIsLoadingPositions] = useState(false);
   const [positionError, setPositionError] = useState('');
   const initialConfigLoaded = useRef(false);
@@ -165,8 +166,10 @@ export default function App() {
         setConfig(json.data);
         if (!initialConfigLoaded.current) {
           initialConfigLoaded.current = true;
-          setSelectedPosition(json.data.targetPosition);
-          setSelectedRole(json.data.targetPosition?.name || '');
+          const positions = Array.isArray(json.data.targetPositions) ? json.data.targetPositions : json.data.targetPosition ? [json.data.targetPosition] : [];
+          setTargetSlots(positions.length ? positions : [undefined]);
+          setSelectedPosition(positions[0]);
+          setSelectedRole(positions[0]?.name || '');
         }
       }
     } catch (e) {
@@ -194,7 +197,24 @@ export default function App() {
     }
     setSelectedPosition(position);
     setSelectedRole(position?.name || '');
-    setConfig((previous) => previous ? { ...previous, targetPosition: position } : previous);
+    setTargetSlots(previous => [position, ...previous.slice(1)]);
+    setConfig((previous) => previous ? { ...previous, targetPosition: position,
+      targetPositions: [position, ...targetSlots.slice(1)].filter((item): item is BossPositionSelection => !!item) } : previous);
+  };
+
+  const handleTargetSlotChange = (index: number, position: BossPositionSelection | undefined) => {
+    if (index === 0) { handlePositionChange(position); return; }
+    const slots = targetSlots.map((item, slot) => slot === index ? position : item);
+    setTargetSlots(slots);
+    setConfig(previous => previous ? { ...previous, targetPositions: slots.filter((item): item is BossPositionSelection => !!item) } : previous);
+  };
+
+  const removeTargetSlot = (index: number) => {
+    const slots = targetSlots.filter((_, slot) => slot !== index);
+    setTargetSlots(slots.length ? slots : [undefined]);
+    setSelectedPosition(slots[0]); setSelectedRole(slots[0]?.name || '');
+    setConfig(previous => previous ? { ...previous, targetPosition: slots[0],
+      targetPositions: slots.filter((item): item is BossPositionSelection => !!item) } : previous);
   };
 
   const saveConfig = async (newCfg: Partial<AppConfig>, silent = false) => {
@@ -421,6 +441,13 @@ export default function App() {
       setStartMessage('请从 BOSS 官方分类中选择具体岗位。');
       return;
     }
+    const targets = targetSlots.filter((item): item is BossPositionSelection => !!item);
+    if (usesSavedExpectations && targetSlots.length > 1 && targetSlots.some(item => !item)) {
+      setStartMessage('请补全目标岗位，或移除空的岗位位置。'); return;
+    }
+    if (usesSavedExpectations && new Set(targets.map(item => item.code)).size !== targets.length) {
+      setStartMessage('目标岗位不能重复。'); return;
+    }
     if (searchByConditions && !selectedConditions.length) {
       setStartMessage('请至少选择一项工作条件。');
       return;
@@ -455,8 +482,9 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          targetRole: usesSavedExpectations ? 'BOSS 自选求职期望' : searchByConditions ? '符合工作条件的岗位' : selectedRole,
+          targetRole: usesSavedExpectations ? targets.map(item => item.name).join('、') || '按当前条件规划目标岗位' : searchByConditions ? '符合工作条件的岗位' : selectedRole,
           positionCode: usesSavedExpectations || searchByConditions ? undefined : selectedPosition?.code,
+          positionCodes: usesSavedExpectations ? targets.map(item => item.code) : undefined,
           conditionsOnly: searchByConditions,
           keywords: searchKeywords.length || !searchByConditions ? searchKeywords
             : selectedConditions.filter((item) => item.builtin).map((item) => ({ eightHours: '八小时', doubleRest: '双休', noExperience: '经验不限' })[item.builtin!]),
@@ -714,10 +742,10 @@ export default function App() {
                 <select id="boss-job-source" value={config?.delivery.jobSource || 'saved_expectations'} disabled={isTaskRunning}
                   onChange={(event) => config && setConfig({ ...config, delivery: { ...config.delivery,
                     jobSource: event.target.value === 'search' ? 'search' : 'saved_expectations' } })}>
-                  <option value="saved_expectations">推荐旁的自选求职期望（全部遍历）</option>
+                  <option value="saved_expectations">按目标设置 BOSS 自选岗位</option>
                   <option value="search">按官方分类和关键词搜索</option>
                 </select>
-                <p>{usesSavedExpectations ? '读取你在 BOSS 保存的期望岗位。明确不符合的职位会在右侧详情点“不合适”。' : '按下方分类和搜索词查找职位；平台未提供“不合适”时只记录淘汰。'}</p>
+                <p>{usesSavedExpectations ? '启动时将目标岗位和城市保存到 BOSS 推荐旁的自选位置，再逐个筛选。明确不符合的职位会点“不合适”。' : '按下方分类和搜索词查找职位；平台未提供“不合适”时只记录淘汰。'}</p>
               </div>
 
               {deliveryMode === 'manual' && (
@@ -731,7 +759,7 @@ export default function App() {
                         setSearchKeywords([]);
                       }
                     }} />
-                  {usesSavedExpectations ? '只按工作条件筛选自选岗位' : '不限岗位，按工作条件找'}
+                  {usesSavedExpectations ? '根据工作条件找岗位' : '不限岗位，按工作条件找'}
                 </label>
               )}
 
@@ -762,6 +790,16 @@ export default function App() {
 
               <div className="launch-fields-grid">
                 <div className="launch-field wide">
+                  {usesSavedExpectations && <section aria-label="BOSS 自选目标设置" style={{ display: 'grid', gap: '16px', marginBottom: '20px' }}>
+                    <strong>自选目标 · 最多3个</strong>
+                    <p>按这里选择的官方岗位调整 BOSS 自选职位。留空时，AI 根据当前简历或求职要求选择方向。</p>
+                    {targetSlots.map((position, index) => <div key={index} aria-label={`目标岗位${index + 1}`}>
+                      <BossPositionPicker catalog={bossPositions} value={position} loading={isLoadingPositions} error={positionError} disabled={isTaskRunning}
+                        optional onChange={value => handleTargetSlotChange(index, value)} onRefresh={() => fetchBossPositions(true)} />
+                      {position || targetSlots.length > 1 ? <button type="button" disabled={isTaskRunning} onClick={() => removeTargetSlot(index)} style={{ marginTop: '8px' }}>移除目标{index + 1}</button> : null}
+                    </div>)}
+                    {targetSlots.length < 3 && <button type="button" disabled={isTaskRunning} onClick={() => setTargetSlots(previous => [...previous, undefined])}>添加目标岗位</button>}
+                  </section>}
                   {(searchByConditions || usesSavedExpectations) && config ? (
                     <>
                       <WorkConditionOptions value={config.filter.workRequirements} disabled={isTaskRunning}
@@ -1594,7 +1632,7 @@ export default function App() {
               <div>
                 <span style={{ fontSize: '13px', color: '#94a3b8' }}>当前投递职业与检索关键词:</span>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
-                  <strong style={{ fontSize: '18px', color: '#00be68' }}>{usesSavedExpectations ? 'BOSS 自选求职期望' : searchByConditions ? '按工作条件找岗位' : selectedRole || '未选择'}</strong>
+                  <strong style={{ fontSize: '18px', color: '#00be68' }}>{deliveryStats.targetRoles?.join('、') || (usesSavedExpectations ? targetSlots.filter(Boolean).map(item => item!.name).join('、') || 'AI 规划目标岗位' : searchByConditions ? '按工作条件找岗位' : selectedRole || '未选择')}</strong>
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
                     {searchKeywords.map((kw, i) => (
                       <span
@@ -1788,6 +1826,7 @@ export default function App() {
 
             {/* 实时终端日志流 */}
             <p aria-label="评估用量" style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+              {isTaskRunning && deliveryStats.phase ? ({ planning: '正在规划目标岗位', configuring: '正在设置 BOSS 自选岗位', screening: '脚本初筛中', evaluating: 'AI 批量分析中', delivering: '投递中' })[deliveryStats.phase] + ' · ' : ''}
               本地处理 {deliveryStats.localDecisionCount || 0} 个 · 待批量评估 {deliveryStats.pendingEvaluationCount || 0} 个 ·
               AI 请求 {deliveryStats.aiRequestCount || 0} 次 · 复用评估 {deliveryStats.cachedEvaluationCount || 0} 个
             </p>

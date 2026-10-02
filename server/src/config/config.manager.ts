@@ -108,8 +108,12 @@ export class ConfigManager {
     const model = /^glm-4\.7-flash$/i.test(rawModel) ? 'glm-4.7-flash' : rawModel;
     const quota = Number(cfg.delivery?.dailyMaxQuota);
     const { workConditions: legacyWorkConditions, ...filter } = cfg.filter;
+    const targets = (Array.isArray(cfg.targetPositions) ? cfg.targetPositions : cfg.targetPosition ? [cfg.targetPosition] : [])
+      .filter((item, index, list) => /^\d{6}$/.test(item?.code) && list.findIndex(value => value?.code === item.code) === index).slice(0, 3);
     return {
       ...cfg,
+      targetPositions: targets,
+      targetPosition: targets[0],
       llm: { ...cfg.llm, connectionMode: isWeb ? 'deepseek-web' : 'api',
         baseUrl: isWeb ? '' : cfg.llm.baseUrl, apiKey: isWeb ? '' : cleanedKey,
         model: isWeb ? 'deepseek-v4-flash' : model, thinking: cfg.llm?.thinking === 'enabled' ? 'enabled' : 'disabled',

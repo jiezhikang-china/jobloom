@@ -91,9 +91,11 @@ async function main() {
     assert.equal(manual.needsReview, undefined);
     assert.match(manual.reason, /排除条件/);
     assert.equal(calls, 0, '手动要求中的排除项不能等到 AI 才判断');
+    llmService.chatJson = (async () => { calls++; return { jobs: [{ jobKey: 'job-0', score: 90, passed: true, workRequirements: [] }] }; }) as typeof chat;
     const resume = await service.evaluateStage2({ ...base, brandIndustry: '银行' }, '作息面议，需要确认。',
       '过往经历：不做销售。', '文职', 'resume');
     assert.equal(resume.needsReview, true, '不能把简历中的经历误当额外排除项');
+    assert.equal(resume.evaluationSource, 'ai'); assert.equal(calls, 1, '未命中当前排除条件的岗位应参与 AI 评估');
     assert.equal(findJobExclusion({ ...base, jobDetail: 'No SALES tasks.' }, { ...filter, companyBlacklist: ['test.company'] }), undefined,
       '自定义词作为字面词，不能成为正则通配符');
     assert.equal(findJobExclusion({ ...base, jobName: 'TypeScript工程师' }, { ...filter, companyBlacklist: ['typescript'] })?.term, 'typescript');
@@ -183,7 +185,7 @@ async function main() {
     const repeated = await metadataService.evaluateStage2({ ...withCompany, companyInfo: { ...productCompany, checkedAt: new Date(Date.now() + 1000).toISOString() } },
       '负责产品资料整理与客户信息归档。', '希望在自有软件产品公司工作。', '文职', 'requirements');
     assert.equal(repeated.evaluationSource, 'cache');
-    assert.equal(calls, 1, '只更新核查时间，不应触发重复 AI 请求');
+    assert.equal(calls, 2, '只更新核查时间，不应触发重复 AI 请求');
     console.log('PASS | ' + cases.length + ' 类行业/职责与误判案例、否定条件优先、零 AI 请求、手动要求/关闭条件、待确认复筛与原记录备份');
   } finally {
     configManager.getConfig = getConfig;

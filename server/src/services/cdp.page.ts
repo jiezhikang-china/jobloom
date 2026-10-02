@@ -148,6 +148,9 @@ export class CdpPage {
   }
   async initialize(): Promise<this> {
     await this.connection.send('Page.enable');
+    // Connected/background Chrome tabs can otherwise update :hover while discarding clicks.
+    await this.connection.send('Input.setIgnoreInputEvents', { ignore: false });
+    await this.connection.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await this.connection.send('Page.setLifecycleEventsEnabled', { enabled: true });
     const { frameTree } = await this.connection.send('Page.getFrameTree');
     this.mainFrameId = frameTree.frame.id;
@@ -172,7 +175,10 @@ export class CdpPage {
     const response: CommandResult = await this.connection.send('Runtime.evaluate', {
       expression, returnByValue: true, awaitPromise: true, userGesture: false,
     });
-    if ((response as any).exceptionDetails) throw new Error((response as any).exceptionDetails.text || '页面脚本执行失败');
+    if ((response as any).exceptionDetails) {
+      const detail = (response as any).exceptionDetails;
+      throw new Error(detail.exception?.description || detail.text || '页面脚本执行失败');
+    }
     if (response.error) throw new Error(response.error.message);
     return response.result?.value as T;
   }
@@ -235,7 +241,7 @@ export class CdpPage {
     const response = await this.connection.send('Runtime.evaluate', {
       expression, returnByValue: true, awaitPromise: true, userGesture: false,
     });
-    if (response.exceptionDetails) throw new Error(response.exceptionDetails.text || '页面元素读取失败');
+    if (response.exceptionDetails) throw new Error(response.exceptionDetails.exception?.description || response.exceptionDetails.text || '页面元素读取失败');
     return response.result?.value as T;
   }
 }
@@ -302,8 +308,8 @@ export class CdpLocator {
   async click(): Promise<void> {
     const { x, y } = await this.point();
     await this.owner.input('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-    await this.owner.input('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
-    await this.owner.input('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    await this.owner.input('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1, pointerType: 'mouse' });
+    await this.owner.input('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1, pointerType: 'mouse' });
   }
   async fill(value: string): Promise<void> {
     await this.click();

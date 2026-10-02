@@ -184,6 +184,10 @@ export class BrowserService {
     return this.withBossInspection(href, /^\/gongsi\/[^/]+\.html$/, read);
   }
 
+  public async withExpectationEditor<T>(edit: (page: CdpPage) => Promise<T>): Promise<T> {
+    return this.withBossInspection(`${BOSS_ORIGIN}/web/geek/resume/`, /^\/web\/geek\/resume\/$/, edit);
+  }
+
   private async withBossInspection<T>(href: string, allowedPath: RegExp, read: (page: CdpPage) => Promise<T>): Promise<T> {
     const url = new URL(href, BOSS_ORIGIN);
     if (url.protocol !== 'https:' || url.hostname !== 'www.zhipin.com' || url.port || url.username || url.password

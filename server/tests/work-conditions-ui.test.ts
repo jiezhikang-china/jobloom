@@ -8,6 +8,8 @@ import { browserService } from '../src/services/browser.service.js';
 import { deliveryService } from '../src/services/delivery.service.js';
 import { workConditionReviews } from '../src/services/work-condition-reviews.js';
 import type { WorkConditionReview } from '../src/types.js';
+import { bossCatalogService, positionSelections } from '../src/services/boss.catalog.service.js';
+import catalog from '../resources/boss-positions.json';
 
 const restores: Array<() => void> = [];
 function stub(object: any, key: string, replacement: any) {
@@ -15,7 +17,7 @@ function stub(object: any, key: string, replacement: any) {
 }
 async function main() {
   const original = configManager.getConfig();
-  let config = (configManager as any).normalize({ ...original, targetPosition: undefined, filter: {
+  let config = (configManager as any).normalize({ ...original, targetPosition: undefined, targetPositions: [], filter: {
     ...original.filter, salaryMin: 15, salaryMax: 40, workRequirements: [],
   }, delivery: { ...original.delivery, dailyMaxQuota: 5 } });
   const fixture: WorkConditionReview = {
@@ -32,6 +34,7 @@ async function main() {
       { requirementId: 'experience', text: '允许无经验入职', status: 'met', evidence: '经验不限' },
     ],
     question: '您好，请问具体的上下班时间是什么？是否有强制加班？', updatedAt: new Date().toISOString(),
+    evaluationSource: 'ai', score: 58,
   };
   let reviews = [fixture];
   const starts: any[] = [];
@@ -42,6 +45,8 @@ async function main() {
     return config;
   });
   stub(browserService, 'checkLoginStatus', async () => ({ isLoggedIn: true, isBrowserActive: false, reasonCode: 'authenticated' }));
+  stub(bossCatalogService, 'getPositions', async () => catalog);
+  stub(bossCatalogService, 'findPosition', async (code: string) => positionSelections(catalog.categories).find(item => item.code === code));
   stub(deliveryService, 'isActive', () => false);
   stub(deliveryService, 'startDelivery', async (params: any) => { starts.push(params); });
   stub(workConditionReviews, 'list', () => reviews);
@@ -60,10 +65,8 @@ async function main() {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('dialog', (dialog) => void dialog.accept());
-    await page.route('**/api/boss/positions', (route) => route.fulfill({ json: { success: true, data: {
-      fetchedAt: new Date().toISOString(), categories: [], positionCount: 0,
-    } } }));
     await page.goto(base);
+    await page.getByLabel('BOSS 职位来源', { exact: true }).selectOption('search');
     const startButton = page.getByRole('main').getByRole('button', { name: '开始投递', exact: true });
     await startButton.click();
     await page.getByRole('status').filter({ hasText: '请从 BOSS 官方分类中选择具体岗位' }).waitFor();
@@ -101,6 +104,7 @@ async function main() {
     assert.equal(await panel.getByRole('link', { name: fixture.jobName }).getAttribute('href'), fixture.jobHref);
     assert.match(await panel.innerText(), /记录时未自动投递/);
     assert.match(await panel.innerText(), /岗位描述未提供明确依据/);
+    assert.match(await panel.innerText(), /AI 已评估.*匹配度 58 分/, '待确认岗位必须明确显示实际的 AI 介入');
     await panel.getByRole('button', { name: '复制询问内容', exact: true }).click();
     await panel.getByRole('status').filter({ hasText: '询问内容已复制' }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), fixture.question);
@@ -164,8 +168,42 @@ async function main() {
     assert.deepEqual(starts[1].keywords, [''], '仅自定义条件时不能将“不做销售”错误用作岗位搜索词');
     assert.equal(config.filter.workRequirements.filter((item: any) => item.enabled).length, 1,
       '开启按条件搜索不能强制恢复三个预设');
+    await page.getByRole('navigation').getByRole('button', { name: '开始投递', exact: true }).click();
+    await page.getByLabel('BOSS 职位来源', { exact: true }).selectOption('saved_expectations');
+    const targetPanel = page.getByRole('region', { name: 'BOSS 自选目标设置', exact: true });
+    await targetPanel.getByText('自选目标 · 最多3个', { exact: true }).waitFor();
+    const targetNames = ['网络客服', '数据采集', '数据标注/AI训练师'];
+    for (let index = 0; index < targetNames.length; index++) {
+      if (index) await targetPanel.getByRole('button', { name: '添加目标岗位', exact: true }).click();
+      const slot = targetPanel.locator(`[aria-label="目标岗位${index + 1}"]`);
+      const position = positionSelections(catalog.categories).find(item => item.name === targetNames[index])!;
+      await slot.getByLabel('职位大类', { exact: true }).selectOption(position.categoryCode);
+      await slot.getByLabel('职位子类', { exact: true }).selectOption(position.subcategoryCode);
+      await slot.getByLabel('具体岗位', { exact: true }).selectOption(position.code);
+    }
+    assert.equal(await targetPanel.getByRole('button', { name: '添加目标岗位', exact: true }).count(), 0, '只能添加三个位置');
+    await Promise.all([
+      page.waitForResponse(response => response.url().endsWith('/api/delivery/start') && response.request().method() === 'POST'),
+      startButton.click(),
+    ]);
+    assert.equal(starts.length, 3);
+    assert.deepEqual(starts[2].targetPositions.map((item: any) => item.name), targetNames);
+    assert.equal(starts[2].rulesOnly, false, '按工作条件投递也须让通过初筛的岗位参与 AI 评估');
+    assert.deepEqual(config.targetPositions.map((item: any) => item.name), targetNames);
+    await page.reload();
+    await page.waitForFunction((codes: string[]) => {
+      const selected = [...document.querySelectorAll('[aria-label="BOSS 自选目标设置"] select[aria-label="具体岗位"]')];
+      return selected.length === codes.length && codes.every((code, index) => (selected[index] as HTMLSelectElement).value === code);
+    }, config.targetPositions.map((item: any) => item.code));
+    for (let index = 0; index < targetNames.length; index++) {
+      const slot = targetPanel.locator(`[aria-label="目标岗位${index + 1}"]`);
+      assert.equal(await slot.getByLabel('具体岗位', { exact: true }).inputValue(), config.targetPositions[index].code, '重新打开须恢复全部目标');
+    }
+    await targetPanel.getByRole('button', { name: '移除目标2', exact: true }).click();
+    assert.equal(await targetPanel.locator('[aria-label="目标岗位3"]').count(), 0);
+    assert.deepEqual((await targetPanel.getByLabel('具体岗位', { exact: true }).allTextContents()).length, 2);
     assert.deepEqual(errors, []);
-    console.log('PASS | 自由添加/编辑/删除/启用条件、重启保存、仅自定义条件搜索、预设快捷添加、待确认原文与复制');
+    console.log('PASS | 三个自选目标选择、保存、恢复与移除，AI 评估来源，条件增删改与保存，原文与复制');
   } finally {
     await browser?.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
+import { extractPdfText, decodeResumeText, normalizeResumeText } from './resume-text.js';
 import { llmService, ChatMessage } from './llm.service.js';
 import { bossCatalogService, positionSelections } from './boss.catalog.service.js';
 import { ResumeAnalysisResult, TailoredResumeResult } from '../types.js';
@@ -18,17 +18,15 @@ export class ResumeService {
     const buffer = await fs.promises.readFile(filePath);
 
     if (ext === '.pdf') {
-      const data = await pdfParse(buffer);
-      const text = data.text.trim();
-      if (!text) throw new Error('PDF 中未提取到文本，可能是扫描件/图片型 PDF，请改用 .docx 或 .txt');
+      const text = await extractPdfText(buffer);
       return text.slice(0, MAX_RESUME_CHARS);
     } else if (ext === '.docx') {
       const result = await mammoth.extractRawText({ buffer });
-      return result.value.trim().slice(0, MAX_RESUME_CHARS);
+      return normalizeResumeText(result.value).slice(0, MAX_RESUME_CHARS);
     } else if (ext === '.doc') {
       throw new Error('暂不支持旧版 .doc 二进制格式，请在 Word 中另存为 .docx 后重新上传');
     } else if (ext === '.txt' || ext === '.md') {
-      return buffer.toString('utf-8').trim().slice(0, MAX_RESUME_CHARS);
+      return decodeResumeText(buffer).slice(0, MAX_RESUME_CHARS);
     } else {
       throw new Error(`不支持的文件格式: ${ext}，支持 .pdf, .docx, .txt, .md`);
     }

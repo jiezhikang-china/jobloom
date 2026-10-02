@@ -35,6 +35,7 @@ export interface AppConfig {
     maxDelaySeconds: number;
   };
   targetPosition?: BossPositionSelection;
+  targetPositions?: BossPositionSelection[];
 }
 
 export interface WorkRequirement {
@@ -64,6 +65,8 @@ export interface WorkConditionReview {
   };
   question: string;
   updatedAt: string;
+  evaluationSource?: 'rules' | 'ai' | 'cache';
+  score?: number;
 }
 
 export interface BossPositionNode {
@@ -153,4 +156,6 @@ export interface DeliveryStats {
   cachedEvaluationCount?: number;
   pendingEvaluationCount?: number;
   currentProcessingJob?: string;
+  targetRoles?: string[];
+  phase?: 'planning' | 'configuring' | 'screening' | 'evaluating' | 'delivering';
 }

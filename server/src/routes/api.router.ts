@@ -9,6 +9,7 @@ import { bossPageService } from '../services/boss.page.service.js';
 import { deliveryService } from '../services/delivery.service.js';
 import { llmService } from '../services/llm.service.js';
 import { bossCatalogService } from '../services/boss.catalog.service.js';
+import type { BossPositionSelection } from '../types.js';
 import { deepseekProxyService } from '../services/deepseek.proxy.service.js';
 import { workConditionReviews } from '../services/work-condition-reviews.js';
 import { configuredWorkRequirements, validateWorkRequirements } from '../services/work-requirements.js';
@@ -51,6 +52,11 @@ apiRouter.get('/config', (_req: Request, res: Response) => {
 });
 
 apiRouter.post('/config', (req: Request, res: Response) => {
+  if (req.body?.targetPositions !== undefined && (!Array.isArray(req.body.targetPositions) || req.body.targetPositions.length > 3
+    || req.body.targetPositions.some((item: any) => !/^\d{6}$/.test(item?.code))
+    || new Set(req.body.targetPositions.map((item: any) => item.code)).size !== req.body.targetPositions.length)) {
+    return res.status(400).json({ success: false, message: '目标岗位最多3个，需使用不同的官方分类代码。' });
+  }
   for (const key of ['skipMissingCompanyIntro', 'skipVagueJobDescription']) {
     if (req.body?.filter?.[key] !== undefined && typeof req.body.filter[key] !== 'boolean') {
       return res.status(400).json({ success: false, message: '资料筛选选项必须为开启或关闭。' });
@@ -248,6 +254,16 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
     if (!targetRole || typeof targetRole !== 'string') {
       return res.status(400).json({ success: false, message: '请指定目标职业' });
     }
+    const rawTargets = req.body?.positionCodes ?? (positionCode ? [positionCode] : []);
+    if (!Array.isArray(rawTargets) || rawTargets.length > 3 || rawTargets.some(code => typeof code !== 'string' || !/^\d{6}$/.test(code))
+      || new Set(rawTargets).size !== rawTargets.length) return res.status(400).json({ success: false, message: '请选择1至3个不同的官方目标岗位' });
+    const targets: BossPositionSelection[] = [];
+    for (const code of rawTargets) {
+      const position = await bossCatalogService.findPosition(code);
+      if (!position) return res.status(400).json({ success: false, message: '目标岗位不在 BOSS 官方分类中，请重新选择' });
+      targets.push(position);
+    }
+    if (targets.length) targetRole = targets.map(item => item.name).join('、');
     if (positionCode && !useSavedExpectations) {
       const position = await bossCatalogService.findPosition(positionCode);
       if (!position) return res.status(400).json({ success: false, message: '所选岗位不在 BOSS 官方分类中，请重新选择' });
@@ -271,20 +287,17 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
       return res.status(409).json({ success: false, message: '投递任务已在运行中，请先停止当前任务' });
     }
 
-    if (useSavedExpectations) await bossPageService.getSavedExpectationNames();
-
     // 异步执行投递任务，不阻塞 HTTP 响应；必须接管 promise，否则一次异常会带走整个进程
     deliveryService
       .startDelivery({
         targetRole,
-        positionCode: useSavedExpectations ? undefined : positionCode || undefined,
+        positionCode: positionCode || undefined,
+        targetPositions: targets,
         keywords: keywordList,
         resumeText: candidateText.trim(),
         defaultGreeting: typeof defaultGreeting === 'string' ? defaultGreeting : undefined,
         candidateSource: mode === 'manual' ? 'requirements' : 'resume',
-        // Extra free-text requirements still need semantic matching.
-        rulesOnly: (conditionsOnly || useSavedExpectations) && candidateText.trim() === '希望寻找满足以下条件的工作：'
-          + configuredWorkRequirements(configManager.getConfig().filter).map((item) => item.text).join('、'),
+        rulesOnly: false,
       })
       .catch((err: unknown) => {
         deliveryService.log('error', `投递任务异常终止: ${(err as Error).message}`);

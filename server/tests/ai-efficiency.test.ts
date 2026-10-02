@@ -91,9 +91,9 @@ async function main() {
   const local = await service.evaluateStage2(job, '负责行政事务，每天工作8小时。', '共同简历唯一标記', '工作条件', 'requirements', { rulesOnly: true });
   assert.equal(local.passed, true); assert.equal(local.evaluationSource, 'rules'); assert.equal(calls, 0);
   assert.equal((await service.evaluateStage2(job, '负责行政事务，工时面议。', '共同简历唯一标記', '行政助理')).needsReview, true);
-  assert.equal(calls, 0, '缺少已识别条件的依据时直接待确认');
+  assert.equal(calls, 1, '缺少简单规则的依据时仍需 AI 分析职责和条件，不能绕过模型');
   await service.evaluateStage2(job, '负责行政事务，每天工作8小时。', '共同简历唯一标記', '行政助理', 'resume');
-  assert.equal(calls, 1, '简历匹配不能仅靠工作条件通过');
+  assert.equal(calls, 2, '简历匹配不能仅靠工作条件通过');
   calls = 0; groups.length = 0;
   config.filter.workRequirements = [
     { id: 'hours', text: '每天工作不超过八小时', enabled: true },
@@ -108,11 +108,12 @@ async function main() {
   ];
   const batched = new FilterService();
   const results = await batched.evaluateBatch(candidates, '共同简历唯一标記', '行政助理', 'resume');
-  assert.equal(calls, 2, '七个初筛合格岗位按5+2合并，只请求两次');
-  assert.deepEqual(groups.map((group) => group.length), [5, 2]);
+  assert.equal(calls, 2, '八个初筛合格岗位按5+3合并，只请求两次');
+  assert.deepEqual(groups.map((group) => group.length), [5, 3]);
   assert.equal(results[0].passed, false); assert.equal(results[1].needsReview, true);
   assert.ok(results.slice(2).every((item) => item.passed));
-  assert.ok(groups.flat().every((item) => item.requirementsToCheck.length === 1 && item.requirementsToCheck[0].requirementId === 'metro'));
+  assert.ok(groups.flat().filter(item => item.description.includes('每天工作8小时')).every((item) => item.requirementsToCheck.length === 1 && item.requirementsToCheck[0].requirementId === 'metro'));
+  assert.ok(groups.flat().find(item => item.description.includes('工时面议')).requirementsToCheck.some((item: any) => item.requirementId === 'hours'));
   const cached = await batched.evaluateBatch(candidates, '共同简历唯一标記', '行政助理', 'resume');
   assert.equal(calls, 2); assert.ok(cached.slice(2).every((item) => item.evaluationSource === 'cache'));
   await batched.evaluateBatch([{ ...candidates[2], jobDetail: full + '新增职责。' }], '共同简历唯一标記', '行政助理', 'resume');
@@ -174,7 +175,7 @@ async function main() {
   assert.ok(longResults.every((item) => item.passed));
 
   await testWebPacing();
-  console.log('PASS | ' + localCases.length + ' 项本地条件、初筛后5+2批量请求、顺序/漏评/引文约束、缓存与失效、全局串行/冷却/停止');
+  console.log('PASS | ' + localCases.length + ' 项本地条件、初筛后5+3批量请求、顺序/漏评/引文约束、缓存与失效、全局串行/冷却/停止');
 }
 
 async function testWebPacing() {

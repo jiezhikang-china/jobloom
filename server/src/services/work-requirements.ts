@@ -60,7 +60,9 @@ export function assessWorkRequirements(
   const proofs: unknown[] = Array.isArray(modelProof) ? modelProof : [];
   return active.map((item) => {
     const local = assessLocalRequirement(job, detail, item, experienceMode);
-    if (local) return { requirementId: item.id, text: item.text, ...local };
+    // An explicit contradiction or uncertainty remains authoritative. Empty local evidence
+    // may only be resolved by a model quoting this job, including semantic phrasing.
+    if (local && (local.status !== 'unknown' || local.evidence.trim())) return { requirementId: item.id, text: item.text, ...local };
     const result = { requirementId: item.id, text: item.text, status: 'unknown' as const, evidence: '' };
     const matches = proofs.filter((entry: any) => entry?.requirementId === item.id);
     if (matches.length !== 1) return result;
@@ -68,6 +70,8 @@ export function assessWorkRequirements(
     if (!['met', 'not_met', 'unknown'].includes(String(candidate.status)) || typeof candidate.evidence !== 'string') return result;
     const quote = candidate.evidence.trim();
     if (quote.length < 3 || quote.length > 500 || !sources.some((source) => compact(source).includes(compact(quote)))) return result;
+    const quotedLocal = assessLocalRequirement({ ...job, jobExperience: '', welfareList: [] }, quote, item, experienceMode);
+    if (quotedLocal?.status === 'not_met' || (quotedLocal?.status === 'unknown' && quotedLocal.evidence.trim())) return result;
     return { ...result, status: candidate.status!, evidence: quote };
   });
 }

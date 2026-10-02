@@ -51,6 +51,15 @@ async function main(): Promise<void> {
     assert.equal(state.kind, 'jobs');
     assert.equal(state.cardCount, 1);
     assert.equal(new URL(cdpPage.url()).searchParams.get('position'), '100302');
+    await cdpPage.evaluate(() => {
+      const button = document.createElement('button'); button.id = 'native-click-test'; button.textContent = '测试';
+      const state = { count: 0, trusted: false, buttons: 0 }; (window as any).clickTest = state;
+      button.addEventListener('mousedown', event => { state.buttons = event.buttons; });
+      button.addEventListener('click', event => { state.count++; state.trusted = event.isTrusted; });
+      document.body.append(button);
+    });
+    await cdpPage.locator('#native-click-test').click();
+    assert.deepEqual(await cdpPage.evaluate(() => (window as any).clickTest), { count: 1, trusted: true, buttons: 1 }, '连接到 Chrome 后须真正派发一次点击');
     process.stdout.write('PASS | 真实 Chrome CDP + 离线页面：新文档加载、延迟 SPA、自动化测试搜索参数、职位就绪\n');
   } finally {
     (browserService as any).getWorkerPage = originalWorker;

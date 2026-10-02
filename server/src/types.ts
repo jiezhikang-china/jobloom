@@ -43,6 +43,7 @@ export interface AppConfig {
     maxDelaySeconds: number; // 最大等待秒数，默认 20
   };
   targetPosition?: BossPositionSelection;
+  targetPositions?: BossPositionSelection[];
 }
 
 export interface WorkConditions {
@@ -82,6 +83,8 @@ export interface WorkConditionReview {
   };
   question: string;
   updatedAt: string;
+  evaluationSource?: 'rules' | 'ai' | 'cache';
+  score?: number;
 }
 
 export interface BossPositionNode {
@@ -203,4 +206,6 @@ export interface DeliveryStats {
   cachedEvaluationCount?: number;
   pendingEvaluationCount?: number;
   currentProcessingJob?: string;
+  targetRoles?: string[];
+  phase?: 'planning' | 'configuring' | 'screening' | 'evaluating' | 'delivering';
 }

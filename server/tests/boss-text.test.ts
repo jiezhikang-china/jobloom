@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { decodeBossText, readableBossSalary } from '../src/services/boss-text.js';
+import { FilterService } from '../src/services/filter.service.js';
+assert.equal(decodeBossText('\ue031\ue032\ue033\ue034\ue035\ue036\ue037\ue038\ue039\ue03a'), '0123456789');
+assert.equal(readableBossSalary('\ue039-\ue032\ue034K·\ue032\ue034薪'), '8-13K·13薪');
+assert.equal(readableBossSalary('\ue099K'), '薪资待确认');
+assert.equal(decodeBossText('上海 · 5-6K · 1年以内'), '上海 · 5-6K · 1年以内');
+const filter = new FilterService();
+assert.deepEqual(filter.parseSalaryRangeK('\ue039-\ue032\ue034K'), { min: 8, max: 13 });
+assert.deepEqual(filter.parseSalaryRangeK('1.5-2.5万'), { min: 15, max: 25 });
+assert.equal((filter as any).checkSalary('\ue036-\ue037K', 9, 15).passed, false, '5-6K应被9K下限过滤，而非因乱码放行');
+assert.equal((filter as any).checkSalary('\ue03a-\ue032\ue031K', 9, 15).passed, true);
+console.log('PASS | BOSS 字体数字还原、薪资显示和薪资范围过滤');

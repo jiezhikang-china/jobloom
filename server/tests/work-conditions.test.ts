@@ -119,12 +119,12 @@ async function main() {
     assert.equal(unknown.passed, false);
     assert.equal(unknown.needsReview, true, 'AI 高分和虚构引文不能补齐缺失的条件');
     assert.equal(unknown.requirementAssessment?.find((item) => item.requirementId === 'preset-eightHours')?.status, 'unknown');
-    assert.equal(calls, before, '缺失作息的岗位也不必询问 AI');
+    assert.equal(calls, before + 1, '缺失作息的岗位交给 AI 分析，但虚构引文不能让它通过');
     const contradictory = await evaluate({ ...job, jobExperience: '3-5年' }, complete, '同上', '行政助理', 'requirements', { rulesOnly: true });
     assert.equal(contradictory.passed, true, '宽泛模式下，正文明确接受无经验优先于经验区间标签');
     const overtime = await evaluate(job, complete + '旺季偶尔加班。', '同上', '行政助理');
     assert.equal(overtime.needsReview, true, '只截取八小时引文不能忽略不确定加班');
-    const long = await evaluate(job, complete + '岗位信息。'.repeat(3000), '同上', '行政助理');
+    const long = await evaluate(job, complete + '岗位信息。'.repeat(8000), '同上', '行政助理');
     assert.equal(long.needsReview, true, '不能将被截断的岗位描述视为完整验证');
     response = { score: 99, passed: false, reason: '缺少岗位要求的证书' };
     const unfit = await evaluate(job, complete, '同上', '行政助理');

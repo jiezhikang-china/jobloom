@@ -53,3 +53,13 @@ BOSS 接入层现由 `server/src/services/browser.service.ts`（会话）、`ser
 - 实测填写淘汰原因并确认后，`.zp-toast` 显示“已进行反馈”，内含 `.zp-toast-icon-success`。卡片不一定立即移除。没有内容会提示“提交内容为空”，不能计成功。
 - 读取、打开详情和反馈前均核对岗位名、公司名和链接。此次提交了缺失公司介绍岗位的反馈，没有向招聘者发送消息。
 - 卡片的 `a.boss-info[href*="/gongsi/"]` 可直达公司资料页，优先使用可省去完整职位页的一次打开。公司页已加载但没有介绍时返回空简介。
+
+## 按目标修改自选期望与薪资字体（2026-10-02）
+
+- 期望编辑页使用干净的 `/web/geek/resume/`。三个全职位置满额时，职位页的“添加期望”只允许新增兼职，不能用于替换全职目标。
+- 全职行是 `#purpose li[ka="user-resume-edit-expectation0"]` 等，含 `.position-item .label-text`、`.money-item`、`.city-item`。悬停该行后才显示对应的 `a[ka="user-resume-edit-expectation0"]` 编辑按钮。
+- 表单是 `#purpose .expectation-form`；岗位入口 `[ka="resume_form_edit_positionName"]`，只读输入值是已选岗位。`.position-dialog` 按 `.position-category-wrap li` 大类、`.navs .stage-three` 子类、`.position-list .position-tooltip` 具体岗位依次点击；选择后弹窗关闭。
+- 城市入口 `[ka="resume_form_edit_cityValue"] .ui-cascader-selection`，隐藏输入值形如 `101020000,101020100,0`；选城市后选地区“不限”。现有期望保留薪资，新位置选择“面议”，助手仍应用自身薪资筛选。
+- 保存使用 `[ka="resume_form_expectation_ok"]`。保存前检查岗位与城市代码，保存后等表单关闭、对应行出现，再刷新个人页确认全部目标已持久保存。真实验证已保存当前目标“新媒体运营（上海）”并刷新确认，其他两个位置保留。此流程没有删除期望。
+- CDP 初始化恢复 `Input.setIgnoreInputEvents(ignore=false)` 并开启焦点模拟。此次故障中悬停有效、原生点击被忽略，恢复后实际自选切换产生可信点击事件。原生按下和释放分别发送 `buttons=1` 和 `buttons=0`。
+- 实际 `kanzhun-mix` / `kanzhun-Regular` 字体以 U+E031 至 U+E03A 对应0至9。已对照实际字体绘制结果核对十个数字并读取真实卡片薪资；页面读取、历史待确认显示和薪资解析共用还原规则，未知私用字符显示“薪资待确认”。

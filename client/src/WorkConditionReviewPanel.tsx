@@ -58,6 +58,8 @@ export default function WorkConditionReviewPanel() {
               <button type="button" aria-label={'移除记录：' + item.jobName} onClick={() => void remove(item.id)}><X size={16} /></button>
             </div>
             <p>{item.reason}</p>
+            {item.evaluationSource && <p>{item.evaluationSource === 'rules' ? '脚本筛选' : item.evaluationSource === 'cache' ? '复用 AI 评估' : 'AI 已评估'}
+              {item.score !== undefined ? ' · 匹配度 ' + item.score + ' 分' : ''}</p>}
             {item.screening?.companyInfo && <details className="work-review-company">
               <summary>已核查公司页 · {item.screening.companyInfo.industry}</summary>
               <p><a href={item.screening.companyInfo.url} target="_blank" rel="noreferrer">查看该公司的 BOSS 页面 <ExternalLink size={12} /></a></p>

@@ -74,6 +74,13 @@ async function main(): Promise<void> {
     assert.equal(calls[4].positionCode, undefined, '按工作条件搜索时无需指定职业分类');
     assert.deepEqual(calls[4].keywords, ['双休', '经验不限']);
     assert.equal(calls[4].candidateSource, 'requirements');
+    configManager.getConfig = () => ({ ...originalConfig, delivery: { ...originalConfig.delivery, jobSource: 'saved_expectations' } });
+    const savedTargets = await post({ mode: 'manual', targetRole: '别名', positionCodes: ['130111', '100122', '130303'],
+      requirementsText: '希望八小时、双休、允许无经验的工作。' });
+    assert.equal(savedTargets.status, 200);
+    assert.deepEqual(calls[5].targetPositions.map((item: any) => item.code), ['130111', '100122', '130303']);
+    assert.equal(calls[5].rulesOnly, false, '自选职位和纯工作条件也必须进入 AI 批量评估');
+    assert.equal((await post({ mode: 'manual', positionCodes: ['130111', '130111'], requirementsText: '希望双休的文职岗位，不做销售。' })).status, 400);
     process.stdout.write('PASS | 简历、手动和按工作条件投递入口与登录故障区分\n');
   } finally {
     configManager.getConfig = originalGetConfig;
