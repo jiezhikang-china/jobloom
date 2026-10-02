@@ -1320,6 +1320,17 @@ export default function App() {
                   </p>
                 </div>
 
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label htmlFor="candidate-languages" style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>我的语言能力</label>
+                  <textarea id="candidate-languages" value={config.filter.candidateLanguages || ''} maxLength={1000} rows={2}
+                    placeholder="例如：英语 CET4；日语 N1，口语流利；西班牙语熟练，能听懂哥斯达黎加口音"
+                    disabled={isTaskRunning} onChange={event => setConfig({ ...config, filter: { ...config.filter, candidateLanguages: event.target.value } })}
+                    style={{ width: '100%' }} />
+                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px', lineHeight: 1.6 }}>
+                    填写自己具备的语言、水平和证书，也可从简历读取。岗位明确要求某语言而没有达标依据时，先淘汰；“优先”和“可培训”保留。证书不能自动证明口语流利或掌握特定口音。
+                  </p>
+                </div>
+
                 <div>
                   <label htmlFor="experience-match-mode" style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
                     经验筛选方式
@@ -1485,12 +1496,13 @@ export default function App() {
                 </div>
                 <div>
                   <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
-                    拟人化停顿浮动区间 (秒，防封控)
+                    选择岗位的浏览间隔（秒）
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <input
                       type="number"
-                      value={config.delivery.minDelaySeconds || 8}
+                      min={0}
+                      value={config.delivery.minDelaySeconds ?? 8}
                       onChange={(e) =>
                         setConfig({
                           ...config,
@@ -1502,7 +1514,8 @@ export default function App() {
                     <span>秒 ~</span>
                     <input
                       type="number"
-                      value={config.delivery.maxDelaySeconds || 18}
+                      min={0}
+                      value={config.delivery.maxDelaySeconds ?? 18}
                       onChange={(e) =>
                         setConfig({
                           ...config,
@@ -1513,6 +1526,7 @@ export default function App() {
                     />
                     <span>秒</span>
                   </div>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>用于选择和浏览岗位；读取详情、等待 AI 的时间计入间隔，点击沟通前不另加停顿。</p>
                 </div>
               </div>
 
@@ -2119,7 +2133,8 @@ export default function App() {
             </div>
           </div>
         )}
-        {(activeTab === 'delivery' || (activeTab === 'launch' && selectedConditions.length > 0)) && <WorkConditionReviewPanel />}
+        {(activeTab === 'delivery' || (activeTab === 'launch' && selectedConditions.length > 0)) && <WorkConditionReviewPanel
+          taskRunning={isTaskRunning} onStarted={stats => { setDeliveryStats(stats); setActiveTab('delivery'); }} />}
       </main>
     </div>
   );

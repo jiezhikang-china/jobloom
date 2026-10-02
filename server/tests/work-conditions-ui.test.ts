@@ -38,6 +38,7 @@ async function main() {
   };
   let reviews = [fixture];
   const starts: any[] = [];
+  const reviewStarts: WorkConditionReview[][] = [];
   stub(configManager, 'getConfig', () => config);
   stub(configManager, 'updateConfig', (partial: any) => {
     config = (configManager as any).normalize({ ...config, ...partial, llm: { ...config.llm, ...partial.llm },
@@ -49,6 +50,7 @@ async function main() {
   stub(bossCatalogService, 'findPosition', async (code: string) => positionSelections(catalog.categories).find(item => item.code === code));
   stub(deliveryService, 'isActive', () => false);
   stub(deliveryService, 'startDelivery', async (params: any) => { starts.push(params); });
+  stub(deliveryService, 'startReviewDelivery', async (items: WorkConditionReview[]) => { reviewStarts.push(items); });
   stub(workConditionReviews, 'list', () => reviews);
   stub(workConditionReviews, 'remove', (id: string) => { reviews = reviews.filter((item) => item.id !== id); });
   const app = express();
@@ -105,17 +107,23 @@ async function main() {
     assert.match(await panel.innerText(), /记录时未自动投递/);
     assert.match(await panel.innerText(), /岗位描述未提供明确依据/);
     assert.match(await panel.innerText(), /AI 已评估.*匹配度 58 分/, '待确认岗位必须明确显示实际的 AI 介入');
-    await panel.getByRole('button', { name: '复制询问内容', exact: true }).click();
-    await panel.getByRole('status').filter({ hasText: '询问内容已复制' }).waitFor();
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), fixture.question);
+    assert.equal(await panel.getByRole('button', { name: '复制询问内容', exact: true }).count(), 0);
+    await panel.getByRole('button', { name: '投递岗位：' + fixture.jobName, exact: true }).click();
+    await panel.getByRole('status').filter({ hasText: '已开始投递所选岗位' }).waitFor();
+    assert.deepEqual(reviewStarts[0].map(item => item.id), [fixture.id], '卡片上的投递按钮必须启动实际投递入口');
+    await panel.getByRole('checkbox', { name: '全选待确认岗位', exact: true }).check();
+    await panel.getByRole('button', { name: '投递所选（1）', exact: true }).click();
+    await panel.getByRole('status').filter({ hasText: '已开始投递所选岗位' }).waitFor();
+    assert.equal(reviewStarts.length, 2, '勾选后可批量投递');
     await panel.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: path.resolve(process.cwd(), '../data/work-condition-reviews-preview.png'), fullPage: true });
+    await panel.screenshot({ path: path.resolve(process.cwd(), '../data/work-condition-reviews-preview.png') });
     await panel.getByRole('button', { name: '移除记录：' + fixture.jobName, exact: true }).click();
     await panel.getByText(/暂时没有待确认岗位/).waitFor();
     assert.equal(reviews.length, 0);
     await page.getByRole('button', { name: '筛选规则', exact: true }).click();
     assert.equal(await page.getByLabel('期望月薪下限').inputValue(), '');
     assert.equal(await page.getByLabel('期望月薪上限').inputValue(), '');
+    await page.getByLabel('我的语言能力', { exact: true }).fill('英语 CET4；西班牙语 C1');
     assert.equal(await page.getByLabel('经验筛选方式', { exact: true }).inputValue(), 'flexible');
     await page.getByLabel('经验筛选方式', { exact: true }).selectOption('strict');
     await Promise.all([
@@ -125,6 +133,7 @@ async function main() {
     assert.equal(config.filter.experienceMatchMode, 'strict');
     await page.reload();
     await page.getByRole('button', { name: '筛选规则', exact: true }).click();
+    assert.equal(await page.getByLabel('我的语言能力', { exact: true }).inputValue(), '英语 CET4；西班牙语 C1', '自己的语言能力须保存并恢复');
     assert.equal(await page.getByLabel('经验筛选方式', { exact: true }).inputValue(), 'strict', '严格模式须可保存并恢复');
     await page.getByLabel('经验筛选方式', { exact: true }).selectOption('flexible');
     await Promise.all([
@@ -136,6 +145,9 @@ async function main() {
       body: JSON.stringify({ filter: { experienceMatchMode: 'invalid' } }) });
     assert.equal(invalidMode.status, 400);
     assert.equal(config.filter.experienceMatchMode, 'flexible', '非法筛选方式不能改变已保存的设置');
+    const invalidLanguage = await fetch(base + '/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filter: { candidateLanguages: ['英语'] } }) });
+    assert.equal(invalidLanguage.status, 400);
     await conditions.getByRole('checkbox', { name: '启用条件：' + labels[0], exact: true }).uncheck();
     await conditions.getByRole('textbox', { name: '工作条件1', exact: true }).fill('每天工作不超过七小时');
     await Promise.all([
@@ -203,7 +215,7 @@ async function main() {
     assert.equal(await targetPanel.locator('[aria-label="目标岗位3"]').count(), 0);
     assert.deepEqual((await targetPanel.getByLabel('具体岗位', { exact: true }).allTextContents()).length, 2);
     assert.deepEqual(errors, []);
-    console.log('PASS | 三个自选目标选择、保存、恢复与移除，AI 评估来源，条件增删改与保存，原文与复制');
+    console.log('PASS | 三个自选目标选择、保存、恢复与移除，AI 评估来源，条件增删改与保存，原文、语言能力、待确认单条/勾选投递');
   } finally {
     await browser?.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

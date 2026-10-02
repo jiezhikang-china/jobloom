@@ -64,7 +64,7 @@ async function readJson(url, timeout = 1500) {
 async function isOurService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
-    return health.app === 'boss-job-agent' && health.integrationVersion === 19 && health.status === 'ok';
+    return health.app === 'boss-job-agent' && health.integrationVersion === 20 && health.status === 'ok';
   } catch {
     return false;
   }

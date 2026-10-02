@@ -17,15 +17,33 @@ const property = /房地产|房产|地产开发|地产经纪|房屋中介|房产
 const sales = /销售|营销|电销|网销|推销|地推|商务拓展|业务拓展|房产经纪|置业顾问|招商(?:专员|经理|顾问)/;
 const negativePrefix = /(?:不(?:做|涉及|承担|从事|需要(?:做|承担)?|负责|接受|考虑|要求(?:承担)?)?|不得(?:从事|涉及|开展|经营|提供|发放)?|禁止(?:从事|经营|发放)?|无需(?:做|承担)?|非|没有|无|并非|不是|拒绝|杜绝|避免)(?:任何|相关|这类|该类)?$/;
 
-function positiveMatch(value: string, pattern: RegExp): string | undefined {
+function positiveMatch(value: string, pattern: RegExp, ignore?: (text: string, match: RegExpMatchArray) => boolean): string | undefined {
   const text = normalize(value);
   for (const match of text.matchAll(new RegExp(pattern.source, 'g'))) {
     const businessOffset = match[0].search(/金融|银行|证券|期货|基金|保险|信贷|贷款|助贷|融资|理财|房地产|房产|销售|营销/);
     const start = match.index! + Math.max(0, businessOffset);
     if (negativePrefix.test(text.slice(Math.max(0, start - 15), start))) continue;
+    if (ignore?.(text, match)) continue;
     return text.slice(Math.max(0, match.index! - 25), Math.min(text.length, match.index! + match[0].length + 50)).trim();
   }
   return undefined;
+}
+
+/** A customer's industry or a technology's application area is not the employer's business. */
+function technicalFinanceReference(text: string, match: RegExpMatchArray): boolean {
+  const hit = match[0];
+  // Loan brokerage, lending and financial sales remain affirmative business evidence.
+  if (/助贷|中介|撮合|抵押贷款|信用贷款|企业融资|投资咨询|经纪|代理|推广|推销|催收|销售/.test(hit)) return false;
+  if (hit === '金融科技') return true;
+  const start = match.index!;
+  const context = text.slice(Math.max(0, start - 120), start + hit.length + 140).replace(/\s+/g, '');
+  const technology = /信息技术|软件(?:开发|研发|服务|测试|工程)|数字化运营|产品工程|系统(?:开发|研发|测试|运维|集成|建设)|技术(?:应用|研发|开发|服务|外包)|it(?:服务|外包)/;
+  if (!technology.test(context)) return false;
+  if (/(?:主营|主要业务(?:是|为)?|开展|经营|从事)(?:相关)?金融(?:业务|服务|产品|信息咨询)/.test(context)) return false;
+  // Scope exclusions already remove employee benefits and ordinary bookkeeping separately.
+  return /^(?:金融(?:行业|机构|业务|产品|服务|信息咨询)|(?:银行|证券|期货|基金|信托|信贷|贷款|理财|保险|信用卡)(?:行业|客户|系统|业务|产品|服务))$/.test(hit)
+    && (/(?:面向|服务于|为|覆盖|来自|包括|涵盖|委托|应用|客户|开发|测试|运维|集成)/.test(context))
+    && !/(?:主营|从事|开展|经营|办理|发放)(?:个人|企业|消费|小额)?(?:贷款|信贷)|提供(?:贷款|信贷)(?:撮合|咨询|服务)/.test(context);
 }
 
 function category(term: string): 'finance' | 'property' | 'sales' | undefined {
@@ -121,7 +139,14 @@ export function findJobExclusion(job: JobExclusionEvidence | BossJobItem, filter
       } else {
         pattern = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
       }
-      const hit = rule.literal ? (normalize(value).includes(term) ? rule.term : undefined) : positiveMatch(value, pattern);
+      const ignoreFinanceReference = kind === 'finance' && businessField
+        ? (text: string, match: RegExpMatchArray) => technicalFinanceReference(text, match)
+          || (field.name === '公司经营范围' && /^(?:投资咨询|金融服务|金融业务|金融信息咨询)$/.test(match[0])
+            && Boolean(job.companyInfo?.introduction.trim())
+            && !positiveMatch(job.companyInfo!.introduction, /助贷|信贷|贷款|融资(?:咨询|服务|业务)|投资咨询|金融(?:服务|业务)|证券(?:经纪|投资)|保险(?:代理|经纪)/, technicalFinanceReference)
+            && /旅游|酒店|订房|游戏|软件|信息技术|产品工程|数字化|制造|医疗|教育|餐饮|文(?:化|娱)|物流|零售|电商/.test(normalize(job.companyInfo!.introduction)))
+        : undefined;
+      const hit = rule.literal ? (normalize(value).includes(term) ? rule.term : undefined) : positiveMatch(value, pattern, ignoreFinanceReference);
       if (hit) return { term: rule.term, field: field.name, evidence: hit,
         reason: '命中排除条件「' + rule.term + '」：' + field.name + '「' + hit + '」' };
     }

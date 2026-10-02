@@ -82,7 +82,8 @@ export class BrowserService {
       // 端口可能被其他程序复用，必须核对该资料目录保存的浏览器实例标识。
       if (await this.browserIdentity(runtime.port) !== runtime.browserIdentity) return false;
       this.port = runtime.port;
-      if ((await this.listTabs()).length) return true;
+      await this.listTabs();
+      return true;
     } catch { /* 浏览器已经关闭或记录过期时，正常创建新的专用窗口。 */ }
     this.port = null;
     return false;
@@ -133,11 +134,11 @@ export class BrowserService {
       for (let attempt = 0; attempt < 80; attempt++) {
         if (child.exitCode !== null) break;
         try {
-          const tabs = await this.listTabs();
-          if (tabs.length) {
-            await this.rememberChrome(port);
-            return;
-          }
+          await this.listTabs();
+          // Chrome may expose CDP before its first tab. Register this instance immediately;
+          // getWorkerPage/getLoginPage will create the needed tab without another launch.
+          await this.rememberChrome(port);
+          return;
         } catch {}
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
@@ -178,6 +179,17 @@ export class BrowserService {
   /** Inspect the actual job page in the same profile, without changing the login or delivery tabs. */
   public async withJobInspection<T>(href: string, read: (page: CdpPage) => Promise<T>): Promise<T> {
     return this.withBossInspection(href, /^\/job_detail\/[^/]+\.html$/, read);
+  }
+
+  /** Manual review applications use the visible worker tab and keep the conversation open. */
+  public async withReviewApplication<T>(href: string, apply: (page: CdpPage) => Promise<T>): Promise<T> {
+    const url = new URL(href, BOSS_ORIGIN);
+    if (url.protocol !== 'https:' || url.hostname !== 'www.zhipin.com' || url.port || url.username || url.password
+      || !/^\/job_detail\/[^/]+\.html$/.test(url.pathname)) throw new Error('待确认岗位链接无效');
+    const page = await this.getWorkerPage();
+    await page.goto(url.href, { timeout: 15000 });
+    await page.bringToFront();
+    return apply(page);
   }
 
   public async withCompanyInspection<T>(href: string, read: (page: CdpPage) => Promise<T>): Promise<T> {

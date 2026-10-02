@@ -22,6 +22,7 @@ export interface AppConfig {
     skipMissingCompanyIntro?: boolean;
     skipVagueJobDescription?: boolean;
     degree: string[]; // 用户最高学历，0 或 1 项
+    candidateLanguages?: string;
     hrActiveDaysLimit: number;
     companyBlacklist: string[];
     requiredKeywords: string[];
@@ -62,6 +63,7 @@ export interface WorkConditionReview {
     companyInfo?: { url: string; name: string; industry: string; introduction: string; businessScope: string; checkedAt: string };
     needsCompanyConfirmation?: boolean;
     taskExclusions?: Array<{ term: string; literal: boolean }>;
+    languageEvidence?: string;
   };
   question: string;
   updatedAt: string;

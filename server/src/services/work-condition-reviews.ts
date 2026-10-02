@@ -7,6 +7,7 @@ import { configManager } from '../config/config.manager.js';
 import { findJobExclusion } from './job-exclusions.js';
 import { jobInformationIssue } from './job-information.js';
 import { decodeBossText, readableBossSalary } from './boss-text.js';
+import { languageQualificationIssue } from './language-qualification.js';
 
 function canonicalJobUrl(value: string): string {
   const url = new URL(value, 'https://www.zhipin.com');
@@ -100,7 +101,9 @@ export class WorkConditionReviews {
   }
 
   private exclusionFor(item: WorkConditionReview, filter: AppConfig['filter']) {
-    return (item.screening && jobInformationIssue({ jobDetail: item.screening.jobDetail, companyInfo: item.screening.companyInfo }, filter))
+    return languageQualificationIssue({ jobName: item.jobName, skills: item.screening?.skills }, item.screening?.jobDetail || '', filter,
+      { text: item.screening?.languageEvidence || '', source: 'resume' })
+      || (item.screening && jobInformationIssue({ jobDetail: item.screening.jobDetail, companyInfo: item.screening.companyInfo }, filter))
       || findJobExclusion({ jobName: item.jobName, brandName: item.companyName,
       brandIndustry: item.screening?.industry, skills: item.screening?.skills,
       companyInfo: item.screening?.companyInfo,
@@ -112,6 +115,7 @@ export class WorkConditionReviews {
     if (typeof value.industry !== 'string' || typeof value.jobDetail !== 'string' || value.jobDetail.length > 100000
       || !Array.isArray(value.skills) || value.skills.some((item) => typeof item !== 'string')
       || (value.needsCompanyConfirmation !== undefined && typeof value.needsCompanyConfirmation !== 'boolean')
+      || (value.languageEvidence !== undefined && (typeof value.languageEvidence !== 'string' || value.languageEvidence.length > 2000))
       || (value.taskExclusions !== undefined && (!Array.isArray(value.taskExclusions) || value.taskExclusions.length > 100
         || value.taskExclusions.some((rule) => typeof rule?.term !== 'string' || typeof rule.literal !== 'boolean')))) {
       throw new Error('岗位排除条件依据无效，已保留原文件');
@@ -131,6 +135,7 @@ export class WorkConditionReviews {
         introduction: companyInfo.introduction, businessScope: companyInfo.businessScope, checkedAt: companyInfo.checkedAt };
     }
     return { industry: clipped(value.industry, 200), jobDetail: value.jobDetail, ...(companyInfo ? { companyInfo } : {}),
+      ...(value.languageEvidence ? { languageEvidence: value.languageEvidence } : {}),
       ...(value.needsCompanyConfirmation ? { needsCompanyConfirmation: true } : {}),
       skills: value.skills.slice(0, 100).map((item) => clipped(item, 200)),
       ...(value.taskExclusions ? { taskExclusions: value.taskExclusions.map((rule) => ({ term: clipped(rule.term, 100), literal: rule.literal })) } : {}) };

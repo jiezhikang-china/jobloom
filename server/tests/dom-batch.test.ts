@@ -105,6 +105,57 @@ async function main(): Promise<void> {
     assert.equal(result.greetingSent, true);
     assert.equal(await page.evaluate(() => (window as any).sentText), '你好，我有相关开发经验。');
 
+    const installSentPopup = async (closes = true) => page.evaluate((closeDialog) => {
+      const original = document.querySelector('.op-btn-chat')!;
+      const button = original.cloneNode(true) as HTMLElement; button.textContent = '立即沟通'; original.replaceWith(button);
+      (window as any).newChats = 0; (window as any).continueClicks = 0;
+      button.addEventListener('click', () => {
+        (window as any).newChats++;
+        const dialog = document.createElement('div'); dialog.className = 'dialog-wrap';
+        dialog.innerHTML = '<h3>已向BOSS发送消息</h3><p>BOSS您好，非常喜欢您的这个岗位。</p><button>留在此页</button><button class="continue">继续沟通</button>';
+        document.body.appendChild(dialog);
+        dialog.querySelector('.continue')!.addEventListener('click', () => {
+          (window as any).continueClicks++;
+          if (closeDialog) {
+            dialog.remove(); button.textContent = '继续沟通';
+            const conversation = document.createElement('div'); conversation.className = 'chat-input';
+            conversation.innerHTML = '<textarea placeholder="输入消息"></textarea><button>发送</button>';
+            document.body.appendChild(conversation);
+          }
+        });
+      });
+    }, closes);
+    await installSentPopup();
+    const acknowledged = await bossPageService.executeChatClick(page.locator('.op-btn-chat') as any, '不得再发送第二条消息', target);
+    assert.equal(acknowledged.success, true, '已向BOSS发送消息是发送确认信号，不能报未知结果');
+    assert.equal(acknowledged.platformGreeting, true); assert.equal(acknowledged.continued, true);
+    assert.equal(await page.evaluate(() => (window as any).newChats), 1);
+    assert.equal(await page.evaluate(() => (window as any).continueClicks), 1, '点击继续沟通，不点留在此页');
+    assert.equal(await page.locator('.chat-input textarea').inputValue(), '', '已发送默认招呼后不能向会话再写一条');
+    await page.locator('.chat-input').evaluate(element => element.remove());
+    await installSentPopup(false);
+    const unfinished = await bossPageService.executeChatClick(page.locator('.op-btn-chat') as any, '你好', target);
+    assert.equal(unfinished.success, true, '继续沟通失败不抹掉已发送事实');
+    assert.equal(unfinished.continuationFailed, true);
+    assert.equal(await page.evaluate(() => (window as any).newChats), 1);
+    assert.equal(await page.evaluate(() => (window as any).continueClicks), 1, '不重复点击已发送岗位');
+    await page.locator('.dialog-wrap').evaluate(element => element.remove());
+
+    await page.route('**/job_detail/review.html', route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: `<body>
+      <div class="job-banner"><div class="name"><h1>内容运营</h1><span class="salary">6-8K</span></div><span class="text-city">上海</span>
+      <span class="text-experiece">1-3年</span><span class="text-degree">大专</span><a class="btn-startchat" ka="job_detail_chat">立即沟通</a></div>
+      <div class="sider-company"><div class="company-info"><a title="科技公司">科技公司</a></div><a ka="job-detail-brandindustry">计算机软件</a></div>
+      <div class="job-detail-section"><h3>职位描述</h3><div class="job-sec-text">负责中文游戏内容审核与运营，每周双休，具体上下班时间面议。</div><div class="job-tags"><span>内容运营</span></div></div></body>` }));
+    await page.goto('https://www.zhipin.com/job_detail/review.html');
+    const review = { jobName: '内容运营', companyName: '科技公司', jobHref: 'https://www.zhipin.com/job_detail/review.html' } as any;
+    const { configManager } = await import('../src/config/config.manager.js');
+    const reviewDetail = await bossPageService.loadReviewJob(page as any, review, { ...configManager.getConfig().filter,
+      companyBlacklist: [], skipMissingCompanyIntro: false, skipVagueJobDescription: false });
+    assert.equal(reviewDetail.job.salaryDesc, '6-8K'); assert.equal(reviewDetail.job.jobDegree, '大专');
+    assert.equal(reviewDetail.job.cityName, '上海'); assert.match(reviewDetail.jobDetailText, /游戏内容/);
+    assert.ok(reviewDetail.chatButtonLocator, '独立岗位页的真实沟通入口可用于待确认投递');
+    assert.equal(await bossPageService.isDetailStillTarget('内容运营', '不相关公司', review.jobHref, page as any), false);
+
     pageBody = `<html><body><script>setTimeout(() => {
       document.body.innerHTML = ${JSON.stringify(fixture.match(/<body>([\s\S]*?)<script>/)![1])};
     }, 450);</script></body></html>`;

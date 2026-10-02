@@ -252,6 +252,14 @@ input:focus, select:focus, textarea:focus {
 .work-review-item dd { color: #96adb8; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .work-review-question { display: flex; align-items: center; justify-content: space-between; gap: 15px; border-top: 1px solid #344b55; padding-top: 10px; }
 .work-review-question p { margin-top: 0; }
+.work-review-selection { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; color: #9cb4bd; font-size: 12px; }
+.work-review-selection label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.work-review-selection button, .work-review-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 16px; border: 1px solid #38b691; border-radius: 8px; background: #08775d; color: #eafff5; font-weight: 650; white-space: nowrap; }
+.work-reviews button:disabled, .work-reviews input:disabled { opacity: .5; cursor: not-allowed; }
+.work-review-job { display: flex; align-items: flex-start; gap: 10px; }
+.work-review-job > input { margin-top: 4px; flex-shrink: 0; }
+.work-review-actions { display: flex; align-items: center; justify-content: space-between; gap: 15px; border-top: 1px solid #344b55; padding-top: 10px; }
+.work-review-actions p { margin-top: 0; }
 button:disabled { cursor: not-allowed; }
 
 @media (max-width: 800px) {

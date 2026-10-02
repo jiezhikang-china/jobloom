@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink, RefreshCw, Copy, X } from 'lucide-react';
-import type { WorkConditionReview } from './types.js';
+import { ExternalLink, RefreshCw, Send, X } from 'lucide-react';
+import type { DeliveryStats, WorkConditionReview } from './types.js';
 
 const statusLabels = { met: '描述符合', not_met: '描述不符合', unknown: '待确认' };
 
-export default function WorkConditionReviewPanel() {
+export default function WorkConditionReviewPanel({ taskRunning = false, onStarted }: {
+  taskRunning?: boolean; onStarted?: (stats: DeliveryStats) => void;
+}) {
   const [items, setItems] = useState<WorkConditionReview[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const busy = taskRunning || submitting;
   useEffect(() => {
     const controller = new AbortController();
     const load = async () => {
@@ -16,7 +21,7 @@ export default function WorkConditionReviewPanel() {
         const response = await fetch('/api/delivery/work-condition-reviews', { signal: controller.signal });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || '读取待确认岗位失败');
-        setItems(result.data); setError('');
+        setItems(result.data); setSelected(previous => previous.filter(id => result.data.some((item: WorkConditionReview) => item.id === id))); setError('');
       } catch (cause) {
         if (!controller.signal.aborted) setError((cause as Error).message);
       }
@@ -35,27 +40,46 @@ export default function WorkConditionReviewPanel() {
       setNotice('已移除本地记录'); setError('');
     } catch (cause) { setError((cause as Error).message); }
   };
-  const copy = async (item: WorkConditionReview) => {
-    try { await navigator.clipboard.writeText(item.question); setNotice('询问内容已复制'); }
-    catch { setNotice('无法访问剪贴板，请选中下方询问内容复制。'); }
+  const apply = async (ids: string[]) => {
+    if (busy || !ids.length) return;
+    setSubmitting(true); setNotice(''); setError('');
+    try {
+      const response = await fetch('/api/delivery/work-condition-reviews/apply', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || '投递未启动');
+      setNotice(result.message || '已开始投递所选岗位'); setSelected([]);
+      if (result.data) onStarted?.(result.data);
+      setRefresh(value => value + 1);
+    } catch (cause) { setError((cause as Error).message); }
+    finally { setSubmitting(false); }
   };
 
   return (
     <section className="work-reviews" aria-label="待确认岗位">
       <div className="work-condition-head">
-        <div><h3>待确认岗位 <span>{items.length}</span></h3><p>排除条件先执行；这里只保留其余条件尚需确认的岗位。记录时未自动投递。</p></div>
+        <div><h3>待确认岗位 <span>{items.length}</span></h3><p>排除条件先执行；记录时未自动投递。其余条件尚未确认，你可以选择先投递。</p></div>
         <button type="button" aria-label="刷新待确认岗位" onClick={() => setRefresh((value) => value + 1)}><RefreshCw size={14} /> 刷新</button>
       </div>
       {error && <p role="alert" className="work-review-error">{error}</p>}
       {notice && <p role="status">{notice}</p>}
+      {items.length > 0 && <div className="work-review-selection">
+        <label><input type="checkbox" aria-label="全选待确认岗位" disabled={busy} checked={selected.length === items.length}
+          onChange={event => setSelected(event.target.checked ? items.map(item => item.id) : [])} /> 全选</label>
+        <span>已选 {selected.length} 个{taskRunning ? ' · 当前有投递任务，请结束后操作' : ''}</span>
+        <button type="button" disabled={busy || !selected.length} onClick={() => void apply(selected)}><Send size={14} /> 投递所选（{selected.length}）</button>
+      </div>}
       {!items.length && !error && <p className="work-review-empty">暂时没有待确认岗位。运行投递后，缺少依据或描述冲突的岗位会显示在这里。</p>}
       <div className="work-review-list">
         {items.map((item) => (
           <article key={item.id} className="work-review-item">
             <div className="work-review-title">
-              <div><a href={item.jobHref} target="_blank" rel="noreferrer">{item.jobName} <ExternalLink size={13} /></a>
+              <div className="work-review-job"><input type="checkbox" aria-label={'选择岗位：' + item.jobName} disabled={busy} checked={selected.includes(item.id)}
+                  onChange={event => setSelected(previous => event.target.checked ? [...previous, item.id] : previous.filter(id => id !== item.id))} />
+                <div><a href={item.jobHref} target="_blank" rel="noreferrer">{item.jobName} <ExternalLink size={13} /></a>
                 <p>{item.companyName}{item.screening?.industry ? ' · ' + item.screening.industry : ''} · {item.salary || '薪资未注明'}</p></div>
-              <button type="button" aria-label={'移除记录：' + item.jobName} onClick={() => void remove(item.id)}><X size={16} /></button>
+              </div><button type="button" disabled={busy} aria-label={'移除记录：' + item.jobName} onClick={() => void remove(item.id)}><X size={16} /></button>
             </div>
             <p>{item.reason}</p>
             {item.evaluationSource && <p>{item.evaluationSource === 'rules' ? '脚本筛选' : item.evaluationSource === 'cache' ? '复用 AI 评估' : 'AI 已评估'}
@@ -73,8 +97,8 @@ export default function WorkConditionReviewPanel() {
               ))}
             </dl>
             <p>记录于 {new Date(item.updatedAt).toLocaleString('zh-CN')}</p>
-            <div className="work-review-question"><p>{item.question}</p>
-              <button type="button" onClick={() => void copy(item)}><Copy size={14} /> 复制询问内容</button></div>
+            <div className="work-review-actions"><p>投递后会自动进入 BOSS 沟通页面。</p>
+              <button type="button" disabled={busy} aria-label={'投递岗位：' + item.jobName} onClick={() => void apply([item.id])}><Send size={14} /> 投递</button></div>
           </article>
         ))}
       </div>

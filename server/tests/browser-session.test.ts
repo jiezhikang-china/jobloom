@@ -13,12 +13,13 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(profile, 'Default', 'Network', 'Cookies'), 'fixture');
   const service = new BrowserService(profile);
   const identity = '/devtools/browser/session-test';
+  let noTabs = false;
   const debugServer = http.createServer((request, response) => {
     response.setHeader('content-type', 'application/json');
     const port = (debugServer.address() as net.AddressInfo).port;
     response.end(JSON.stringify(request.url === '/json/version'
       ? { webSocketDebuggerUrl: `ws://127.0.0.1:${port}${identity}` }
-      : [{ id: 'fixture', type: 'page', url: 'about:blank' }]));
+      : noTabs ? [] : [{ id: 'fixture', type: 'page', url: 'about:blank' }]));
   });
   await new Promise<void>((resolve) => debugServer.listen(0, '127.0.0.1', resolve));
   const debugPort = (debugServer.address() as net.AddressInfo).port;
@@ -39,6 +40,12 @@ async function main(): Promise<void> {
     assert.equal((reconnected as any).chrome, null, '不能启动占用同一资料目录的第二个 Chrome');
     await reconnected.close();
     assert.equal((await fetch(`http://127.0.0.1:${debugPort}/json/version`)).ok, true, '断开连接不能结束复用的浏览器');
+    noTabs = true;
+    const noTabBrowser = new BrowserService(profile);
+    await (noTabBrowser as any).ensureChrome(false);
+    assert.equal((noTabBrowser as any).port, debugPort, '浏览器已启动但暂时没有标签页时仍复用，不争抢资料目录');
+    assert.equal((noTabBrowser as any).chrome, null);
+    await noTabBrowser.close();
     fs.writeFileSync(runtimePath, JSON.stringify({ port: debugPort, browserIdentity: identity + '-wrong' }));
     assert.equal(await (reconnected as any).tryReconnectChrome(), false, '其他浏览器占用同一端口时不能错误复用');
     assert.equal((reconnected as any).port, null);

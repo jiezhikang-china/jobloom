@@ -52,6 +52,10 @@ apiRouter.get('/config', (_req: Request, res: Response) => {
 });
 
 apiRouter.post('/config', (req: Request, res: Response) => {
+  if (req.body?.filter?.candidateLanguages !== undefined && (typeof req.body.filter.candidateLanguages !== 'string'
+    || req.body.filter.candidateLanguages.length > 1000)) {
+    return res.status(400).json({ success: false, message: '请用不超过1000字填写自己的语言能力。' });
+  }
   if (req.body?.targetPositions !== undefined && (!Array.isArray(req.body.targetPositions) || req.body.targetPositions.length > 3
     || req.body.targetPositions.some((item: any) => !/^\d{6}$/.test(item?.code))
     || new Set(req.body.targetPositions.map((item: any) => item.code)).size !== req.body.targetPositions.length)) {
@@ -348,6 +352,32 @@ apiRouter.get('/delivery/status', (_req: Request, res: Response) => {
 apiRouter.get('/delivery/work-condition-reviews', (_req: Request, res: Response) => {
   try { res.json({ success: true, data: workConditionReviews.listEligible() }); }
   catch { res.status(500).json({ success: false, message: '读取待确认岗位失败，原文件已保留。' }); }
+});
+
+apiRouter.post('/delivery/work-condition-reviews/apply', async (req: Request, res: Response) => {
+  try {
+    const ids = req.body?.ids;
+    if (!Array.isArray(ids) || !ids.length || ids.length > 150
+      || ids.some(id => typeof id !== 'string' || !/^[a-f0-9]{20}$/.test(id)) || new Set(ids).size !== ids.length) {
+      return res.status(400).json({ success: false, message: '请选择1至150个不同的待确认岗位' });
+    }
+    if (deliveryService.isActive()) return res.status(409).json({ success: false, message: '请先停止当前投递任务，再投递待确认岗位' });
+    const filter = configManager.getConfig().filter;
+    const eligible = workConditionReviews.listEligible(filter);
+    const reviews = ids.map(id => eligible.find(item => item.id === id));
+    if (reviews.some(item => !item)) return res.status(400).json({ success: false, message: '所选记录已移除或已命中排除条件，请刷新后重新选择' });
+    if (configManager.getConfig().delivery.dailyMaxQuota === 0) return res.status(400).json({ success: false, message: '每日投递上限为0，请先调整上限' });
+    let login = await browserService.checkLoginStatus();
+    if (!login.isLoggedIn && login.reasonCode === 'unverified') login = await browserService.verifyLogin();
+    if (!login.isLoggedIn) return res.status(login.reasonCode === 'login_required' ? 401 : 503)
+      .json({ success: false, message: login.reason || '无法确认 BOSS 登录状态', reasonCode: login.reasonCode });
+    if (deliveryService.isActive()) return res.status(409).json({ success: false, message: '投递任务已经在运行中' });
+    deliveryService.startReviewDelivery(reviews as NonNullable<typeof reviews[number]>[])
+      .catch(error => deliveryService.log('error', '待确认岗位投递失败：' + (error as Error).message));
+    res.json({ success: true, data: deliveryService.getStats(), message: '已开始投递所选岗位，未确认的工作条件仍保留原状态' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: (error as Error).message });
+  }
 });
 
 apiRouter.delete('/delivery/work-condition-reviews/:id', (req: Request, res: Response) => {

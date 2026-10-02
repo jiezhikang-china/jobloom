@@ -28,6 +28,7 @@ export interface AppConfig {
     skipMissingCompanyIntro?: boolean;
     skipVagueJobDescription?: boolean;
     degree: string[]; // 用户最高学历，0 或 1 项；空数组不限制，岗位按最低门槛比较
+    candidateLanguages?: string; // 用户声明的语言、水平、证书和口音能力；不是岗位需求
     hrActiveDaysLimit: number; // 3天内活跃为 3；<=0 表示不限制
     companyBlacklist: string[]; // 公司、行业、岗位与明确业务职责的排除词
     requiredKeywords: string[]; // 职位名称、技能标签或完整 JD 命中任意一个才进入 AI 评估
@@ -80,6 +81,7 @@ export interface WorkConditionReview {
     companyInfo?: BossCompanyInfo;
     needsCompanyConfirmation?: boolean;
     taskExclusions?: Array<{ term: string; literal: boolean }>;
+    languageEvidence?: string;
   };
   question: string;
   updatedAt: string;

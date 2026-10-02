@@ -57,6 +57,7 @@ const DEFAULT_CONFIG: AppConfig = {
     skipMissingCompanyIntro: true,
     skipVagueJobDescription: true,
     degree: ['本科'],
+    candidateLanguages: '',
     hrActiveDaysLimit: 3,
     companyBlacklist: [
       '外包', '人力资源', '劳务派遣', '中软国际', '软通动力', '法本信息',
@@ -126,6 +127,7 @@ export class ConfigManager {
         skipMissingCompanyIntro: filter.skipMissingCompanyIntro !== false,
         skipVagueJobDescription: filter.skipVagueJobDescription !== false,
         degree: normalizeCandidateDegrees(cfg.filter?.degree),
+        candidateLanguages: typeof filter.candidateLanguages === 'string' ? filter.candidateLanguages.trim().slice(0, 1000) : '',
         companyBlacklist: this.splitKeywords(cfg.filter?.companyBlacklist),
         requiredKeywords: this.splitKeywords(cfg.filter?.requiredKeywords),
         workRequirements: normalizeWorkRequirements(cfg.filter?.workRequirements, legacyWorkConditions),

@@ -1,6 +1,6 @@
 import { boundedInteger, configManager } from '../config/config.manager.js';
 import { stateManager, todayStr } from '../config/state.manager.js';
-import { bossPageService, DOMJobCardInfo } from './boss.page.service.js';
+import { bossPageService, DOMJobCardInfo, type ChatResult } from './boss.page.service.js';
 import { filterService, Stage2Result } from './filter.service.js';
 import { browserService } from './browser.service.js';
 import { workConditionReviews } from './work-condition-reviews.js';
@@ -9,7 +9,8 @@ import { jobInformationIssue } from './job-information.js';
 import { configuredWorkRequirements, hasEntryLevelRequirement } from './work-requirements.js';
 import { bossExpectationsService } from './boss-expectations.js';
 import { planTargetPositions } from './target-planner.js';
-import { DeliveryStats, DeliveryLogItem, BossJobItem, BossPositionSelection } from '../types.js';
+import { languageQualificationIssue, candidateLanguageEvidence } from './language-qualification.js';
+import { DeliveryStats, DeliveryLogItem, BossJobItem, BossPositionSelection, WorkConditionReview, AppConfig } from '../types.js';
 
 const LLM_FAILURE_PAUSE_THRESHOLD = 3;
 const COOL_DOWN_SECONDS = 15 * 60;
@@ -35,6 +36,7 @@ export class DeliveryService {
   private listeners: Array<(stats: DeliveryStats, log?: DeliveryLogItem) => void> = [];
   private consecutiveLlmFailures = 0;
   private evaluationAbort?: AbortController;
+  private nextSelectionAt = 0;
 
   constructor() {
     // 启动即恢复"今日已投递"计数（跨自然日会自动归零，避免隔天仍被判定配额已满）
@@ -146,6 +148,110 @@ export class DeliveryService {
     return !this.isStopRequested;
   }
 
+  /** Rate browsing at selection time; reading and AI time count toward the interval. */
+  private async paceJobSelection(delivery: AppConfig['delivery']): Promise<boolean> {
+    const remaining = Math.max(0, this.nextSelectionAt - Date.now());
+    if (remaining > 0) {
+      this.log('info', '[浏览间隔] ' + (remaining / 1000).toFixed(1) + ' 秒后选择下一岗位');
+      if (!(await this.sleepInterruptible(remaining))) return false;
+    }
+    while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
+    if (this.isStopRequested) return false;
+    const min = Math.max(0, delivery.minDelaySeconds);
+    const max = Math.max(min, delivery.maxDelaySeconds);
+    this.nextSelectionAt = Date.now() + (min + Math.random() * (max - min)) * 1000;
+    return true;
+  }
+
+  private recordConfirmedChat(target: { jobHref: string; jobName: string; companyName: string }, result: ChatResult): void {
+    this.stats.todayAppliedCount++;
+    this.persistQuota();
+    try { workConditionReviews.removeForJob(target.jobHref); }
+    catch { this.log('warn', '已沟通，但移除旧的待确认记录失败，请刷新列表。'); }
+    if (result.continued) this.log('info', '[已继续沟通] ' + target.companyName + ' - ' + target.jobName);
+    if (result.continuationFailed) {
+      throw new Error('已确认向「' + target.companyName + ' - ' + target.jobName + '」发送消息并计入配额，但“继续沟通”未完成；请处理当前弹窗后继续，勿重复投递');
+    }
+  }
+
+  /** User-selected review applications share the same task lock, quota and verified send flow. */
+  public async startReviewDelivery(reviews: WorkConditionReview[]): Promise<void> {
+    if (this.isTaskActive) throw new Error('投递任务已经在运行中');
+    this.isTaskActive = true;
+    this.isStopRequested = false;
+    this.nextSelectionAt = 0;
+    this.ensureQuotaFresh();
+    const cfg = configManager.getConfig();
+    this.stats = { status: 'running', isPaused: false, needsCaptchaVerification: false, todayAppliedCount: this.stats.todayAppliedCount,
+      quotaDate: this.stats.quotaDate, dailyMaxQuota: cfg.delivery.dailyMaxQuota, totalScanned: 0, passedFilterCount: 0,
+      markedNotSuitCount: 0, skippedByLlmErrorCount: 0, localDecisionCount: 0, aiRequestCount: 0, pendingEvaluationCount: 0,
+      phase: 'delivering', targetRoles: ['待确认岗位'] };
+    this.log('info', '[手动投递] 已选择 ' + reviews.length + ' 个待确认岗位，逐个复核后投递');
+    try {
+      for (const review of reviews) {
+        this.ensureQuotaFresh();
+        if (this.isStopRequested) break;
+        if (this.stats.todayAppliedCount >= cfg.delivery.dailyMaxQuota) {
+          this.log('warn', '今日投递已达预设配额上限，尚未投递的待确认记录已保留'); break;
+        }
+        if (!(await this.paceJobSelection(cfg.delivery))) break;
+        if (!workConditionReviews.listEligible(cfg.filter).some(item => item.id === review.id)) {
+          this.log('warn', '[手动跳过] 记录已移除或不符合排除条件：' + review.companyName + ' - ' + review.jobName); continue;
+        }
+        this.stats.currentProcessingJob = review.companyName + ' - ' + review.jobName;
+        this.stats.totalScanned++; this.emit();
+        await browserService.withReviewApplication(review.jobHref, async page => {
+          const detail = await bossPageService.loadReviewJob(page, review, cfg.filter);
+          if (this.isStopRequested) return;
+          if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新选择待确认岗位投递');
+          const context = { text: review.screening?.languageEvidence || '', source: 'resume' as const };
+          const exclusion = findJobExclusion({ ...detail.job, jobDetail: detail.jobDetailText }, cfg.filter, '', review.screening?.taskExclusions);
+          const first = filterService.evaluateStage1(detail.job, detail.jobDetailText, cfg.filter, '', context);
+          const local = filterService.evaluateLocally(detail.job, detail.jobDetailText, true, cfg.filter, '', context);
+          const requiredFieldsMissing = ((cfg.filter.salaryMin || cfg.filter.salaryMax) && !detail.job.salaryDesc)
+            || (cfg.filter.degree.length && !detail.job.jobDegree) || (cfg.filter.cityName && !detail.job.cityName);
+          if (requiredFieldsMissing) throw new Error('岗位关键筛选字段无法读取，未发起沟通');
+          if (exclusion || !first.passed || (local && !local.passed && !local.needsReview)) {
+            this.log('warn', '[手动淘汰] ' + review.companyName + ' - ' + review.jobName + '：' + (exclusion?.reason || first.reason || local?.reason));
+            this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
+            workConditionReviews.remove(review.id); return;
+          }
+          if (detail.alreadyChatted) {
+            workConditionReviews.remove(review.id);
+            this.log('info', '[已沟通跳过] ' + review.companyName + ' - ' + review.jobName); return;
+          }
+          if (!detail.chatButtonLocator) throw new Error('未找到该岗位的沟通按钮');
+          while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
+          if (this.isStopRequested) return;
+          this.ensureQuotaFresh();
+          if (this.stats.todayAppliedCount >= cfg.delivery.dailyMaxQuota) return;
+          this.stats.passedFilterCount++;
+          this.log('info', '[手动投递] ' + review.companyName + ' - ' + review.jobName + '，按你的选择发起沟通');
+          const result = await bossPageService.executeChatClick(detail.chatButtonLocator,
+            '您好，我关注贵司的【' + review.jobName + '】岗位，希望与您交流岗位详情。', review);
+          if (result.success) {
+            this.recordConfirmedChat(review, result);
+            this.log('success', '✅ 投递成功：' + review.companyName + ' - ' + review.jobName + '，今日累计 ' + this.stats.todayAppliedCount + ' 家');
+          } else if (result.uncertain) throw new Error('已触发沟通，但尚未确认发送结果；请查看平台会话后继续，勿重复投递');
+          else if (result.loginRequired) throw new Error('BOSS 登录失效，请登录后投递');
+          else if (result.needCaptcha) { await this.handleCaptcha(); throw new Error('验证已处理，请重新选择尚未投递的岗位'); }
+          else if (result.quotaExceeded) { this.stats.status = 'finished'; this.isStopRequested = true; this.log('warn', 'BOSS 提示沟通次数已达上限，剩余记录已保留'); }
+          else if (result.isCoolDown) { this.stats.status = 'cool_down'; this.emit(); await this.sleepInterruptible(COOL_DOWN_SECONDS * 1000); throw new Error('平台频率限制已冷却，尚未投递的记录已保留'); }
+          else this.log('warn', '[手动未投递] 目标岗位已变化或沟通未确认，保留记录：' + review.jobName);
+        });
+        this.emit();
+      }
+      this.stats.status = this.isStopRequested && this.stats.status !== 'finished' ? 'idle' : 'finished';
+      this.log('info', '[手动投递结束] 尚未投递的岗位继续保留在待确认列表');
+    } catch (error) {
+      this.stats.status = this.isStopRequested ? 'idle' : 'failed';
+      this.log(this.isStopRequested ? 'info' : 'error', this.isStopRequested ? '手动投递已停止' : '手动投递中断：' + (error as Error).message);
+    } finally {
+      this.isTaskActive = false; this.stats.currentProcessingJob = undefined; this.stats.pendingEvaluationCount = 0;
+      this.stats.isPaused = false; this.stats.needsCaptchaVerification = false; this.emit();
+    }
+  }
+
   /**
    * 启动全真 DOM 拟人化自动投递主流程
    */
@@ -167,6 +273,7 @@ export class DeliveryService {
     const cfg = configManager.getConfig();
     this.ensureQuotaFresh();
     this.isStopRequested = false;
+    this.nextSelectionAt = 0;
     this.evaluationAbort = new AbortController();
     this.consecutiveLlmFailures = 0;
     this.stats = {
@@ -192,7 +299,6 @@ export class DeliveryService {
       `🚀 全真 DOM 拟人化投递任务启动！目标职业: ${params.targetRole}，检索关键词: ${params.keywords.join(', ')}，城市: ${cfg.filter.cityName || '不限'}`
     );
 
-    let batchSuccessCount = 0; // 用于触发贤者时间批次计数
     const processedJobKeys = new Set<string>();
     let stoppedByUser = false;
 
@@ -264,7 +370,8 @@ export class DeliveryService {
         const pending: PendingCandidate[] = [];
         const aiBatchSize = boundedInteger(cfg.llm.jobBatchSize, 5, 1, 10);
         const exclusionText = params.candidateSource === 'requirements' ? params.resumeText : '';
-        const detailOptions = { readIndustry: cfg.filter.skipMissingCompanyIntro === true || needsCompanyIndustry(cfg.filter, exclusionText), filter: cfg.filter, exclusionText };
+        const candidateContext = { text: params.resumeText, source: params.candidateSource || 'resume' as const };
+        const detailOptions = { readIndustry: cfg.filter.skipMissingCompanyIntro === true || needsCompanyIndustry(cfg.filter, exclusionText), filter: cfg.filter, exclusionText, candidateContext };
         const processEvaluation = async (candidate: PendingCandidate, evaluation: Stage2Result, reopen: boolean): Promise<void> => {
           const { jobCard, job: mockJobItem } = candidate;
           if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) {
@@ -272,8 +379,9 @@ export class DeliveryService {
           }
           const exclusion = findJobExclusion({ ...mockJobItem, jobDetail: candidate.jobDetail }, cfg.filter, exclusionText);
           const informationIssue = jobInformationIssue({ jobDetail: candidate.jobDetail, companyInfo: mockJobItem.companyInfo }, cfg.filter);
-          if (exclusion || informationIssue) {
-            evaluation = { passed: false, score: 0, customGreeting: '', reason: exclusion?.reason || informationIssue!, evaluationSource: 'rules' };
+          const languageIssue = languageQualificationIssue(mockJobItem, candidate.jobDetail, cfg.filter, candidateContext);
+          if (exclusion || languageIssue || informationIssue) {
+            evaluation = { passed: false, score: 0, customGreeting: '', reason: exclusion?.reason || languageIssue || informationIssue!, evaluationSource: 'rules' };
             try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
           }
           let cardLocator = jobCard.cardLocator;
@@ -312,7 +420,7 @@ export class DeliveryService {
                 screening: { industry: mockJobItem.brandIndustry, jobDetail: candidate.jobDetail, skills: mockJobItem.skills,
                   ...(mockJobItem.companyInfo ? { companyInfo: mockJobItem.companyInfo } : {}),
                   ...(evaluation.needsCompanyConfirmation ? { needsCompanyConfirmation: true } : {}),
-                  taskExclusions: exclusionsFromText(exclusionText) },
+                  taskExclusions: exclusionsFromText(exclusionText), languageEvidence: candidateLanguageEvidence(cfg.filter.candidateLanguages, candidateContext) },
               });
               this.log('info', '[工作条件待确认·未投递] ' + jobCard.companyName + ' - ' + jobCard.jobName + '：' + evaluation.reason);
             } catch {
@@ -355,7 +463,7 @@ export class DeliveryService {
             if (!detailRes.chatButtonLocator) return;
             const recheck = filterService.evaluateStage1({ ...mockJobItem, brandIndustry: detailRes.brandIndustry,
               companyInfo: detailRes.companyInfo,
-              activeTimeDesc: detailRes.activeTimeDesc || freshCard.activeTimeDesc }, detailRes.jobDetailText, cfg.filter, exclusionText);
+              activeTimeDesc: detailRes.activeTimeDesc || freshCard.activeTimeDesc }, detailRes.jobDetailText, cfg.filter, exclusionText, candidateContext);
             if (!recheck.passed) {
               this.log('warn', '[暂存淘汰] 最新岗位已不符合筛选：' + recheck.reason);
               try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
@@ -388,23 +496,13 @@ export class DeliveryService {
 
           // 匹配达标！
           this.stats.passedFilterCount++;
+          this.stats.phase = 'delivering'; this.emit();
           const finalGreeting = evaluation.customGreeting || params.defaultGreeting;
           this.log('success', `🎯 [${sourceLabel}通过${scoreLabel}] ${mockJobItem.brandName} - ${jobCard.jobName}，准备发起沟通...`, {
             jobName: jobCard.jobName,
             companyName: jobCard.companyName,
             ...scoreExtra,
           });
-
-          // 拟人化随机阅览停顿（8~18 秒），可被停止打断
-          const minSec = cfg.delivery.minDelaySeconds;
-          const maxSec = Math.max(cfg.delivery.maxDelaySeconds, minSec);
-          const delayMs = Math.floor((minSec + Math.random() * (maxSec - minSec)) * 1000);
-          this.log('info', `⏳ 模拟真人阅读中，停顿 ${(delayMs / 1000).toFixed(1)} 秒后点击沟通...`);
-          const slept = await this.sleepInterruptible(delayMs);
-          if (!slept) {
-            stoppedByUser = true;
-            return;
-          }
 
           while (this.stats.isPaused && !this.isStopRequested) {
             await new Promise((r) => setTimeout(r, 1000));
@@ -485,13 +583,8 @@ export class DeliveryService {
           }
 
           if (chatResult.success) {
-            try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {
-              this.log('warn', '已沟通，但移除旧的待确认记录失败，请手动刷新列表。');
-            }
-            this.stats.todayAppliedCount++;
-            this.persistQuota();
-            batchSuccessCount++;
-            if (finalGreeting && !chatResult.greetingSent) {
+            this.recordConfirmedChat(jobCard, chatResult);
+            if (finalGreeting && !chatResult.greetingSent && !chatResult.platformGreeting) {
               this.log('warn', `[自荐语未注入] 平台未显示打招呼输入框，沟通已建立但定制首语可能没有发送: ${jobCard.companyName} - ${jobCard.jobName}`);
             }
             this.log('success', `✅ 开聊成功: ${mockJobItem.brandName} - ${jobCard.jobName}！今日累计已开聊 ${this.stats.todayAppliedCount} 家`, {
@@ -500,16 +593,6 @@ export class DeliveryService {
               ...scoreExtra,
             });
 
-            // 贤者时间（Sage Time）：每沟通 6 家强制长休眠 2~3 分钟打破机械特征
-            if (batchSuccessCount >= 6) {
-              batchSuccessCount = 0;
-              const sageSeconds = 120 + Math.floor(Math.random() * 60); // 2~3 分钟
-              await this.enterSageTime(sageSeconds);
-              if (this.isStopRequested) {
-                stoppedByUser = true;
-                return;
-              }
-            }
           } else {
             this.log('warn', `❌ 未能确认沟通成功（未取得页面确认信号，不计入今日配额，请留意平台会话）: ${mockJobItem.brandName} - ${jobCard.jobName}`);
           }
@@ -640,7 +723,7 @@ export class DeliveryService {
               jobExperience: jobCard.experience, jobDegree: jobCard.degree, cityName: jobCard.cityName,
               areaDistrict: '', brandName: jobCard.companyName, brandScaleName: '', brandIndustry: '',
               bossName: '', bossTitle: '', activeTimeDesc: jobCard.activeTimeDesc, skills: jobCard.skills, welfareList: [],
-            }, '', cfg.filter, exclusionText);
+            }, '', cfg.filter, exclusionText, candidateContext);
             if (!cardCheck.passed) {
               try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
               this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
@@ -651,6 +734,7 @@ export class DeliveryService {
             }
 
             // 点击卡片，等待右侧载入完整 JD 与招聘者信息。
+            if (!(await this.paceJobSelection(cfg.delivery))) { stoppedByUser = true; break; }
             let detailRes: Awaited<ReturnType<typeof bossPageService.loadJobDetail>>;
             try {
               detailRes = await bossPageService.loadJobDetail(cardLocator, jobCard.jobName, jobCard.companyName, jobCard.jobHref, detailOptions);
@@ -706,7 +790,7 @@ export class DeliveryService {
             }
 
             // 阶段一：硬规则过滤
-            const stage1 = filterService.evaluateStage1(mockJobItem, detailRes.jobDetailText, cfg.filter, exclusionText);
+            const stage1 = filterService.evaluateStage1(mockJobItem, detailRes.jobDetailText, cfg.filter, exclusionText, candidateContext);
             if (!stage1.passed) {
               try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
               this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
@@ -730,7 +814,7 @@ export class DeliveryService {
             }
 
             const candidate: PendingCandidate = { jobCard: { ...jobCard, cardLocator }, job: mockJobItem, jobDetail: detailRes.jobDetailText, detail: detailRes };
-            const local = filterService.evaluateLocally(mockJobItem, detailRes.jobDetailText, params.rulesOnly === true && params.candidateSource === 'requirements', cfg.filter, exclusionText);
+            const local = filterService.evaluateLocally(mockJobItem, detailRes.jobDetailText, params.rulesOnly === true && params.candidateSource === 'requirements', cfg.filter, exclusionText, candidateContext);
             if (local) {
               await processEvaluation(candidate, local, false);
             } else {
@@ -779,26 +863,6 @@ export class DeliveryService {
       this.stats.pendingEvaluationCount = 0;
       this.evaluationAbort = undefined;
       this.emit();
-    }
-  }
-
-  /**
-   * 贤者时间：批次休眠机制，模拟真人去喝水/休息，彻底瓦解频控规则
-   */
-  private async enterSageTime(seconds: number): Promise<void> {
-    this.stats.status = 'sage_time';
-    this.stats.sageTimeRemainingSeconds = seconds;
-    this.log('warn', `☕【贤者时间启动】已连续开聊一批岗位，模拟真人离开休息 ${seconds} 秒，深度防风控（可随时点【停止任务】中止）...`);
-
-    const completed = await this.sleepInterruptible(seconds * 1000, (remaining) => {
-      this.stats.sageTimeRemainingSeconds = remaining;
-      if (remaining % 15 === 0 || remaining <= 5) this.emit();
-    });
-
-    this.stats.sageTimeRemainingSeconds = undefined;
-    this.stats.status = 'running';
-    if (completed) {
-      this.log('info', `☕ 贤者时间结束，精神饱满地恢复投递！`);
     }
   }
 

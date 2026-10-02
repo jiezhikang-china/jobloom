@@ -24,6 +24,8 @@
     "test:llm": "tsx tests/llm-filter-config.test.ts",
     "test:education": "tsx tests/education-filter.test.ts",
     "test:experience": "tsx tests/experience-filter.test.ts",
+    "test:language": "tsx tests/language-qualification.test.ts && tsx tests/delivery-language.test.ts",
+    "test:review-delivery": "tsx tests/delivery-review.test.ts",
     "test:work-conditions": "tsx tests/work-conditions.test.ts",
     "test:exclusions": "tsx tests/job-exclusions.test.ts",
     "test:industry": "tsx tests/boss-industry.test.ts",

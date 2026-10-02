@@ -16,10 +16,10 @@ export async function planTargetPositions(candidateText: string, source: 'resume
   if (!positions.length) throw new Error('当前排除条件没有留下可选的官方岗位，请调整条件或手动选择岗位');
   const response = await llmService.chatJson<{ positions: Array<{ positionCode: string }> }>([
     { role: 'system', content: '你帮助用户选择 BOSS 官方目标岗位。根据简历或求职要求选择1至3个不同岗位，严格遵守排除行业与岗位。'
-      + '用户没有简历时不得推测技能或经历；允许无经验时优先考虑有入门岗位的方向。工时、双休等条件必须在后续具体岗位中核实，分类本身不证明满足条件。'
+      + '用户没有简历时不得推测技能或经历；允许无经验时优先考虑有入门岗位的方向。外语翻译或语言岗位需对照用户明确提供的语言能力，不得推测用户会外语。工时、双休等条件必须在后续具体岗位中核实，分类本身不证明满足条件。'
       + '只能使用给出的岗位代码，不能编造。返回JSON：{"positions":[{"positionCode":"官方代码"}]}。无法推荐则返回空数组。'
       + '\n官方列表（代码=名称 | 大类/子类）：\n' + positions.map(item => item.code + '=' + item.name + ' | ' + item.categoryName + '/' + item.subcategoryName).join('\n') },
-    { role: 'user', content: JSON.stringify({ source, candidateText, city: filter.cityName, salaryMin: filter.salaryMin,
+    { role: 'user', content: JSON.stringify({ source, candidateText, candidateLanguages: filter.candidateLanguages, city: filter.cityName, salaryMin: filter.salaryMin,
       salaryMax: filter.salaryMax, excluded: filter.companyBlacklist, requirements: configuredWorkRequirements(filter).map(item => item.text) }) },
   ], 1, options);
   options.signal?.throwIfAborted();

@@ -48,6 +48,10 @@ const cases: Array<[string, Partial<BossJobItem>, string, string | undefined]> =
   ['标题非销售', { jobName: '非销售岗位行政助理' }, '不需要销售，不承担销售指标。', undefined],
   ['房屋补贴不是房地产', {}, '提供房屋补贴与租房补贴。', undefined],
   ['否定地产业务', {}, '不从事房地产销售。', undefined],
+  ['金融科技应用不等于金融公司', {}, '提供数字化运营服务以及产品工程服务，深入AI、大数据、金融科技和医疗等先进技术的应用。', undefined],
+  ['技术外包服务银行客户不是银行业务', { jobName: '软件测试' }, '为银行客户提供软件开发和系统测试服务。', undefined],
+  ['银行系统开发不等于办理金融业务', { jobName: '开发工程师' }, '负责银行系统开发及信息技术支持。', undefined],
+  ['软件描述不能掩盖实际信贷职责', { jobName: '客服' }, '公司有软件开发部门，岗位为个人办理贷款业务，审核贷款申请。', '金融'],
 ];
 
 async function main() {
@@ -111,6 +115,28 @@ async function main() {
     const company = { url: 'https://www.zhipin.com/gongsi/example.html', name: '某咨询公司', industry: '商务服务',
       introduction: '公司主营助贷，为企业和个人提供贷款撮合及融资咨询服务。', businessScope: '信息咨询服务。', checkedAt: new Date().toISOString() };
     assert.equal(findJobExclusion({ ...base, companyInfo: company }, filter)?.field, '公司介绍');
+    const technologyCompany = { ...company, name: '纬致芯创科技', industry: '计算机软件',
+      introduction: '提供数字化运营服务以及产品工程服务，深入AI、大数据、金融科技和医疗等先进技术\n的应用，持续与客户携手前行。纬致科技致力于成为富有责任感的企业公民，十分重视环境保护。',
+      businessScope: '信息技术咨询服务；软件开发；信息系统集成服务。' };
+    for (const jobName of ['游戏垂类内容运营（小红书/包餐/双休）', '游戏垂类内容运营（新游、世界观方向）', '游戏垂类内容运营-试用期不打折-包三餐双休']) {
+      const technologyJob = { ...base, jobName, brandName: technologyCompany.name, brandIndustry: technologyCompany.industry, companyInfo: technologyCompany };
+      assert.equal(findJobExclusion(technologyJob, filter), undefined, '用户贴出的科技公司介绍不得误判金融：' + jobName);
+      assert.equal(service.evaluateStage1(technologyJob, '负责游戏内容运营，每周双休。', filter).passed, true);
+      assert.equal(service.evaluateLocally(technologyJob, '负责游戏内容运营，每周双休。', false, filter), undefined,
+        '技术应用领域不产生初筛淘汰，应进入后续批量 AI 分析');
+    }
+    assert.equal(findJobExclusion({ ...base, companyInfo: { ...technologyCompany,
+      introduction: '为银行、保险及金融机构提供软件开发、信息技术外包和系统测试服务。' } }, filter), undefined);
+    assert.equal(findJobExclusion({ ...base, companyInfo: { ...technologyCompany,
+      introduction: technologyCompany.introduction + '公司实际主营助贷，提供贷款撮合。' } }, filter)?.term, '金融',
+      '忽略应用领域后仍须继续查找真实助贷证据');
+    assert.equal(findJobExclusion({ ...base, companyInfo: { ...technologyCompany,
+      introduction: '公司主营金融服务与软件开发。' } }, filter)?.term, '金融', '主营金融服务不能被技术词覆盖');
+    assert.equal(findJobExclusion({ ...base, companyInfo: { ...technologyCompany,
+      introduction: '主营网上旅游信息服务、酒店订房与旅游产品运营。', businessScope: '科技咨询，市场咨询，投资咨询，信息服务，订房服务。' } }, filter), undefined,
+      '旅游主营明确时，宽泛工商许可投资咨询不能单独判为金融公司');
+    assert.equal(findJobExclusion({ ...base, companyInfo: technologyCompany }, { ...filter, companyBlacklist: ['金融科技'] })?.term, '金融科技',
+      '用户明确排除字面词时仍执行该自定义条件');
     assert.equal(findJobExclusion({ ...base, companyInfo: { ...company, introduction: '企业管理咨询。', businessScope: '经营贷款中介服务。' } }, filter)?.field,
       '公司经营范围');
     assert.equal(findJobExclusion({ ...base, companyInfo: { ...company, introduction: '办公地址在东方金融广场。',

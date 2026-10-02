@@ -1,16 +1,17 @@
 import { type CdpLocator, type CdpPage } from './cdp.page.js';
 import { browserService, isSecurityUrl } from './browser.service.js';
-import type { AppConfig, BossCompanyInfo } from '../types.js';
+import type { AppConfig, BossCompanyInfo, BossJobItem, WorkConditionReview } from '../types.js';
 import { jobInformationIssue } from './job-information.js';
 import { findJobExclusion } from './job-exclusions.js';
 import { decodeBossText, readableBossSalary } from './boss-text.js';
+import { languageQualificationIssue, type CandidateLanguageContext } from './language-qualification.js';
 
 const ORIGIN = 'https://www.zhipin.com';
 const CARD = 'ul.rec-job-list li.job-card-box';
 const DETAIL = '.job-detail-box';
 const DESCRIPTION = '.job-detail-body p.desc';
 const SEARCH = 'input[placeholder="搜索职位、公司"]';
-const CHAT = '.job-detail-box .op-btn-chat';
+const CHAT = '.job-detail-box .op-btn-chat, .job-banner .btn-startchat';
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export interface DOMJobCardInfo {
@@ -38,6 +39,9 @@ export interface ChatResult {
   success: boolean;
   verified?: boolean;
   greetingSent?: boolean;
+  platformGreeting?: boolean;
+  continued?: boolean;
+  continuationFailed?: boolean;
   loginRequired?: boolean;
   needCaptcha?: boolean;
   quotaExceeded?: boolean;
@@ -277,9 +281,16 @@ export class BossPageService {
   }
 
   /** 实测详情链接的查询参数会变化，岗位路径与卡片路径一致。 */
-  public async isDetailStillTarget(jobName: string, companyName: string, href?: string): Promise<boolean> {
-    const page = await browserService.getWorkerPage();
+  public async isDetailStillTarget(jobName: string, companyName: string, href?: string, targetPage?: CdpPage): Promise<boolean> {
+    const page = targetPage || await browserService.getWorkerPage();
     const state = await this.inspectPage(page);
+    if (state.kind === 'other' && /^\/job_detail\/[^/]+\.html$/.test(new URL(state.url).pathname)) {
+      const identity = await page.evaluate(() => ({ path: location.pathname,
+        name: (document.querySelector('.job-banner .name h1') as HTMLElement | null)?.innerText?.trim() || '',
+        company: document.querySelector('.sider-company .company-info a[title]')?.getAttribute('title') || '' }));
+      return normalizedName(identity.name) === normalizedName(jobName) && sameCompany(identity.company, companyName)
+        && Boolean(href && identity.path === pathOf(href, ORIGIN));
+    }
     if (state.kind !== 'jobs') return false;
     const detail = await page.locator(DETAIL).first().evaluate((element) => ({
       name: element.querySelector('.job-detail-info .job-name')?.textContent?.trim() || '',
@@ -335,7 +346,7 @@ export class BossPageService {
 
   /** Read the full job's own company link, then check the company profile before passing exclusions. */
   public async readJobCompanyInfo(href: string, jobName: string, companyName: string,
-    options: { filter?: AppConfig['filter']; exclusionText?: string; refreshCompany?: boolean } = {}): Promise<{
+    options: { filter?: AppConfig['filter']; exclusionText?: string; refreshCompany?: boolean; candidateContext?: CandidateLanguageContext } = {}): Promise<{
     brandIndustry: string; jobDetailText: string; skills: string[]; companyInfo?: BossCompanyInfo;
   }> {
     return browserService.withJobInspection(href, async (page) => {
@@ -364,6 +375,7 @@ export class BossPageService {
           const result = { brandIndustry: data.industry, jobDetailText: decodeBossText(data.description), skills: data.skills.map(decodeBossText) };
           if (options.filter && findJobExclusion({ jobName, brandName: decodeBossText(data.company), brandIndustry: data.industry,
             jobDetail: result.jobDetailText, skills: result.skills }, options.filter, options.exclusionText)) return result;
+          if (options.filter && languageQualificationIssue({ jobName, skills: result.skills }, result.jobDetailText, options.filter, options.candidateContext)) return result;
           if (!data.companyHref) throw new Error('缺少该岗位的公司页链接，无法核对实际业务');
           return { ...result, companyInfo: await this.readCompanyInfo(data.companyHref, data.company, options.refreshCompany) };
         }
@@ -374,7 +386,7 @@ export class BossPageService {
   }
 
   public async loadJobDetail(card: CdpLocator, jobName: string, companyName: string, href?: string,
-    options: { readIndustry?: boolean; filter?: AppConfig['filter']; exclusionText?: string; refreshCompany?: boolean } = {}): Promise<{
+    options: { readIndustry?: boolean; filter?: AppConfig['filter']; exclusionText?: string; refreshCompany?: boolean; candidateContext?: CandidateLanguageContext } = {}): Promise<{
     jobDetailText: string;
     activeTimeDesc: string;
     brandIndustry: string;
@@ -399,7 +411,9 @@ export class BossPageService {
     let brandIndustry = (await detail.locator('a[ka="job-detail-brandindustry"]').first().innerText({ timeout: 200 }).catch(() => '')).trim();
     let companyInfo: BossCompanyInfo | undefined;
     const rejectEarly = options.filter && (findJobExclusion({ jobName, brandName: companyName, brandIndustry,
-      jobDetail: jobDetailText }, options.filter, options.exclusionText) || jobInformationIssue({ jobDetail: jobDetailText }, options.filter));
+      jobDetail: jobDetailText }, options.filter, options.exclusionText)
+      || languageQualificationIssue({ jobName }, jobDetailText, options.filter, options.candidateContext)
+      || jobInformationIssue({ jobDetail: jobDetailText }, options.filter));
     if (options.readIndustry && !rejectEarly) {
       if (!href) throw new Error('缺少岗位链接，无法核对公司行业');
       const companyHref = await card.locator('a.boss-info[href*="/gongsi/"]').first()
@@ -424,6 +438,52 @@ export class BossPageService {
   public async isJobListPage(): Promise<boolean> {
     const state = await this.inspectPage(await browserService.getWorkerPage());
     return state.kind === 'jobs' || state.kind === 'empty';
+  }
+
+  /** Open a saved review's own job page; all fields come from that page before a manual application. */
+  public async loadReviewJob(page: CdpPage, review: WorkConditionReview, filter: AppConfig['filter']): Promise<{
+    job: BossJobItem; jobDetailText: string; alreadyChatted: boolean; chatButtonLocator: CdpLocator | null;
+  }> {
+    const deadline = Date.now() + this.pageReadyTimeoutMs;
+    while (Date.now() < deadline && !(await this.isDetailStillTarget(review.jobName, review.companyName, review.jobHref, page))) {
+      this.throwIfUnavailable(await this.inspectPage(page));
+      await pause(this.pagePollIntervalMs);
+    }
+    if (!(await this.isDetailStillTarget(review.jobName, review.companyName, review.jobHref, page))) throw new Error('待确认岗位与当前详情身份不一致');
+    const data = await page.evaluate(() => {
+      const section = [...document.querySelectorAll('.job-detail-section')].find(item => (item.querySelector('h3') as HTMLElement | null)?.innerText?.trim() === '职位描述');
+      const banner = document.querySelector('.job-banner');
+      return { description: (section?.querySelector('.job-sec-text') as HTMLElement | null)?.innerText?.trim() || '',
+        salary: (banner?.querySelector('.salary') as HTMLElement | null)?.innerText?.trim() || '',
+        city: (banner?.querySelector('.text-city') as HTMLElement | null)?.innerText?.trim() || '',
+        experience: (banner?.querySelector('.text-experiece') as HTMLElement | null)?.innerText?.trim() || '',
+        degree: (banner?.querySelector('.text-degree') as HTMLElement | null)?.innerText?.trim() || '',
+        skills: [...(section?.querySelectorAll('.job-tags span') || [])].map(item => (item as HTMLElement).innerText?.trim() || '').filter(Boolean),
+        industry: (document.querySelector('.sider-company a[ka="job-detail-brandindustry"]') as HTMLElement | null)?.innerText?.trim() || '',
+        companyHref: document.querySelector('.sider-company .company-info a[href^="/gongsi/"]')?.getAttribute('href') || '',
+        recruiter: (document.querySelector('.job-boss-info, .boss-info-attr') as HTMLElement | null)?.innerText || '' };
+    });
+    const jobDetailText = decodeBossText(data.description);
+    if (!jobDetailText.trim()) throw new Error('待确认岗位详情尚未加载，未发起沟通');
+    const job: BossJobItem = { securityId: '', jobId: '', lid: '', jobName: review.jobName, brandName: review.companyName,
+      salaryDesc: readableBossSalary(data.salary), cityName: decodeBossText(data.city), jobExperience: decodeBossText(data.experience), jobDegree: decodeBossText(data.degree),
+      brandIndustry: decodeBossText(data.industry), skills: data.skills.map(decodeBossText), activeTimeDesc: data.recruiter.match(/刚刚活跃|今日活跃|今天活跃|在线|\d+\s*日内活跃|本周活跃|本月活跃/)?.[0] || '',
+      areaDistrict: '', brandScaleName: '', bossName: '', bossTitle: '', welfareList: [] };
+    const candidate = { text: review.screening?.languageEvidence || '', source: 'resume' as const };
+    const earlyExclusion = findJobExclusion({ ...job, jobDetail: jobDetailText }, filter, '', review.screening?.taskExclusions)
+      || languageQualificationIssue(job, jobDetailText, filter, candidate) || jobInformationIssue({ jobDetail: jobDetailText }, filter);
+    if (!earlyExclusion && data.companyHref) {
+      job.companyInfo = await this.readCompanyInfo(data.companyHref, review.companyName, true);
+      job.brandIndustry = job.companyInfo.industry;
+    }
+    const button = page.locator(CHAT).filter({ visible: true }).first();
+    const visible = await button.isVisible();
+    const label = visible ? (await button.innerText()).trim() : '';
+    if (visible && /立即沟通/.test(label)) {
+      const loginLink = await button.evaluate(element => element.getAttribute('ka') || '');
+      if (/tosign/.test(loginLink)) throw new Error('BOSS 登录已失效，请重新登录后投递');
+    }
+    return { job, jobDetailText, alreadyChatted: /继续沟通|已在沟通/.test(label), chatButtonLocator: visible ? button : null };
   }
 
   /** BOSS 自选期望中的“不合适”位于右侧详情；点击前再次核对岗位链接。 */
@@ -516,20 +576,53 @@ export class BossPageService {
     return null;
   }
 
-  private async waitForChatSignal(page: CdpPage, target?: { jobName: string; companyName: string; jobHref: string }): Promise<boolean> {
+  private async sentDialogButton(page: CdpPage): Promise<CdpLocator | null> {
+    const buttons = page.locator('button:has-text("继续沟通"), a:has-text("继续沟通")').filter({ visible: true });
+    const index = await buttons.evaluateAll(elements => elements.findIndex(element => {
+      if ((element as HTMLElement).innerText?.trim() !== '继续沟通') return false;
+      let parent = element.parentElement;
+      while (parent && parent !== document.body) {
+        if (/dialog|modal/.test(parent.className) || parent.getAttribute('role') === 'dialog') {
+          if (/已向\s*BOSS\s*发送消息/i.test(parent.innerText || '')) return true;
+        }
+        parent = parent.parentElement;
+      }
+      return false;
+    }));
+    return index >= 0 ? buttons.nth(index) : null;
+  }
+
+  private async finishSentDialog(page: CdpPage, button: CdpLocator): Promise<ChatResult> {
+    try {
+      await button.click();
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        if (!(await this.sentDialogButton(page))) return { success: true, verified: true, platformGreeting: true, continued: true };
+        await pause(150);
+      }
+    } catch { /* The acknowledgement still proves the greeting was sent. */ }
+    return { success: true, verified: true, platformGreeting: true, continuationFailed: true };
+  }
+
+  private async waitForChatSignal(page: CdpPage, target?: { jobName: string; companyName: string; jobHref: string }): Promise<ChatResult> {
     const deadline = Date.now() + 6500;
     while (Date.now() < deadline) {
-      if (target && await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref)) {
+      const interrupted = await this.chatInterruption(page);
+      if (interrupted) return interrupted;
+      const sent = await this.sentDialogButton(page);
+      if (sent) return this.finishSentDialog(page, sent);
+      if (target && await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page)) {
         const label = await page.locator(CHAT).first().innerText({ timeout: 300 }).catch(() => '');
-        if (/继续沟通|已在沟通/.test(label)) return true;
+        if (/继续沟通|已在沟通/.test(label)) return { success: true, verified: true };
       }
-      if (page.url().includes('/web/geek/chat') && target) {
+      const currentUrl = typeof page.refreshUrl === 'function' ? await page.refreshUrl() : page.url();
+      if (currentUrl.includes('/web/geek/chat') && target) {
         const body = await page.locator('body').innerText({ timeout: 500 }).catch(() => '');
-        if (body.includes(target.companyName) && body.includes(target.jobName)) return true;
+        if (body.includes(target.companyName) && body.includes(target.jobName)) return { success: true, verified: true };
       }
       await pause(350);
     }
-    return false;
+    return { success: false, uncertain: true };
   }
 
   /** 点击后必须观察到目标岗位的沟通反馈；未知结果令批次停止。 */
@@ -538,22 +631,25 @@ export class BossPageService {
     target?: { jobName: string; companyName: string; jobHref: string },
   ): Promise<ChatResult> {
     const page = chatButton.page();
-    if (target && !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) {
+    if (target && !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page))) {
       return { success: false, targetChanged: true };
     }
     const label = (await chatButton.innerText().catch(() => '')).trim();
     if (!label.includes('立即沟通')) return { success: false, targetChanged: true };
+    if (await this.sentDialogButton(page)) return { success: false, uncertain: true };
     let clicked = false;
     try {
       await chatButton.click();
       clicked = true;
-      await pause(500);
+      await pause(200);
       let interrupted = await this.chatInterruption(page);
       if (interrupted) return interrupted;
-      const input = page.locator('.dialog-wrap textarea, textarea[placeholder*="打招呼"], .chat-input textarea').first();
+      const acknowledgement = await this.sentDialogButton(page);
+      if (acknowledgement) return this.finishSentDialog(page, acknowledgement);
+      const input = page.locator('.dialog-wrap textarea, .boss-dialog textarea, textarea[placeholder*="打招呼"]').first();
       if (await input.isVisible({ timeout: 1600 }).catch(() => false)) {
         if (!greeting?.trim()) return { success: false, uncertain: true };
-        if (target && !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) {
+        if (target && !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page))) {
           return { success: false, uncertain: true };
         }
         const dialog = input.locator('xpath=ancestor::*[contains(@class,"dialog-wrap") or contains(@class,"chat-input")][1]');
@@ -563,13 +659,10 @@ export class BossPageService {
         await send.click();
         interrupted = await this.chatInterruption(page);
         if (interrupted) return interrupted;
-        const verified = await this.waitForChatSignal(page, target);
-        return { success: verified, verified, greetingSent: verified, uncertain: !verified };
+        const result = await this.waitForChatSignal(page, target);
+        return { ...result, greetingSent: result.success };
       }
-      const verified = await this.waitForChatSignal(page, target);
-      interrupted = await this.chatInterruption(page);
-      if (interrupted) return interrupted;
-      return { success: verified, verified, greetingSent: false, uncertain: !verified };
+      return { ...await this.waitForChatSignal(page, target), greetingSent: false };
     } catch (error) {
       console.warn('[BOSS 页面] 沟通结果无法确认:', (error as Error).message);
       return { success: false, uncertain: clicked };
