@@ -8,6 +8,7 @@ interface WebStatus {
   loginWindowOpen: boolean;
   busy: boolean;
   retryAfterSeconds: number;
+  pendingRequests?: { requestId: string; sessionId: string; createdAt: string }[];
 }
 const panelStyle = { background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: 20 };
 const buttonStyle = { padding: '9px 14px', borderRadius: 8, background: '#334155', color: '#e2e8f0', display: 'inline-flex', gap: 7, alignItems: 'center' };
@@ -55,6 +56,18 @@ export default function DeepSeekAccountPanel() {
   };
   const ready = status?.state === 'ready';
   const saved = status?.state === 'saved';
+  const handlePending = async (requestId: string, action: 'view' | 'retry') => {
+    if (working) return;
+    setWorking(true); setError('');
+    try {
+      const response = await fetch('/api/llm/web/requests/' + action, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId }) });
+      const result = await response.json();
+      if (!result.success) throw new Error(result.message || '操作失败');
+      setStatus(result.data);
+    } catch (failure) { setError((failure as Error).message); }
+    finally { setWorking(false); }
+  };
 
   return (
     <section aria-label="DeepSeek 网页账号" style={panelStyle}>
@@ -84,6 +97,15 @@ export default function DeepSeekAccountPanel() {
         在弹出的网页窗口手动登录。成功后自动保存，之后启动会复用；窗口由你手动关闭。
         模型请求使用同一个账号按顺序处理，网页登录和 BOSS 扫码分别保存。
       </p>
+      {!!status?.pendingRequests?.length && <div style={{ marginTop: 12, padding: 12, background: '#1e293b', borderRadius: 8 }}>
+        <h4 style={{ margin: 0, color: '#fbbf24' }}>上次聊天结果待确认</h4>
+        <p style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.7 }}>连接中断后，原聊天可能仍在生成。投递岗位已保留，正在等待；查看该聊天后，确认未完成再允许重试。</p>
+        {status.pendingRequests.map(item => <div key={item.requestId} style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>{new Date(item.createdAt).toLocaleString('zh-CN')}</span>
+          <button type="button" style={buttonStyle} disabled={working || status.busy} onClick={() => void handlePending(item.requestId, 'view')}>查看该聊天</button>
+          <button type="button" style={buttonStyle} disabled={working || status.busy} onClick={() => void handlePending(item.requestId, 'retry')}>确认未完成，允许重试</button>
+        </div>)}
+      </div>}
       {(error || pollError) && <p role="alert" style={{ color: '#fda4af', fontSize: 13 }}>{error || pollError}</p>}
       <details style={{ marginTop: 14, color: '#94a3b8', fontSize: 12 }}>
         <summary style={{ cursor: 'pointer' }}>备用方式：导入网页 userToken</summary>

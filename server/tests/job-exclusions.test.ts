@@ -52,6 +52,16 @@ const cases: Array<[string, Partial<BossJobItem>, string, string | undefined]> =
   ['技术外包服务银行客户不是银行业务', { jobName: '软件测试' }, '为银行客户提供软件开发和系统测试服务。', undefined],
   ['银行系统开发不等于办理金融业务', { jobName: '开发工程师' }, '负责银行系统开发及信息技术支持。', undefined],
   ['软件描述不能掩盖实际信贷职责', { jobName: '客服' }, '公司有软件开发部门，岗位为个人办理贷款业务，审核贷款申请。', '金融'],
+  ['软件外包面向金融客户不是金融主营', { jobName: 'AI应用测试（线上面试）', brandName: '万德奥云', companyInfo: {
+    url: 'https://www.zhipin.com/gongsi/test.html', name: '万德奥云', industry: '计算机软件',
+    introduction: '深圳市龙岗区坂田微谷创业园。专注于为高科技/互联网/金融行业客户提供软件外包服务。目前的客户均为头部企业，项目长期稳定，技术含量高。', businessScope: '', checkedAt: '' } }, '', undefined],
+  ['保险公司和银行是软件公司客户', { jobName: '测试工程师（学信网可验）', brandName: '新致软件', companyInfo: {
+    url: 'https://www.zhipin.com/gongsi/test.html', name: '新致软件', industry: '计算机软件',
+    introduction: '股科创板，在公司迎来新的发展篇章。新致软件专注于向保险公司、银行等金融机构及电信、汽车、\n医疗等其他行业终端客户提供解决方案、IT运维服务以及反向一级软件承包。', businessScope: '', checkedAt: '' } }, '', undefined],
+  ['信息系统服务保险公司客户', { jobName: '软件测试' }, '面向保险公司和证券公司终端客户提供系统运维及技术服务。', undefined],
+  ['技术部门另句不能免除真实金融服务', {}, '公司拥有软件开发部门。主营金融服务，帮助客户办理信用贷款。', '金融'],
+  ['保险代理客户不能当技术服务免责', {}, '为保险公司客户提供软件服务，同时主营保险代理，推销保险产品。', '金融'],
+  ['技术部门不能遮掩同句金融产品服务', {}, '为金融行业客户提供金融产品服务，同时开发软件。', '金融'],
 ];
 
 async function main() {

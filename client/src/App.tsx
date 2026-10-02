@@ -3,6 +3,7 @@ import BossPositionPicker, { flattenPositions } from './BossPositionPicker.js';
 import DeepSeekAccountPanel from './DeepSeekAccountPanel.js';
 import WorkConditionOptions, { withWorkConditionPresets } from './WorkConditionOptions.js';
 import WorkConditionReviewPanel from './WorkConditionReviewPanel.js';
+import LocationFilterOptions from './LocationFilterOptions.js';
 import {
   FileText,
   Compass,
@@ -1231,6 +1232,9 @@ export default function App() {
               <WorkConditionOptions value={config.filter.workRequirements} disabled={isTaskRunning}
                 onChange={(value) => setConfig({ ...config, filter: { ...config.filter, workRequirements: value } })} />
 
+              <LocationFilterOptions value={config.filter.commute} cityName={config.filter.cityName} disabled={isTaskRunning}
+                onChange={commute => setConfig({ ...config, filter: { ...config.filter, commute } })} />
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 {/* 城市 */}
                 <div>
@@ -2104,7 +2108,7 @@ export default function App() {
                     </label>}
                   </div>
                   <p style={{ fontSize: '12px', lineHeight: 1.7, color: '#94a3b8', margin: '12px 0 0' }}>
-                    网页请求按顺序执行，间隔从上一轮结束算起；限流时暂停，遵守网站给出的等待时间。岗位描述过长会自动缩小批次。
+                    网页请求按顺序执行，间隔从上一轮结束算起；限流或暂时繁忙时保留岗位，等待后重试。岗位描述过长会自动缩小批次。
                   </p>
                 </section>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>

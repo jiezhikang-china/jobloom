@@ -10,9 +10,11 @@ import { configuredWorkRequirements, hasEntryLevelRequirement } from './work-req
 import { bossExpectationsService } from './boss-expectations.js';
 import { planTargetPositions } from './target-planner.js';
 import { languageQualificationIssue, candidateLanguageEvidence } from './language-qualification.js';
+import { jobCommuteService } from './job-commute.service.js';
+import { commuteDecision } from './commute.js';
+import { evaluationRetrySeconds } from './ai-retry.js';
 import { DeliveryStats, DeliveryLogItem, BossJobItem, BossPositionSelection, WorkConditionReview, AppConfig } from '../types.js';
 
-const LLM_FAILURE_PAUSE_THRESHOLD = 3;
 const COOL_DOWN_SECONDS = 15 * 60;
 
 interface PendingCandidate { jobCard: DOMJobCardInfo; job: BossJobItem; jobDetail: string; detail: Awaited<ReturnType<typeof bossPageService.loadJobDetail>>; }
@@ -34,7 +36,6 @@ export class DeliveryService {
   private isStopRequested = false;
   private isTaskActive = false;
   private listeners: Array<(stats: DeliveryStats, log?: DeliveryLogItem) => void> = [];
-  private consecutiveLlmFailures = 0;
   private evaluationAbort?: AbortController;
   private nextSelectionAt = 0;
 
@@ -220,9 +221,20 @@ export class DeliveryService {
             workConditionReviews.remove(review.id);
             this.log('info', '[已沟通跳过] ' + review.companyName + ' - ' + review.jobName); return;
           }
+          await jobCommuteService.enrich(detail.job, cfg.filter, () => bossPageService.readJobTransit(review, cfg.filter.commute!.origin!,
+            detail.job.workAddress!, page));
+          const commute = commuteDecision(detail.job, cfg.filter);
+          if (commute.status === 'unknown') {
+            this.log('warn', '[手动暂未投递] ' + review.companyName + ' - ' + review.jobName + '：' + commute.reason + '；记录已保留'); return;
+          }
+          if (commute.status === 'failed') {
+            this.log('warn', '[手动淘汰] ' + review.companyName + ' - ' + review.jobName + '：' + commute.reason);
+            workConditionReviews.remove(review.id); return;
+          }
           if (!detail.chatButtonLocator) throw new Error('未找到该岗位的沟通按钮');
           while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
           if (this.isStopRequested) return;
+          if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新选择待确认岗位投递');
           this.ensureQuotaFresh();
           if (this.stats.todayAppliedCount >= cfg.delivery.dailyMaxQuota) return;
           this.stats.passedFilterCount++;
@@ -275,7 +287,6 @@ export class DeliveryService {
     this.isStopRequested = false;
     this.nextSelectionAt = 0;
     this.evaluationAbort = new AbortController();
-    this.consecutiveLlmFailures = 0;
     this.stats = {
       status: 'running',
       isPaused: false,
@@ -315,11 +326,26 @@ export class DeliveryService {
         let targets = params.targetPositions || [];
         if (!targets.length) {
           this.log('info', '[AI 目标规划] 根据当前简历/求职条件选择最多3个 BOSS 官方岗位');
-          targets = await planTargetPositions(params.resumeText, params.candidateSource || 'resume', {
-            signal: this.evaluationAbort?.signal,
-            onWait: seconds => this.log('info', '[AI 间隔] 等待 ' + seconds + ' 秒后规划目标'),
-            onRequest: () => { this.stats.aiRequestCount = (this.stats.aiRequestCount || 0) + 1; this.emit(); },
-          });
+          let retries = 0;
+          while (!targets.length && !this.isStopRequested) {
+            if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新启动任务');
+            try {
+              targets = await planTargetPositions(params.resumeText, params.candidateSource || 'resume', {
+                signal: this.evaluationAbort?.signal,
+                beforeRequest: async () => {
+                  while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
+                  this.evaluationAbort?.signal.throwIfAborted();
+                },
+                onWait: seconds => this.log('info', '[AI 间隔] 等待 ' + seconds + ' 秒后规划目标'),
+                onRequest: () => { this.stats.aiRequestCount = (this.stats.aiRequestCount || 0) + 1; this.emit(); },
+              });
+            } catch (error) {
+              this.evaluationAbort?.signal.throwIfAborted();
+              const seconds = evaluationRetrySeconds(++retries, configManager.getConfig().llm.minRequestIntervalSeconds);
+              this.log('warn', '[AI 目标规划等待重试] ' + (error as Error).message + '；' + seconds + ' 秒后再试，可暂停或停止');
+              if (!(await this.sleepInterruptible(seconds * 1000))) break;
+            }
+          }
         }
         this.evaluationAbort?.signal.throwIfAborted();
         this.stats.targetRoles = targets.map(item => item.name);
@@ -384,6 +410,14 @@ export class DeliveryService {
             evaluation = { passed: false, score: 0, customGreeting: '', reason: exclusion?.reason || languageIssue || informationIssue!, evaluationSource: 'rules' };
             try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
           }
+          const locationDecision = commuteDecision(mockJobItem, cfg.filter);
+          if (!exclusion && !languageIssue && !informationIssue && locationDecision.status === 'failed') {
+            evaluation = { passed: false, score: 0, customGreeting: '', reason: locationDecision.reason, evaluationSource: 'rules' };
+          }
+          if (evaluation.passed && locationDecision.status === 'unknown') {
+            evaluation = { passed: false, score: 0, customGreeting: '', reason: locationDecision.reason, evaluationSource: 'rules',
+              needsReview: true, needsCommuteConfirmation: true, requirementAssessment: [] };
+          }
           let cardLocator = jobCard.cardLocator;
           let detailRes = candidate.detail;
           const sourceLabel = evaluation.evaluationSource === 'rules' ? '本地筛选' : evaluation.evaluationSource === 'cache' ? '已有评估' : 'AI评估';
@@ -391,24 +425,10 @@ export class DeliveryService {
           const scoreExtra = evaluation.evaluationSource === 'rules' ? {} : { score: evaluation.score };
           if (evaluation.evaluationSource === 'rules') this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
           if (evaluation.evaluationSource === 'cache') this.stats.cachedEvaluationCount = (this.stats.cachedEvaluationCount || 0) + 1;
-          // 大模型不可用：跳过且不计入淘汰，避免"AI 挂了就盲投"
+          // Failed evaluations are retained and retried by flushEvaluations.
           if (evaluation.llmError) {
-            this.consecutiveLlmFailures++;
-            this.stats.skippedByLlmErrorCount++;
-            this.log('error', `[AI 不可用·已跳过] ${mockJobItem.brandName} - ${jobCard.jobName}: ${evaluation.reason}`);
-            const usingWebModel = configManager.getConfig().llm.connectionMode === 'deepseek-web';
-            if (usingWebModel || this.consecutiveLlmFailures >= LLM_FAILURE_PAUSE_THRESHOLD) {
-              this.log(
-                'error',
-                usingWebModel
-                  ? 'DeepSeek 网页调用失败，已暂停投递。请到【设置】检查登录、网络或网页额度，恢复后点击【恢复运行】。'
-                  : `大模型连续 ${LLM_FAILURE_PAUSE_THRESHOLD} 次调用失败，已暂停投递。请到【设置】检查模型连接后点击【恢复运行】。`
-              );
-              this.pause();
-            }
             return;
           }
-          this.consecutiveLlmFailures = 0;
 
           if (evaluation.needsReview && evaluation.requirementAssessment) {
             try {
@@ -420,6 +440,9 @@ export class DeliveryService {
                 screening: { industry: mockJobItem.brandIndustry, jobDetail: candidate.jobDetail, skills: mockJobItem.skills,
                   ...(mockJobItem.companyInfo ? { companyInfo: mockJobItem.companyInfo } : {}),
                   ...(evaluation.needsCompanyConfirmation ? { needsCompanyConfirmation: true } : {}),
+                  ...(evaluation.needsCommuteConfirmation ? { needsCommuteConfirmation: true } : {}),
+                  ...(mockJobItem.workAddress ? { workAddress: mockJobItem.workAddress } : {}),
+                  ...(mockJobItem.commute ? { commute: mockJobItem.commute } : {}),
                   taskExclusions: exclusionsFromText(exclusionText), languageEvidence: candidateLanguageEvidence(cfg.filter.candidateLanguages, candidateContext) },
               });
               this.log('info', '[工作条件待确认·未投递] ' + jobCard.companyName + ' - ' + jobCard.jobName + '：' + evaluation.reason);
@@ -461,9 +484,18 @@ export class DeliveryService {
             }
             if (detailRes.alreadyChatted) { try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {} return; }
             if (!detailRes.chatButtonLocator) return;
-            const recheck = filterService.evaluateStage1({ ...mockJobItem, brandIndustry: detailRes.brandIndustry,
+            const freshJob = { ...mockJobItem, brandIndustry: detailRes.brandIndustry,
               companyInfo: detailRes.companyInfo,
-              activeTimeDesc: detailRes.activeTimeDesc || freshCard.activeTimeDesc }, detailRes.jobDetailText, cfg.filter, exclusionText, candidateContext);
+              workAddress: detailRes.workAddress, activeTimeDesc: detailRes.activeTimeDesc || freshCard.activeTimeDesc };
+            await jobCommuteService.enrich(freshJob, cfg.filter, () => bossPageService.readJobTransit(jobCard, cfg.filter.commute!.origin!, freshJob.workAddress!));
+            const freshLocation = commuteDecision(freshJob, cfg.filter);
+            if (freshLocation.status === 'unknown') {
+              await processEvaluation({ ...candidate, job: freshJob, detail: detailRes }, { ...evaluation, passed: false,
+                needsReview: true, needsCommuteConfirmation: true, reason: freshLocation.reason,
+                requirementAssessment: evaluation.requirementAssessment || [] }, false);
+              return;
+            }
+            const recheck = filterService.evaluateStage1(freshJob, detailRes.jobDetailText, cfg.filter, exclusionText, candidateContext);
             if (!recheck.passed) {
               this.log('warn', '[暂存淘汰] 最新岗位已不符合筛选：' + recheck.reason);
               try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
@@ -521,6 +553,7 @@ export class DeliveryService {
             this.log('warn', `[跳过] 发送前职位详情已变化: ${jobCard.companyName} - ${jobCard.jobName}`);
             return;
           }
+          if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新启动任务');
 
           // 执行沟通点击与自适应弹窗注入
           if (!detailRes.chatButtonLocator) return;
@@ -611,19 +644,41 @@ export class DeliveryService {
           this.stats.pendingEvaluationCount = candidates.length;
           this.stats.phase = 'evaluating';
           this.log('info', '[AI 批量评估] 已攒齐 ' + candidates.length + ' 个初筛岗位，正在评估职责、资格与工作条件');
-          const evaluations = await filterService.evaluateBatch(candidates.map((item) => ({
-            job: item.job, jobDetail: item.jobDetail, jobHref: item.jobCard.jobHref,
-          })), params.resumeText, useSavedExpectations ? keyword : params.targetRole, params.candidateSource || 'resume', {
-            rulesOnly: params.rulesOnly,
-            signal: this.evaluationAbort?.signal,
-            onWait: (seconds) => this.log('info', '[AI 间隔] 等待 ' + seconds + ' 秒后再请求，可随时停止'),
-            onRequest: () => { this.stats.aiRequestCount = (this.stats.aiRequestCount || 0) + 1; this.emit(); },
-          });
-          for (let index = 0; index < candidates.length; index++) {
-            if (this.isStopRequested || this.stats.status === 'finished') break;
-            await processEvaluation(candidates[index], evaluations[index], true);
-            this.stats.pendingEvaluationCount = candidates.length - index - 1;
-            this.emit();
+          let remaining = candidates;
+          let retryAttempt = 0;
+          while (remaining.length && !this.isStopRequested && this.stats.status !== 'finished') {
+            while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
+            if (this.isStopRequested) break;
+            if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新启动任务');
+            const evaluations = await filterService.evaluateBatch(remaining.map(item => ({
+              job: item.job, jobDetail: item.jobDetail, jobHref: item.jobCard.jobHref,
+            })), params.resumeText, useSavedExpectations ? keyword : params.targetRole, params.candidateSource || 'resume', {
+              rulesOnly: params.rulesOnly, signal: this.evaluationAbort?.signal,
+              onWait: seconds => this.log('info', '[AI 间隔] 等待 ' + seconds + ' 秒后再请求，可随时停止'),
+              beforeRequest: async () => {
+                while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
+                this.evaluationAbort?.signal.throwIfAborted();
+                if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新启动任务');
+              },
+              onRequest: () => { this.stats.aiRequestCount = (this.stats.aiRequestCount || 0) + 1; this.emit(); },
+            });
+            const failed: PendingCandidate[] = [];
+            for (let index = 0; index < remaining.length; index++) {
+              if (this.isStopRequested || this.getStats().status === 'finished') break;
+              if (evaluations[index].llmError) failed.push(remaining[index]);
+              else await processEvaluation(remaining[index], evaluations[index], true);
+              this.stats.pendingEvaluationCount = remaining.length - index - 1 + failed.length;
+              this.emit();
+            }
+            remaining = failed;
+            if (remaining.length && !this.isStopRequested && this.getStats().status !== 'finished') {
+              const seconds = evaluationRetrySeconds(++retryAttempt, configManager.getConfig().llm.minRequestIntervalSeconds);
+              this.stats.phase = 'evaluating'; this.stats.pendingEvaluationCount = remaining.length;
+              const reason = evaluations.find(item => item.llmError)?.reason || '请求失败';
+              this.log('warn', '[AI 等待重试] ' + remaining.length + ' 个岗位已保留，第 ' + retryAttempt + ' 次重试将在 '
+                + seconds + ' 秒后进行。' + reason + '；可随时暂停或停止');
+              if (!(await this.sleepInterruptible(seconds * 1000))) break;
+            }
           }
           this.stats.pendingEvaluationCount = 0;
           this.stats.phase = 'screening'; this.emit();
@@ -777,6 +832,7 @@ export class DeliveryService {
               brandScaleName: '',
               brandIndustry: detailRes.brandIndustry,
               companyInfo: detailRes.companyInfo,
+              workAddress: detailRes.workAddress,
               bossName: '',
               bossTitle: '',
               activeTimeDesc: detailRes.activeTimeDesc || jobCard.activeTimeDesc,
@@ -814,6 +870,15 @@ export class DeliveryService {
             }
 
             const candidate: PendingCandidate = { jobCard: { ...jobCard, cardLocator }, job: mockJobItem, jobDetail: detailRes.jobDetailText, detail: detailRes };
+            const beforeRoute = filterService.evaluateLocally(mockJobItem, detailRes.jobDetailText, params.rulesOnly === true && params.candidateSource === 'requirements', cfg.filter, exclusionText, candidateContext);
+            if (!beforeRoute || beforeRoute.needsCommuteConfirmation) {
+              await jobCommuteService.enrich(mockJobItem, cfg.filter, () => bossPageService.readJobTransit(jobCard, cfg.filter.commute!.origin!, mockJobItem.workAddress!));
+              if (mockJobItem.commute) {
+                const location = commuteDecision(mockJobItem, cfg.filter);
+                this.log('info', '[地点核对] ' + jobCard.companyName + ' - ' + jobCard.jobName + '：' + (location.reason
+                  || '直线约 ' + mockJobItem.commute.distanceKm?.toFixed(1) + ' 公里'));
+              }
+            }
             const local = filterService.evaluateLocally(mockJobItem, detailRes.jobDetailText, params.rulesOnly === true && params.candidateSource === 'requirements', cfg.filter, exclusionText, candidateContext);
             if (local) {
               await processEvaluation(candidate, local, false);

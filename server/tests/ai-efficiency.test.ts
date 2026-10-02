@@ -199,15 +199,14 @@ async function testWebPacing() {
     return new Response('{"error":{"message":"网页额度受限"}}', { status: 429, headers: { 'Retry-After': '180' } });
   }) as typeof fetch;
   await assert.rejects(web.chatJson([{ role: 'user', content: '模拟限流' }]), /额度受限/);
-  await assert.rejects(web.chatJson([{ role: 'user', content: '冷却内再次请求' }]), /冷却.*180/);
   assert.equal(rateCalls, 1, '冷却期间不得再次向反代发送模型请求');
-  time += 179000;
-  await assert.rejects(web.chatJson([{ role: 'user', content: '冷却仍未结束' }]), /冷却.*1/);
-  assert.equal(rateCalls, 1);
-  time += 1000;
+  const limitedAt = time;
+  const cooldowns: number[] = [];
   globalThis.fetch = (async () => { rateCalls++; return successful(); }) as typeof fetch;
-  await web.chatJson([{ role: 'user', content: '冷却完成' }]);
+  await web.chatJson([{ role: 'user', content: '冷却内再次请求' }], 1, { onWait: seconds => cooldowns.push(seconds) });
   assert.equal(rateCalls, 2);
+  assert.equal(time - limitedAt, 180000, '真实等待整个冷却，再请求；不暂停任务');
+  assert.deepEqual(cooldowns, [180, 120, 60], '长等待分段且可停止');
   const aborted = new AbortController(); aborted.abort(new Error('用户停止'));
   await assert.rejects(web.chatJson([{ role: 'user', content: '取消的请求' }], 1, { signal: aborted.signal }), /用户停止/);
   assert.equal(rateCalls, 2);
@@ -230,6 +229,26 @@ async function testWebPacing() {
   assert.equal(queuedCalls, 1);
   release(); await active;
   assert.equal(queuedCalls, 1, '排队中的已停止任务不能启动网页请求');
+
+  let coolingTime = 0, coolingCalls = 0;
+  const cancelCooldown = new AbortController();
+  const cancellableQueue = new AiRequestQueue({ now: () => coolingTime, sleep: async ms => {
+    coolingTime += ms; cancelCooldown.abort(new Error('冷却中停止'));
+  } });
+  cancellableQueue.coolDown(1000);
+  await assert.rejects(cancellableQueue.run(30, async () => { coolingCalls++; }, { signal: cancelCooldown.signal }), /冷却中停止/);
+  assert.equal(coolingCalls, 0, '冷却中停止，不发送任何请求');
+
+  const dateQueue = new AiRequestQueue({ now: () => coolingTime, sleep: async ms => { coolingTime += ms; } });
+  const dateService = new LLMService(dateQueue);
+  const retryDate = new Date(Date.now() + 900000).toUTCString();
+  globalThis.fetch = (async () => new Response('{"error":{"message":"暂时繁忙"}}', { status: 503, headers: { 'Retry-After': retryDate } })) as typeof fetch;
+  await assert.rejects(dateService.chatJson([{ role: 'user', content: '日期等待' }]), /繁忙/);
+  const beforeCooling = coolingTime;
+  let gateRan = false;
+  globalThis.fetch = (async () => { assert.equal(gateRan, true); return successful(); }) as typeof fetch;
+  await dateService.chatJson([{ role: 'user', content: '日期等待' }], 1, { beforeRequest: async () => { gateRan = true; } });
+  assert.ok(coolingTime - beforeCooling >= 898000, 'HTTP日期形式且超过300秒，不能截短等待');
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {

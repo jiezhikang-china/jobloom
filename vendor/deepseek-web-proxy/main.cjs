@@ -8,6 +8,7 @@ const { timingSafeEqual } = require('node:crypto');
 const { CredentialVault } = require('./vault.cjs');
 const { MODELS, ProxyError, normalizeToken, DeepSeekWebAdapter } = require('./protocol.cjs');
 const { WebRequestPacing } = require('./pacing.cjs');
+const { WebRequests } = require('./requests.cjs');
 
 const dataDir = path.resolve(process.env.BOSS_DEEPSEEK_DATA_DIR || path.join(__dirname, '../../data'));
 const runtimeFile = path.join(dataDir, 'deepseek-proxy-runtime.json');
@@ -46,6 +47,7 @@ function status() {
     running: true, state, message: stateMessage, hasCredential: Boolean(token),
     loginWindowOpen: Boolean(loginWindow && !loginWindow.isDestroyed()), busy,
     retryAfterSeconds: pacing.retryAfterSeconds,
+    pendingRequests: adapter?.requests.list() || [],
     models: MODELS.map(({ id, name }) => ({ id, name })),
     source: 'Chat2API', sourceUrl: 'https://github.com/xiaoY233/Chat2API',
   };
@@ -107,10 +109,12 @@ async function captureLogin() {
     stateMessage = error instanceof ProxyError ? error.message : '暂时无法读取 DeepSeek 登录，请完成网页登录后稍等';
   } finally { captureBusy = false; }
 }
-async function openLogin() {
+async function openLogin(chatUrl) {
   if (loginWindow && !loginWindow.isDestroyed()) {
     if (loginWindow.isMinimized()) loginWindow.restore();
-    loginWindow.show(); loginWindow.focus(); return;
+    loginWindow.show(); loginWindow.focus();
+    if (chatUrl) await loginWindow.loadURL(chatUrl);
+    return;
   }
   loginWindow = new BrowserWindow({
     title: 'DeepSeek · 请手动登录，登录完成后会自动保存', width: 1100, height: 800, minWidth: 800, minHeight: 600,
@@ -132,7 +136,7 @@ async function openLogin() {
   loginWindow.on('closed', () => { loginWindow = null; clearInterval(loginTimer); loginTimer = null; });
   loginTimer = setInterval(() => void captureLogin(), 3000);
   loginWindow.show();
-  void loginWindow.loadURL('https://chat.deepseek.com/').catch(() => {
+  void loginWindow.loadURL(chatUrl || 'https://chat.deepseek.com/').catch(() => {
     stateMessage = 'DeepSeek 网页加载失败，请检查网络后重新打开登录窗口'; loginWindow?.show();
   });
 }
@@ -140,7 +144,7 @@ async function openLogin() {
 async function handle(req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
   if (url.pathname === '/health' && req.method === 'GET') {
-    return reply(res, 200, { app: 'boss-deepseek-web-proxy', integrationVersion: 3, status: 'ok' });
+    return reply(res, 200, { app: 'boss-deepseek-web-proxy', integrationVersion: 4, status: 'ok' });
   }
   if (!authenticated(req)) return reply(res, 401, { error: { message: '本机代理认证失败', code: 'proxy_unauthorized' } });
   try {
@@ -152,6 +156,15 @@ async function handle(req, res) {
       return reply(res, 200, status());
     }
     if (url.pathname === '/login' && req.method === 'POST') { await openLogin(); return reply(res, 200, status()); }
+    if (['/requests/view', '/requests/retry'].includes(url.pathname) && req.method === 'POST') {
+      if (busy) throw new ProxyError('模型正在处理请求，请等待完成后操作', 409, 'busy');
+      const body = await readBody(req);
+      const pending = adapter.requests.list().find(item => item.requestId === body.requestId);
+      if (!pending) throw new ProxyError('该未完成请求已经处理，请刷新', 404, 'not_found');
+      if (url.pathname === '/requests/view') await openLogin(`https://chat.deepseek.com/a/chat/s/${encodeURIComponent(pending.sessionId)}`);
+      else adapter.requests.clear(pending.requestId);
+      return reply(res, 200, status());
+    }
     if (url.pathname === '/token' && req.method === 'POST') {
       const body = await readBody(req);
       if (busy) throw new ProxyError('模型正在处理任务，请等待完成后更新登录', 409, 'busy');
@@ -197,7 +210,7 @@ async function handle(req, res) {
     const known = error instanceof ProxyError;
     const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
     const code = known ? error.status : timedOut ? 504 : 502;
-    if (error?.code === 'rate_limited') pacing.coolDown(error.retryAfter);
+    if (['rate_limited', 'service_unavailable'].includes(error?.code)) pacing.coolDown(error.retryAfter);
     const message = known ? error.message : timedOut ? 'DeepSeek 网页请求超时，请检查网络或关闭深度思考' : '无法连接 DeepSeek 网页，请检查网络后重试';
     if (code !== 400 && code !== 409) stateMessage = message;
     if (!res.destroyed) reply(res, code, { error: { message, code: known ? error.code : timedOut ? 'timeout' : 'network_error' } },
@@ -225,12 +238,13 @@ if (hasLock && secret.length >= 32) app.whenReady().then(async () => {
     credentials: async () => ({ token, userAgent: loginSession.getUserAgent(),
       cookie: (await loginSession.cookies.get({ url: 'https://chat.deepseek.com' })).map((item) => `${item.name}=${item.value}`).join('; ') }),
     onAuthState: setState,
+    requests: new WebRequests(path.join(dataDir, 'deepseek-pending-requests.json')),
   });
   server = http.createServer((req, res) => void handle(req, res));
   server.requestTimeout = 210000;
   server.on('error', () => { state = 'error'; stateMessage = '本机 DeepSeek 代理无法启动'; void close(); });
   server.listen(0, '127.0.0.1', () => {
-    fs.writeFileSync(runtimeFile, JSON.stringify({ port: server.address().port, secret, pid: process.pid, integrationVersion: 3 }), { mode: 0o600 });
+    fs.writeFileSync(runtimeFile, JSON.stringify({ port: server.address().port, secret, pid: process.pid, integrationVersion: 4 }), { mode: 0o600 });
   });
 }).catch(() => void close());
 app.on('window-all-closed', () => {}); // Login window lifetime does not control the proxy.

@@ -6,12 +6,16 @@ import { chromium } from 'playwright-core';
 import { apiRouter } from '../src/routes/api.router.js';
 import { configManager } from '../src/config/config.manager.js';
 import { deepseekProxyService } from '../src/services/deepseek.proxy.service.js';
+import { workConditionReviews } from '../src/services/work-condition-reviews.js';
 
 const originalGet = configManager.getConfig;
 const originalUpdate = configManager.updateConfig;
 const originalStatus = deepseekProxyService.status;
 const originalImport = deepseekProxyService.importToken;
 const originalConnection = deepseekProxyService.connection;
+const originalRequest = deepseekProxyService.request;
+const originalPrune = workConditionReviews.pruneExcluded;
+workConditionReviews.pruneExcluded = () => ({ removed: 0 });
 let config = (configManager as any).normalize({ ...configManager.getConfig(), llm: {
   ...configManager.getConfig().llm, connectionMode: 'deepseek-web', apiKey: '', baseUrl: '', model: 'deepseek-v4-flash',
   thinking: 'disabled', webSearch: false,
@@ -22,7 +26,14 @@ configManager.updateConfig = (partial) => {
   return config;
 };
 const webStatus = { running: true, state: 'not_logged_in', message: '请登录 DeepSeek 网页账号', hasCredential: false,
-  loginWindowOpen: false, busy: false, retryAfterSeconds: 0, models: [{ id: 'deepseek-v4-flash', name: 'DeepSeek 网页' }] };
+  loginWindowOpen: false, busy: false, retryAfterSeconds: 0, pendingRequests: [] as Array<{ requestId: string; sessionId: string; createdAt: string }>,
+  models: [{ id: 'deepseek-v4-flash', name: 'DeepSeek 网页' }] };
+const pendingActions: string[] = [];
+(deepseekProxyService as any).request = async (route: string, method: string, body: any) => {
+  assert.equal(method, 'POST'); assert.equal(body.requestId, 'ui-pending-request'); pendingActions.push(route);
+  if (route === '/requests/retry') webStatus.pendingRequests = [];
+  return webStatus;
+};
 (deepseekProxyService as any).status = async () => webStatus;
 (deepseekProxyService as any).importToken = async () => { throw new Error('DeepSeek 登录凭据格式无效'); };
 (deepseekProxyService as any).connection = async () => { throw new Error('请先登录 DeepSeek 网页账号'); };
@@ -127,6 +138,16 @@ async function main() {
     assert.deepEqual(config.filter.degree, ['本科']);
     await page.getByRole('button', { name: '设置', exact: true }).click();
     assert.deepEqual(uiErrors, []);
+    webStatus.pendingRequests = [{ requestId: 'ui-pending-request', sessionId: 'ui-session', createdAt: new Date().toISOString() }];
+    await page.reload(); await page.getByRole('button', { name: '设置', exact: true }).click();
+    await panel.getByText('上次聊天结果待确认', { exact: true }).waitFor();
+    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/llm/web/requests/view')),
+      panel.getByRole('button', { name: '查看该聊天', exact: true }).click()]);
+    assert.equal(pendingActions[0], '/requests/view');
+    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/llm/web/requests/retry')),
+      panel.getByRole('button', { name: '确认未完成，允许重试', exact: true }).click()]);
+    assert.equal(pendingActions[1], '/requests/retry');
+    await panel.getByText('上次聊天结果待确认', { exact: true }).waitFor({ state: 'hidden' });
     const screenshot = path.resolve(process.cwd(), '../data/deepseek-settings-preview.png');
     fs.mkdirSync(path.dirname(screenshot), { recursive: true });
     await page.screenshot({ path: screenshot, fullPage: true });
@@ -139,6 +160,8 @@ async function main() {
     deepseekProxyService.status = originalStatus;
     deepseekProxyService.importToken = originalImport;
     deepseekProxyService.connection = originalConnection;
+    deepseekProxyService.request = originalRequest;
+    workConditionReviews.pruneExcluded = originalPrune;
   }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

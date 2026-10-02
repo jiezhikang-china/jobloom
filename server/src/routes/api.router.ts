@@ -13,6 +13,7 @@ import type { BossPositionSelection } from '../types.js';
 import { deepseekProxyService } from '../services/deepseek.proxy.service.js';
 import { workConditionReviews } from '../services/work-condition-reviews.js';
 import { configuredWorkRequirements, validateWorkRequirements } from '../services/work-requirements.js';
+import { hasCommuteLimits, validateCommuteFilter, validCommuteOrigin } from '../services/commute.js';
 
 const uploadDir = path.resolve(process.cwd(), '../data/resumes');
 if (!fs.existsSync(uploadDir)) {
@@ -52,6 +53,9 @@ apiRouter.get('/config', (_req: Request, res: Response) => {
 });
 
 apiRouter.post('/config', (req: Request, res: Response) => {
+  if (req.body?.filter?.commute !== undefined && !validateCommuteFilter(req.body.filter.commute)) {
+    return res.status(400).json({ success: false, message: '出发位置或距离设置无效：公里数需0至200，通勤分钟数需0至240。' });
+  }
   if (req.body?.filter?.candidateLanguages !== undefined && (typeof req.body.filter.candidateLanguages !== 'string'
     || req.body.filter.candidateLanguages.length > 1000)) {
     return res.status(400).json({ success: false, message: '请用不超过1000字填写自己的语言能力。' });
@@ -87,6 +91,25 @@ apiRouter.post('/config', (req: Request, res: Response) => {
 
 apiRouter.get('/presets', (_req: Request, res: Response) => {
   res.json({ success: true, data: FREE_MODEL_PRESETS });
+});
+
+let locationSearchActive = false;
+apiRouter.post('/location/search', async (req: Request, res: Response) => {
+  if (deliveryService.isActive() || locationSearchActive) {
+    return res.status(409).json({ success: false, message: '请先结束投递任务或等待当前位置查询完成，再选择出发位置。' });
+  }
+  const query = req.body?.query, cityName = req.body?.cityName || configManager.getConfig().filter.cityName;
+  if (typeof query !== 'string' || query.trim().length < 2 || query.length > 100
+    || typeof cityName !== 'string' || cityName.trim().length < 2 || cityName.length > 30) {
+    return res.status(400).json({ success: false, message: '请填写城市及2至100字的地址、楼宇或地铁站名称。' });
+  }
+  locationSearchActive = true;
+  try {
+    const filter = configManager.getConfig().filter;
+    const data = await bossPageService.searchCommuteOrigins(query.trim(), cityName.trim(), filter.cityCode);
+    res.json({ success: true, data });
+  } catch (cause) { res.status(502).json({ success: false, message: (cause as Error).message }); }
+  finally { locationSearchActive = false; }
 });
 
 apiRouter.get('/boss/positions', async (req: Request, res: Response) => {
@@ -132,6 +155,12 @@ apiRouter.get('/llm/web/status', async (req: Request, res: Response) => {
 apiRouter.post('/llm/web/login', async (_req: Request, res: Response) => {
   try { res.json({ success: true, data: await deepseekProxyService.login() }); }
   catch (error) { res.status(503).json({ success: false, message: (error as Error).message }); }
+});
+apiRouter.post('/llm/web/requests/:action', async (req: Request, res: Response) => {
+  if (!['view', 'retry'].includes(String(req.params.action)) || typeof req.body?.requestId !== 'string'
+    || !/^[a-zA-Z0-9_-]{8,100}$/.test(req.body.requestId)) return res.status(400).json({ success: false, message: '请选择未完成的聊天' });
+  try { res.json({ success: true, data: await deepseekProxyService.request('/requests/' + req.params.action, 'POST', { requestId: req.body.requestId }) }); }
+  catch (error) { res.status(409).json({ success: false, message: (error as Error).message }); }
 });
 apiRouter.post('/llm/web/token', async (req: Request, res: Response) => {
   if (typeof req.body?.token !== 'string') return res.status(400).json({ success: false, message: '请输入网页登录凭据' });
@@ -249,6 +278,10 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
     const mode = req.body?.mode === 'manual' ? 'manual' : 'resume';
     const conditionsOnly = req.body?.conditionsOnly === true && mode === 'manual';
     const useSavedExpectations = configManager.getConfig().delivery.jobSource === 'saved_expectations';
+    const filter = configManager.getConfig().filter;
+    if (hasCommuteLimits(filter) && !validCommuteOrigin(filter.commute?.origin)) {
+      return res.status(400).json({ success: false, message: '已开启距离／通勤筛选，请先在筛选规则中选择出发位置。' });
+    }
     const candidateText = mode === 'manual' ? requirementsText : resumeText;
     const keywordList: string[] = Array.isArray(keywords)
       ? keywords.map((k: unknown) => String(k ?? '').trim()).filter(Boolean)
@@ -287,6 +320,7 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
     }
 
     // 同步前置检查：任务在跑时直接返回 409，而不是抛错（避免未处理的 Promise 拒绝）
+    if (locationSearchActive) return res.status(409).json({ success: false, message: '请等待位置查询完成再投递。' });
     if (deliveryService.isActive()) {
       return res.status(409).json({ success: false, message: '投递任务已在运行中，请先停止当前任务' });
     }
@@ -362,7 +396,10 @@ apiRouter.post('/delivery/work-condition-reviews/apply', async (req: Request, re
       return res.status(400).json({ success: false, message: '请选择1至150个不同的待确认岗位' });
     }
     if (deliveryService.isActive()) return res.status(409).json({ success: false, message: '请先停止当前投递任务，再投递待确认岗位' });
+    if (locationSearchActive) return res.status(409).json({ success: false, message: '请等待位置查询完成再投递。' });
     const filter = configManager.getConfig().filter;
+    if (hasCommuteLimits(filter) && !validCommuteOrigin(filter.commute?.origin)) return res.status(400)
+      .json({ success: false, message: '请先在筛选规则中选择出发位置。' });
     const eligible = workConditionReviews.listEligible(filter);
     const reviews = ids.map(id => eligible.find(item => item.id === id));
     if (reviews.some(item => !item)) return res.status(400).json({ success: false, message: '所选记录已移除或已命中排除条件，请刷新后重新选择' });
@@ -371,6 +408,7 @@ apiRouter.post('/delivery/work-condition-reviews/apply', async (req: Request, re
     if (!login.isLoggedIn && login.reasonCode === 'unverified') login = await browserService.verifyLogin();
     if (!login.isLoggedIn) return res.status(login.reasonCode === 'login_required' ? 401 : 503)
       .json({ success: false, message: login.reason || '无法确认 BOSS 登录状态', reasonCode: login.reasonCode });
+    if (locationSearchActive) return res.status(409).json({ success: false, message: '请等待位置查询完成再投递。' });
     if (deliveryService.isActive()) return res.status(409).json({ success: false, message: '投递任务已经在运行中' });
     deliveryService.startReviewDelivery(reviews as NonNullable<typeof reviews[number]>[])
       .catch(error => deliveryService.log('error', '待确认岗位投递失败：' + (error as Error).message));

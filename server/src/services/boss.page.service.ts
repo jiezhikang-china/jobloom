@@ -1,10 +1,12 @@
 import { type CdpLocator, type CdpPage } from './cdp.page.js';
 import { browserService, isSecurityUrl } from './browser.service.js';
-import type { AppConfig, BossCompanyInfo, BossJobItem, WorkConditionReview } from '../types.js';
+import type { AppConfig, BossCompanyInfo, BossJobItem, BossWorkAddress, CommuteOrigin, WorkConditionReview } from '../types.js';
 import { jobInformationIssue } from './job-information.js';
 import { findJobExclusion } from './job-exclusions.js';
 import { decodeBossText, readableBossSalary } from './boss-text.js';
 import { languageQualificationIssue, type CandidateLanguageContext } from './language-qualification.js';
+import { readBossWorkAddress, bossMapService } from './boss-map.service.js';
+import { commuteDecision } from './commute.js';
 
 const ORIGIN = 'https://www.zhipin.com';
 const CARD = 'ul.rec-job-list li.job-card-box';
@@ -347,7 +349,7 @@ export class BossPageService {
   /** Read the full job's own company link, then check the company profile before passing exclusions. */
   public async readJobCompanyInfo(href: string, jobName: string, companyName: string,
     options: { filter?: AppConfig['filter']; exclusionText?: string; refreshCompany?: boolean; candidateContext?: CandidateLanguageContext } = {}): Promise<{
-    brandIndustry: string; jobDetailText: string; skills: string[]; companyInfo?: BossCompanyInfo;
+    brandIndustry: string; jobDetailText: string; skills: string[]; companyInfo?: BossCompanyInfo; workAddress?: BossWorkAddress;
   }> {
     return browserService.withJobInspection(href, async (page) => {
       const expectedPath = new URL(href, ORIGIN).pathname;
@@ -372,7 +374,8 @@ export class BossPageService {
           if (data.path !== expectedPath || normalizedName(data.name) !== normalizedName(jobName) || !sameCompany(data.company, companyName)) {
             throw new Error('公司行业核对页与所选岗位不一致');
           }
-          const result = { brandIndustry: data.industry, jobDetailText: decodeBossText(data.description), skills: data.skills.map(decodeBossText) };
+          const result = { brandIndustry: data.industry, jobDetailText: decodeBossText(data.description), skills: data.skills.map(decodeBossText),
+            workAddress: await readBossWorkAddress(page) };
           if (options.filter && findJobExclusion({ jobName, brandName: decodeBossText(data.company), brandIndustry: data.industry,
             jobDetail: result.jobDetailText, skills: result.skills }, options.filter, options.exclusionText)) return result;
           if (options.filter && languageQualificationIssue({ jobName, skills: result.skills }, result.jobDetailText, options.filter, options.candidateContext)) return result;
@@ -391,6 +394,7 @@ export class BossPageService {
     activeTimeDesc: string;
     brandIndustry: string;
     companyInfo?: BossCompanyInfo;
+    workAddress?: BossWorkAddress;
     alreadyChatted: boolean;
     chatButtonLocator: CdpLocator | null;
   }> {
@@ -410,10 +414,12 @@ export class BossPageService {
     const activeTimeDesc = recruiterText.match(/刚刚活跃|今日活跃|今天活跃|在线|\d+\s*日内活跃|\d+\s*周内活跃|本周活跃|本月活跃/)?.[0] || '';
     let brandIndustry = (await detail.locator('a[ka="job-detail-brandindustry"]').first().innerText({ timeout: 200 }).catch(() => '')).trim();
     let companyInfo: BossCompanyInfo | undefined;
+    let workAddress = await readBossWorkAddress(page);
     const rejectEarly = options.filter && (findJobExclusion({ jobName, brandName: companyName, brandIndustry,
       jobDetail: jobDetailText }, options.filter, options.exclusionText)
       || languageQualificationIssue({ jobName }, jobDetailText, options.filter, options.candidateContext)
-      || jobInformationIssue({ jobDetail: jobDetailText }, options.filter));
+      || jobInformationIssue({ jobDetail: jobDetailText }, options.filter)
+      || commuteDecision({ workAddress }, options.filter).status === 'failed');
     if (options.readIndustry && !rejectEarly) {
       if (!href) throw new Error('缺少岗位链接，无法核对公司行业');
       const companyHref = await card.locator('a.boss-info[href*="/gongsi/"]').first()
@@ -426,12 +432,13 @@ export class BossPageService {
         brandIndustry = fullPage.brandIndustry;
         jobDetailText = fullPage.jobDetailText;
         companyInfo = fullPage.companyInfo;
+        workAddress = fullPage.workAddress || workAddress;
       }
     }
     const button = page.locator(CHAT).first();
     const visible = await button.isVisible({ timeout: 800 }).catch(() => false);
     const label = visible ? (await button.innerText()).trim() : '';
-    return { jobDetailText, activeTimeDesc, brandIndustry, ...(companyInfo ? { companyInfo } : {}),
+    return { jobDetailText, activeTimeDesc, brandIndustry, workAddress, ...(companyInfo ? { companyInfo } : {}),
       alreadyChatted: /继续沟通|已在沟通/.test(label), chatButtonLocator: visible ? button : null };
   }
 
@@ -469,9 +476,11 @@ export class BossPageService {
       salaryDesc: readableBossSalary(data.salary), cityName: decodeBossText(data.city), jobExperience: decodeBossText(data.experience), jobDegree: decodeBossText(data.degree),
       brandIndustry: decodeBossText(data.industry), skills: data.skills.map(decodeBossText), activeTimeDesc: data.recruiter.match(/刚刚活跃|今日活跃|今天活跃|在线|\d+\s*日内活跃|本周活跃|本月活跃/)?.[0] || '',
       areaDistrict: '', brandScaleName: '', bossName: '', bossTitle: '', welfareList: [] };
+    job.workAddress = await readBossWorkAddress(page);
     const candidate = { text: review.screening?.languageEvidence || '', source: 'resume' as const };
     const earlyExclusion = findJobExclusion({ ...job, jobDetail: jobDetailText }, filter, '', review.screening?.taskExclusions)
-      || languageQualificationIssue(job, jobDetailText, filter, candidate) || jobInformationIssue({ jobDetail: jobDetailText }, filter);
+      || languageQualificationIssue(job, jobDetailText, filter, candidate) || jobInformationIssue({ jobDetail: jobDetailText }, filter)
+      || commuteDecision(job, filter).status === 'failed';
     if (!earlyExclusion && data.companyHref) {
       job.companyInfo = await this.readCompanyInfo(data.companyHref, review.companyName, true);
       job.brandIndustry = job.companyInfo.industry;
@@ -484,6 +493,30 @@ export class BossPageService {
       if (/tosign/.test(loginLink)) throw new Error('BOSS 登录已失效，请重新登录后投递');
     }
     return { job, jobDetailText, alreadyChatted: /继续沟通|已在沟通/.test(label), chatButtonLocator: visible ? button : null };
+  }
+
+  /** Resolve a user-selected starting place using BOSS's existing map search. */
+  public async searchCommuteOrigins(query: string, cityName: string, cityCode: string): Promise<CommuteOrigin[]> {
+    let page = await browserService.getWorkerPage();
+    if (!(await this.isJobListPage())) page = await this.initJobPage(undefined, cityCode);
+    await this.ensureLoggedIn(page);
+    const selectedHref = await page.locator('.job-detail-box .more-job-btn').first()
+      .evaluate(element => element.getAttribute('href') || '').catch(() => '');
+    const href = selectedHref || (await this.getVisibleJobCards())[0]?.jobHref;
+    if (!href) throw new Error('BOSS 当前没有岗位可打开地图，请先切换到有岗位的职位列表');
+    return browserService.withJobInspection(href, async inspection => {
+      if (!(await readBossWorkAddress(inspection))) throw new Error('参考岗位未提供地图地址，请在 BOSS 中先选择有地址的岗位');
+      return bossMapService.searchOrigins(inspection, query, cityName);
+    });
+  }
+
+  public async readJobTransit(target: { jobHref: string; jobName: string; companyName: string }, origin: CommuteOrigin,
+    address: BossWorkAddress, ownedPage?: CdpPage): Promise<{ minutes: number; summary: string }> {
+    const page = ownedPage || await browserService.getWorkerPage();
+    if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page))) throw new Error('岗位身份已变化，未查询通勤');
+    const result = await bossMapService.readTransit(page, origin, address);
+    if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page))) throw new Error('岗位身份已变化，通勤结果未采用');
+    return result;
   }
 
   /** BOSS 自选期望中的“不合适”位于右侧详情；点击前再次核对岗位链接。 */

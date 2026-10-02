@@ -6,6 +6,7 @@ import { bossPageService } from '../src/services/boss.page.service.js';
 import { llmService } from '../src/services/llm.service.js';
 import { workConditionReviews } from '../src/services/work-condition-reviews.js';
 import type { DOMJobCardInfo } from '../src/services/boss.page.service.js';
+import { evaluationRetrySeconds } from '../src/services/ai-retry.js';
 
 const restores: Array<() => void> = [];
 function stub(object: any, key: string, replacement: any) {
@@ -29,6 +30,10 @@ const batches: string[][] = [];
 let marked = 0;
 let currentDetail = '';
 let changed = false;
+let changedLocation = false;
+let locationAfter: 'far' | 'unknown' = 'far';
+const origin = { name: '人民广场', address: '上海人民大道185号', cityName: '上海', query: '上海人民广场',
+  longitude: 121.481492, latitude: 31.234736, coordinateSystem: 'boss' as const };
 
 async function main() {
   stub(configManager, 'getConfig', () => config);
@@ -45,7 +50,10 @@ async function main() {
     loaded.push(company); currentDetail = company;
     return { jobDetailText: '负责行政文书支持。步行5分钟到地铁。' + (company === '工时不符' || (changed && company === '甲' && times > 0)
       ? '每天工作9小时。' : company === '作息未注明' ? '详细作息面议。' : '每天工作8小时。'),
-      activeTimeDesc: '今日活跃', brandIndustry: '企业服务', alreadyChatted: false, chatButtonLocator: { key: company } };
+      activeTimeDesc: '今日活跃', brandIndustry: '企业服务', alreadyChatted: false, chatButtonLocator: { key: company },
+      workAddress: changedLocation ? company === '甲' && times > 0
+        ? locationAfter === 'unknown' ? undefined : { address: '搬到远处的工作地', point: { longitude: 120.2, latitude: 30.5, coordinateSystem: 'boss' as const } }
+        : { address: '上海人民广场附近的工作地', point: { longitude: 121.48, latitude: 31.23, coordinateSystem: 'boss' as const } } : undefined };
   });
   stub(bossPageService, 'executeChatClick', async (locator: any, greeting: string, target: any) => {
     assert.equal(currentDetail, target.companyName, '发送时必须重新打开正确的岗位详情');
@@ -88,7 +96,45 @@ async function main() {
   assert.deepEqual(sent, ['乙'], '暂存岗位的JD改变后不能使用旧评估投递');
   assert.ok(stale.getLogs().some((item) => item.message.includes('暂存已过期')));
 
+  changed = false; changedLocation = true; loaded.length = 0; sent.length = 0;
+  config.filter.commute = { origin, maxDistanceKm: 15 };
+  const moved = new DeliveryService();
+  await moved.startDelivery({ ...params, resumeText: params.resumeText + '地址变更测试' });
+  assert.deepEqual(sent, ['乙'], 'AI通过后重新打开的工作地点变远，也必须拒绝发送');
+  assert.ok(moved.getLogs().some(item => item.message.includes('最新岗位已不符合筛选') && item.message.includes('距离')));
+  loaded.length = 0; sent.length = 0; reviewed.length = 0; locationAfter = 'unknown';
+  const missingLocation = new DeliveryService();
+  await missingLocation.startDelivery({ ...params, resumeText: params.resumeText + '地址变更为未知测试' });
+  assert.deepEqual(sent, ['乙']); assert.deepEqual(reviewed, ['甲'], 'AI通过后地址缺失，保留到待确认列表');
+  changedLocation = false; config.filter.commute = {};
+
   changed = false; loaded.length = 0; sent.length = 0;
+  config.delivery.dailyMaxQuota = 2;
+  const delays: number[] = []; const retryBatches: string[][] = [];
+  let retries = 0;
+  stub(llmService, 'chatJson', async (messages: any[], _count: number, options: any) => {
+    options.onRequest();
+    const jobs = JSON.parse(messages[1].content.split('【待评估岗位列表（逐个评估）】：\n')[1]);
+    retryBatches.push(jobs.map((item: any) => item.companyName));
+    if (++retries < 3) throw new Error('DeepSeek暂时繁忙');
+    return { jobs: jobs.map((item: any) => ({ jobKey: item.jobKey, score: 90, passed: true, customGreeting: '您好，' + item.companyName,
+      workRequirements: [{ requirementId: 'metro', status: 'met', evidence: '步行5分钟到地铁' }] })) };
+  });
+  const retrying = new DeliveryService();
+  (retrying as any).sleepInterruptible = async (ms: number) => { delays.push(ms); assert.equal(retrying.getStats().status, 'running'); return true; };
+  await retrying.startDelivery({ ...params, resumeText: params.resumeText + '重试恢复测试' });
+  assert.deepEqual(retryBatches, [['甲', '乙'], ['甲', '乙'], ['甲', '乙']], '失败后保留同一批岗位');
+  assert.deepEqual(delays, [30000, 60000], '连续失败加长等待，不立即重发或暂停');
+  assert.deepEqual(sent, ['甲', '乙']); assert.equal(retrying.getStats().status, 'finished'); assert.equal(retrying.getStats().skippedByLlmErrorCount, 0);
+  assert.ok(retrying.getLogs().some(item => item.message.includes('AI 等待重试')));
+  assert.deepEqual([1, 2, 3, 4, 5, 6].map(n => evaluationRetrySeconds(n, 30)), [30, 60, 120, 240, 300, 300]);
+  assert.equal(evaluationRetrySeconds(1, 90), 90);
+  sent.length = 0; retries = 0;
+  const cancelledRetry = new DeliveryService();
+  (cancelledRetry as any).sleepInterruptible = async () => { cancelledRetry.stop(); return false; };
+  await cancelledRetry.startDelivery({ ...params, resumeText: params.resumeText + '重试等待停止测试' });
+  assert.equal(retries, 1); assert.equal(cancelledRetry.getStats().status, 'idle'); assert.deepEqual(sent, [], '等待重试时停止，不再请求或投递');
+  loaded.length = 0; sent.length = 0;
   let entered!: () => void;
   const inFlight = new Promise<void>((resolve) => { entered = resolve; });
   stub(llmService, 'chatJson', async (_messages: any[], _retries: number, options: any) => {

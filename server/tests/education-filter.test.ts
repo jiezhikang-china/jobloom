@@ -26,7 +26,8 @@ async function main(): Promise<void> {
   const originalChat = llmService.chatJson;
   const original = configManager.getConfig();
   const config = { ...original, filter: { ...original.filter, degree: ['本科'], experience: [], companyBlacklist: [],
-    requiredKeywords: [], hrActiveDaysLimit: 0, salaryMin: undefined, salaryMax: undefined, workRequirements: [], minLlmMatchScore: 75 } };
+    requiredKeywords: [], hrActiveDaysLimit: 0, salaryMin: undefined, salaryMax: undefined, workRequirements: [], minLlmMatchScore: 75,
+    skipMissingCompanyIntro: false, skipVagueJobDescription: false, commute: {} } };
   const job: BossJobItem = { securityId: '', jobId: '', jobName: '自动化测试', lid: '', salaryDesc: '15-25K',
     jobExperience: '3-5年', jobDegree: '大专', cityName: '上海', areaDistrict: '', brandName: '模拟公司',
     brandScaleName: '', brandIndustry: '软件', bossName: '', bossTitle: '', activeTimeDesc: '',

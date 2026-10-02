@@ -4,6 +4,7 @@ import { AppConfig } from '../types.js';
 import { sanitizeApiKey } from './credentials.js';
 import { normalizeCandidateDegrees } from '../services/education.js';
 import { normalizeWorkRequirements } from '../services/work-requirements.js';
+import { normalizeCommuteFilter } from '../services/commute.js';
 
 const CONFIG_FILE_PATH = path.resolve(process.cwd(), '../data/config.json');
 
@@ -128,6 +129,7 @@ export class ConfigManager {
         skipVagueJobDescription: filter.skipVagueJobDescription !== false,
         degree: normalizeCandidateDegrees(cfg.filter?.degree),
         candidateLanguages: typeof filter.candidateLanguages === 'string' ? filter.candidateLanguages.trim().slice(0, 1000) : '',
+        commute: normalizeCommuteFilter(filter.commute),
         companyBlacklist: this.splitKeywords(cfg.filter?.companyBlacklist),
         requiredKeywords: this.splitKeywords(cfg.filter?.requiredKeywords),
         workRequirements: normalizeWorkRequirements(cfg.filter?.workRequirements, legacyWorkConditions),

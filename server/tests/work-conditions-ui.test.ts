@@ -5,6 +5,7 @@ import { chromium } from 'playwright-core';
 import { apiRouter } from '../src/routes/api.router.js';
 import { configManager } from '../src/config/config.manager.js';
 import { browserService } from '../src/services/browser.service.js';
+import { bossPageService } from '../src/services/boss.page.service.js';
 import { deliveryService } from '../src/services/delivery.service.js';
 import { workConditionReviews } from '../src/services/work-condition-reviews.js';
 import type { WorkConditionReview } from '../src/types.js';
@@ -18,7 +19,7 @@ function stub(object: any, key: string, replacement: any) {
 async function main() {
   const original = configManager.getConfig();
   let config = (configManager as any).normalize({ ...original, targetPosition: undefined, targetPositions: [], filter: {
-    ...original.filter, salaryMin: 15, salaryMax: 40, workRequirements: [],
+    ...original.filter, salaryMin: 15, salaryMax: 40, workRequirements: [], commute: {},
   }, delivery: { ...original.delivery, dailyMaxQuota: 5 } });
   const fixture: WorkConditionReview = {
     id: 'abcdef0123456789abcd', jobHref: 'https://www.zhipin.com/job_detail/ui_fixture.html',
@@ -52,7 +53,14 @@ async function main() {
   stub(deliveryService, 'startDelivery', async (params: any) => { starts.push(params); });
   stub(deliveryService, 'startReviewDelivery', async (items: WorkConditionReview[]) => { reviewStarts.push(items); });
   stub(workConditionReviews, 'list', () => reviews);
+  stub(workConditionReviews, 'pruneExcluded', () => ({ removed: 0 }));
   stub(workConditionReviews, 'remove', (id: string) => { reviews = reviews.filter((item) => item.id !== id); });
+  let locationsQueried = 0;
+  const origin = { name: '人民广场', address: '上海市黄浦区人民大道185号', cityName: '上海', query: '上海人民广场',
+    longitude: 121.481492, latitude: 31.234736, coordinateSystem: 'boss' };
+  stub(bossPageService, 'searchCommuteOrigins', async (query: string, city: string) => {
+    locationsQueried++; assert.equal(query, '人民广场'); assert.equal(city, '上海'); return [origin];
+  });
   const app = express();
   app.use(express.json()); app.use('/api', apiRouter);
   app.use(express.static(path.resolve(process.cwd(), '../client/dist')));
@@ -123,6 +131,35 @@ async function main() {
     await page.getByRole('button', { name: '筛选规则', exact: true }).click();
     assert.equal(await page.getByLabel('期望月薪下限').inputValue(), '');
     assert.equal(await page.getByLabel('期望月薪上限').inputValue(), '');
+    const location = page.getByRole('region', { name: '位置与通勤筛选', exact: true });
+    await location.getByLabel('出发城市', { exact: true }).fill('上海');
+    await location.getByLabel('出发位置搜索', { exact: true }).fill('人民广场');
+    await location.getByRole('button', { name: '搜索位置', exact: true }).click();
+    await location.getByRole('button', { name: /人民广场.*人民大道185号/ }).click();
+    await location.getByRole('checkbox', { name: '启用直线距离上限', exact: true }).check();
+    await location.getByLabel('最大直线距离', { exact: true }).fill('12.5');
+    await location.getByRole('checkbox', { name: '启用公交地铁通勤上限', exact: true }).check();
+    await location.getByLabel('最大公交地铁通勤时间', { exact: true }).fill('55');
+    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: '保存配置', exact: true }).click()]);
+    assert.equal(locationsQueried, 1); assert.equal(config.filter.commute.origin.name, '人民广场');
+    assert.equal(config.filter.commute.maxDistanceKm, 12.5); assert.equal(config.filter.commute.maxTransitMinutes, 55);
+    await page.reload(); await page.getByRole('button', { name: '筛选规则', exact: true }).click();
+    assert.match(await location.innerText(), /出发位置：上海 · 人民广场/);
+    assert.equal(await location.getByLabel('最大直线距离', { exact: true }).inputValue(), '12.5');
+    assert.equal(await location.getByLabel('最大公交地铁通勤时间', { exact: true }).inputValue(), '55');
+    await location.screenshot({ path: path.resolve(process.cwd(), '../data/location-filter-preview.png') });
+    for (const commute of [{ maxDistanceKm: -1 }, { maxTransitMinutes: 241 }, { origin: { ...origin, coordinateSystem: 'wgs84' } }]) {
+      const invalid = await fetch(base + '/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filter: { commute } }) });
+      assert.equal(invalid.status, 400);
+    }
+    assert.equal(config.filter.commute.maxTransitMinutes, 55, '非法设置不能覆盖原位置');
+    await location.getByRole('checkbox', { name: '启用直线距离上限', exact: true }).uncheck();
+    await location.getByRole('checkbox', { name: '启用公交地铁通勤上限', exact: true }).uncheck();
+    await location.getByRole('button', { name: '清除出发位置', exact: true }).click();
+    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: '保存配置', exact: true }).click()]);
+    assert.equal(config.filter.commute.origin, undefined); assert.equal(config.filter.commute.maxDistanceKm, 0);
     await page.getByLabel('我的语言能力', { exact: true }).fill('英语 CET4；西班牙语 C1');
     assert.equal(await page.getByLabel('经验筛选方式', { exact: true }).inputValue(), 'flexible');
     await page.getByLabel('经验筛选方式', { exact: true }).selectOption('strict');

@@ -8,6 +8,7 @@ import { findJobExclusion } from './job-exclusions.js';
 import { jobInformationIssue } from './job-information.js';
 import { decodeBossText, readableBossSalary } from './boss-text.js';
 import { languageQualificationIssue } from './language-qualification.js';
+import { commuteDecision, currentCommute, validCommuteOrigin, validWorkAddress, validJobCommute } from './commute.js';
 
 function canonicalJobUrl(value: string): string {
   const url = new URL(value, 'https://www.zhipin.com');
@@ -53,7 +54,8 @@ export class WorkConditionReviews {
     const jobHref = canonicalJobUrl(input.jobHref);
     const requirements = normalizeWorkRequirements(input.requirements);
     if (!validateWorkRequirements(requirements) || (!requirements.some((item) => item.enabled)
-      && !(input.screening?.needsCompanyConfirmation === true && input.screening.companyInfo))) throw new Error('工作条件无效');
+      && !(input.screening?.needsCompanyConfirmation === true && input.screening.companyInfo)
+      && input.screening?.needsCommuteConfirmation !== true)) throw new Error('工作条件无效');
     const labels = requirements.filter((item) => item.enabled).map((item) => item.text);
     const item: WorkConditionReview = {
       id: reviewId(jobHref), jobHref,
@@ -86,7 +88,13 @@ export class WorkConditionReviews {
   }
 
   listEligible(filter = configManager.getConfig().filter): WorkConditionReview[] {
-    return this.list().filter((item) => !this.exclusionFor(item, filter));
+    return this.list().filter((item) => !this.exclusionFor(item, filter)).map(item => {
+      if (!validCommuteOrigin(filter.commute?.origin)) return item;
+      const screening = item.screening || { industry: '', jobDetail: '', skills: [] };
+      const commute = currentCommute(filter.commute.origin, screening.workAddress, screening.commute);
+      const decision = commuteDecision({ ...screening, commute }, filter);
+      return { ...item, screening: { ...screening, commute, needsCommuteConfirmation: decision.status === 'unknown' } };
+    });
   }
 
   /** Keep a recoverable copy before removing records that contradict the current exclusions. */
@@ -104,6 +112,7 @@ export class WorkConditionReviews {
     return languageQualificationIssue({ jobName: item.jobName, skills: item.screening?.skills }, item.screening?.jobDetail || '', filter,
       { text: item.screening?.languageEvidence || '', source: 'resume' })
       || (item.screening && jobInformationIssue({ jobDetail: item.screening.jobDetail, companyInfo: item.screening.companyInfo }, filter))
+      || (commuteDecision(item.screening || {}, filter).status === 'failed' ? commuteDecision(item.screening || {}, filter).reason : undefined)
       || findJobExclusion({ jobName: item.jobName, brandName: item.companyName,
       brandIndustry: item.screening?.industry, skills: item.screening?.skills,
       companyInfo: item.screening?.companyInfo,
@@ -115,6 +124,9 @@ export class WorkConditionReviews {
     if (typeof value.industry !== 'string' || typeof value.jobDetail !== 'string' || value.jobDetail.length > 100000
       || !Array.isArray(value.skills) || value.skills.some((item) => typeof item !== 'string')
       || (value.needsCompanyConfirmation !== undefined && typeof value.needsCompanyConfirmation !== 'boolean')
+      || (value.needsCommuteConfirmation !== undefined && typeof value.needsCommuteConfirmation !== 'boolean')
+      || (value.workAddress !== undefined && !validWorkAddress(value.workAddress))
+      || (value.commute !== undefined && !validJobCommute(value.commute))
       || (value.languageEvidence !== undefined && (typeof value.languageEvidence !== 'string' || value.languageEvidence.length > 2000))
       || (value.taskExclusions !== undefined && (!Array.isArray(value.taskExclusions) || value.taskExclusions.length > 100
         || value.taskExclusions.some((rule) => typeof rule?.term !== 'string' || typeof rule.literal !== 'boolean')))) {
@@ -137,6 +149,9 @@ export class WorkConditionReviews {
     return { industry: clipped(value.industry, 200), jobDetail: value.jobDetail, ...(companyInfo ? { companyInfo } : {}),
       ...(value.languageEvidence ? { languageEvidence: value.languageEvidence } : {}),
       ...(value.needsCompanyConfirmation ? { needsCompanyConfirmation: true } : {}),
+      ...(value.needsCommuteConfirmation ? { needsCommuteConfirmation: true } : {}),
+      ...(value.workAddress ? { workAddress: structuredClone(value.workAddress) } : {}),
+      ...(value.commute ? { commute: structuredClone(value.commute) } : {}),
       skills: value.skills.slice(0, 100).map((item) => clipped(item, 200)),
       ...(value.taskExclusions ? { taskExclusions: value.taskExclusions.map((rule) => ({ term: clipped(rule.term, 100), literal: rule.literal })) } : {}) };
   }

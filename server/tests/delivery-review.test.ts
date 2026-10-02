@@ -9,6 +9,7 @@ import { browserService } from '../src/services/browser.service.js';
 import { workConditionReviews } from '../src/services/work-condition-reviews.js';
 import { llmService } from '../src/services/llm.service.js';
 import type { BossJobItem, WorkConditionReview } from '../src/types.js';
+import { jobCommuteService } from '../src/services/job-commute.service.js';
 
 const restores: Array<() => void> = [];
 function stub(object: any, key: string, replacement: any) { const previous = object[key]; object[key] = replacement; restores.push(() => { object[key] = previous; }); }
@@ -89,7 +90,30 @@ async function main() {
     const stopped = new DeliveryService(); (stopped as any).sleepInterruptible = async () => { stopped.stop(); return false; };
     await stopped.startReviewDelivery([...records]);
     assert.equal(stopped.getStats().status, 'idle'); assert.equal(opened.length, 1); assert.equal(records.length, 1, '停止不投递后续记录');
-    console.log('PASS | 待确认单条/批量入口、并发锁、登录、每日0/配额、最新排除复核、未知条件手动投递、零重复AI、已沟通去重、发送确认计数、继续失败防重投、浏览阶段节奏、停止');
+    config.delivery.minDelaySeconds = 0; config.delivery.maxDelaySeconds = 0;
+    config.filter.commute = { origin: { name: '出发点', address: '上海人民广场', cityName: '上海', query: '上海人民广场',
+      longitude: 121.48, latitude: 31.23, coordinateSystem: 'boss' }, maxDistanceKm: 5, maxTransitMinutes: 60 };
+    records = [make(11), make(12), make(13), make(14)]; sends.length = 0;
+    detailFor = review => ({ job: { ...job(review), workAddress: review.id === make(12).id ? undefined
+      : { address: review.id === make(11).id ? '很远的办公地址' : '附近办公地址',
+        point: { longitude: review.id === make(11).id ? 121.9 : 121.49, latitude: 31.23, coordinateSystem: 'boss' } } },
+      jobDetailText: review.screening!.jobDetail, alreadyChatted: false, chatButtonLocator: {} });
+    let routeCalls = 0;
+    stub(bossPageService, 'readJobTransit', async (target: WorkConditionReview) => {
+      routeCalls++; if (target.id === make(13).id) throw new Error('暂无公交路线');
+      return { minutes: 45, summary: '地铁1号线' };
+    });
+    // Do not reuse a preceding failed route for this independent last job.
+    stub(jobCommuteService, 'enrich', async (current: BossJobItem, filter: any, read: any) => {
+      const { JobCommuteService } = await import('../src/services/job-commute.service.js');
+      return new JobCommuteService().enrich(current, filter, read);
+    });
+    const located = new DeliveryService(); await located.startReviewDelivery([...records]);
+    assert.deepEqual(sends, [make(14).jobHref], '手动选择仍核对当前距离/路线；未知地点不直接投递');
+    assert.equal(routeCalls, 2, '很远或没有坐标时不请求公交路线');
+    assert.deepEqual(records.map(item => item.id), [make(12).id, make(13).id], '未知工作地点/路线保留待确认，过远淘汰');
+    assert.equal(located.getStats().todayAppliedCount, 1);
+    console.log('PASS | 待确认单条/批量入口、并发锁、登录、每日0/配额、最新排除复核、未知条件手动投递、零重复AI、已沟通去重、计数、继续失败防重投、浏览节奏、停止、最新距离/通勤复核');
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => restores.reverse().forEach(restore => restore()));

@@ -23,6 +23,7 @@ export interface AppConfig {
     skipVagueJobDescription?: boolean;
     degree: string[]; // 用户最高学历，0 或 1 项
     candidateLanguages?: string;
+    commute?: CommuteFilter;
     hrActiveDaysLimit: number;
     companyBlacklist: string[];
     requiredKeywords: string[];
@@ -64,11 +65,30 @@ export interface WorkConditionReview {
     needsCompanyConfirmation?: boolean;
     taskExclusions?: Array<{ term: string; literal: boolean }>;
     languageEvidence?: string;
+    workAddress?: BossWorkAddress;
+    commute?: JobCommute;
+    needsCommuteConfirmation?: boolean;
   };
   question: string;
   updatedAt: string;
   evaluationSource?: 'rules' | 'ai' | 'cache';
   score?: number;
+}
+
+/** Coordinates from the same BOSS map; never mix with raw GPS/another provider. */
+export interface BossMapPoint { longitude: number; latitude: number; coordinateSystem: 'boss'; }
+export interface CommuteOrigin extends BossMapPoint { name: string; address: string; cityName: string; query: string; }
+export interface CommuteFilter { origin?: CommuteOrigin; maxDistanceKm?: number; maxTransitMinutes?: number; }
+export interface BossWorkAddress { address: string; point?: BossMapPoint; }
+export interface JobCommute {
+  origin: CommuteOrigin;
+  destination: BossWorkAddress;
+  distanceKm?: number;
+  transitMinutes?: number;
+  transitSummary?: string;
+  transitStatus: 'ok' | 'unknown' | 'not_requested';
+  transitReason?: string;
+  checkedAt: string;
 }
 
 export interface BossPositionNode {

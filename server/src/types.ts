@@ -29,6 +29,7 @@ export interface AppConfig {
     skipVagueJobDescription?: boolean;
     degree: string[]; // 用户最高学历，0 或 1 项；空数组不限制，岗位按最低门槛比较
     candidateLanguages?: string; // 用户声明的语言、水平、证书和口音能力；不是岗位需求
+    commute?: CommuteFilter;
     hrActiveDaysLimit: number; // 3天内活跃为 3；<=0 表示不限制
     companyBlacklist: string[]; // 公司、行业、岗位与明确业务职责的排除词
     requiredKeywords: string[]; // 职位名称、技能标签或完整 JD 命中任意一个才进入 AI 评估
@@ -82,11 +83,30 @@ export interface WorkConditionReview {
     needsCompanyConfirmation?: boolean;
     taskExclusions?: Array<{ term: string; literal: boolean }>;
     languageEvidence?: string;
+    workAddress?: BossWorkAddress;
+    commute?: JobCommute;
+    needsCommuteConfirmation?: boolean;
   };
   question: string;
   updatedAt: string;
   evaluationSource?: 'rules' | 'ai' | 'cache';
   score?: number;
+}
+
+/** Coordinates from the same BOSS map; never mix with raw GPS/another provider. */
+export interface BossMapPoint { longitude: number; latitude: number; coordinateSystem: 'boss'; }
+export interface CommuteOrigin extends BossMapPoint { name: string; address: string; cityName: string; query: string; }
+export interface CommuteFilter { origin?: CommuteOrigin; maxDistanceKm?: number; maxTransitMinutes?: number; }
+export interface BossWorkAddress { address: string; point?: BossMapPoint; }
+export interface JobCommute {
+  origin: CommuteOrigin;
+  destination: BossWorkAddress;
+  distanceKm?: number;
+  transitMinutes?: number;
+  transitSummary?: string;
+  transitStatus: 'ok' | 'unknown' | 'not_requested';
+  transitReason?: string;
+  checkedAt: string;
 }
 
 export interface BossPositionNode {
@@ -162,6 +182,8 @@ export interface BossJobItem {
   brandScaleName: string;
   brandIndustry: string;
   companyInfo?: BossCompanyInfo;
+  workAddress?: BossWorkAddress;
+  commute?: JobCommute;
   bossName: string;
   bossTitle: string;
   activeTimeDesc: string; // 如 "刚刚活跃", "今日活跃", "3日内活跃", "本月活跃"

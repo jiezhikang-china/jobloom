@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Chat2API Team. GPL-3.0-or-later; see LICENSE and UPSTREAM.md.
 const { Worker } = require('node:worker_threads');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
+const { WebRequests, retryAfterSeconds } = require('./requests.cjs');
 
 const API_BASE = 'https://chat.deepseek.com/api/v0';
 // Names and mapping from the pinned adapter, not a live claim about the account's quota.
@@ -202,12 +204,13 @@ function calculatePow(challenge, signal) {
 }
 
 class DeepSeekWebAdapter {
-  constructor({ fetchImpl = fetch, credentials, solve = calculatePow, onAuthState = () => {} }) {
+  constructor({ fetchImpl = fetch, credentials, solve = calculatePow, onAuthState = () => {}, requests = new WebRequests() }) {
     this.fetchImpl = fetchImpl;
     this.credentials = credentials;
     this.solve = solve;
     this.onAuthState = onAuthState;
     this.access = null;
+    this.requests = requests;
   }
   clearTokenCache() { this.access = null; }
   async headers(token) {
@@ -231,7 +234,8 @@ class DeepSeekWebAdapter {
     return this.readJson(response);
   }
   async readJson(response) {
-    if (response.status === 429) throw new ProxyError('DeepSeek 网页请求过于频繁，请稍后继续', 429, 'rate_limited', Math.min(300, Math.max(30, Number(response.headers.get('Retry-After')) || 60)));
+    if (response.status === 429) throw new ProxyError('DeepSeek 网页请求过于频繁，请稍后继续', 429, 'rate_limited', Math.max(1, retryAfterSeconds(response.headers.get('Retry-After'))));
+    if (response.status === 503) throw new ProxyError('DeepSeek 网页暂时繁忙，请等待恢复', 503, 'service_unavailable', Math.max(1, retryAfterSeconds(response.headers.get('Retry-After'))));
     if (response.status === 401) {
       this.clearTokenCache(); this.onAuthState('expired');
       throw new ProxyError('DeepSeek 登录已失效，请在设置中重新登录', 401, 'login_expired');
@@ -274,10 +278,17 @@ class DeepSeekWebAdapter {
   }
   async complete(request, signal) {
     const options = resolveOptions(request);
+    const requestId = typeof request.request_id === 'string' && /^[a-zA-Z0-9_-]{8,100}$/.test(request.request_id)
+      ? request.request_id : randomUUID();
+    const previous = this.requests.result(requestId);
+    if (previous) return previous;
+    if (this.requests.list().length) throw new ProxyError('上次 DeepSeek 聊天结果尚未确认，岗位已保留。请在设置中查看未完成的聊天；等待期间不会重复提交', 503, 'completion_uncertain', 60);
     let prompt = messagesToPrompt(request.messages);
     if (request.response_format?.type === 'json_object') prompt += '\n\n仅输出一个合法 JSON 对象，不要输出代码围栏或解释。';
     const token = await this.acquireToken(signal);
     let sessionId;
+    let dispatched = false;
+    let confirmed = false;
     try {
       const session = await this.request('chat_session/create', token, {}, signal);
       sessionId = session?.chat_session?.id;
@@ -285,25 +296,42 @@ class DeepSeekWebAdapter {
       const challenge = await this.request('chat/create_pow_challenge', token, { target_path: '/api/v0/chat/completion' }, signal);
       if (!challenge?.challenge) throw new ProxyError('DeepSeek 网页协议已变化：缺少请求校验数据');
       const answer = await this.solve(challenge.challenge, signal);
+      const headers = { ...await this.headers(token), 'X-Ds-Pow-Response': answer, Referer: `https://chat.deepseek.com/a/chat/s/${sessionId}` };
+      signal?.throwIfAborted();
+      // Record before the non-idempotent POST. A lost connection cannot prove it was rejected.
+      this.requests.begin(requestId, sessionId);
+      dispatched = true;
       const response = await this.fetchImpl(`${API_BASE}/chat/completion`, {
         method: 'POST', signal,
-        headers: { ...await this.headers(token), 'X-Ds-Pow-Response': answer, Referer: `https://chat.deepseek.com/a/chat/s/${sessionId}` },
+        headers,
         body: JSON.stringify({ chat_session_id: sessionId, parent_message_id: null, prompt,
           ...options, ref_file_ids: [], preempt: false }),
       });
       if (!response.ok || !/text\/event-stream/i.test(response.headers.get('content-type') || '')) {
+        if ([400, 401, 403, 429].includes(response.status)) {
+          this.requests.clear(requestId); dispatched = false;
+        }
         await this.readJson(response);
         throw new ProxyError('DeepSeek 没有返回聊天流，请更新代理');
       }
       const result = await collectCompletion(response.body, { webSearch: options.search_enabled });
-      return {
+      const completion = {
         id: `${sessionId}@${result.messageId}`, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: request.model,
         choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: result.content,
           ...(result.reasoning ? { reasoning_content: result.reasoning } : {}) } }],
       };
+      this.requests.finish(requestId, completion);
+      confirmed = true;
+      return completion;
+    } catch (error) {
+      if (dispatched && ['rate_limited', 'login_expired', 'verification_required'].includes(error.code)) {
+        this.requests.clear(requestId); dispatched = false;
+      }
+      if (dispatched && !confirmed) throw new ProxyError('DeepSeek 聊天已提交，但未取得完整结果。岗位已保留，请在设置中查看该聊天；等待期间不会重复提交', 503, 'completion_uncertain', Math.max(60, error.retryAfter || 0));
+      throw error;
     } finally {
       // Only remove the temporary chat created by this request. Never clear the user's history.
-      if (sessionId) {
+      if (sessionId && (!dispatched || confirmed)) {
         try { await this.request('chat_session/delete', token, { chat_session_id: sessionId }); }
         catch { /* A failed cleanup must not discard a completed answer. */ }
       }

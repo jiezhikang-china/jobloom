@@ -3,6 +3,7 @@ import type { AppConfig } from '../types.js';
 import { AiRequestQueue, abortableSleep } from './ai-request-queue.js';
 import { sanitizeApiKey, isApiKeyFormatValid } from '../config/credentials.js';
 import { deepseekProxyService } from './deepseek.proxy.service.js';
+import { createHash, randomUUID } from 'node:crypto';
 
 export { sanitizeApiKey, isApiKeyFormatValid };
 
@@ -15,6 +16,7 @@ export interface LLMRequestOptions {
   signal?: AbortSignal;
   onWait?: (seconds: number) => void;
   onRequest?: () => void;
+  beforeRequest?: () => Promise<void>;
 }
 
 const DEFAULT_MAX_TOKENS = 16384;
@@ -32,6 +34,7 @@ export function chatEndpoint(baseUrl: string): URL {
 }
 
 export class LLMService {
+  private pendingWebRequests = new Map<string, string>();
   constructor(private webQueue = new AiRequestQueue()) {}
 
   public async chat(messages: ChatMessage[], responseFormatJson = false, maxRetries = 3, options: LLMRequestOptions = {}): Promise<string> {
@@ -89,6 +92,11 @@ export class LLMService {
     if (responseFormatJson) {
       payload.response_format = { type: 'json_object' };
     }
+    const fingerprint = isWeb ? createHash('sha256').update(JSON.stringify(payload)).digest('hex') : '';
+    if (isWeb) {
+      if (!this.pendingWebRequests.has(fingerprint)) this.pendingWebRequests.set(fingerprint, randomUUID());
+      payload.request_id = this.pendingWebRequests.get(fingerprint);
+    }
     const requestTimeoutMs = isWeb ? Math.max(timeoutMs, 210000) + boundedInteger(config.minRequestIntervalSeconds, 30, 10, 300) * 1000
       : payload.thinking?.type === 'enabled' ? Math.max(timeoutMs, 180000) : timeoutMs;
 
@@ -102,6 +110,8 @@ export class LLMService {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       let response: Response;
       try {
+        options.signal?.throwIfAborted();
+        await options.beforeRequest?.();
         options.signal?.throwIfAborted();
         options.onRequest?.();
         response = await fetch(endpoint, {
@@ -127,7 +137,7 @@ export class LLMService {
 
       // 免费接口常见的 429 / 503 限流：指数退避重试
       if (response.status === 429 || response.status === 503) {
-        // A webpage quota/cooldown should pause this task, rather than retrying several web chats.
+        // Retain the batch; the shared queue waits for the complete provider cooldown.
         if (isWeb) {
           let message = 'DeepSeek 网页请求频率或额度受限，请稍后继续';
           try { message = JSON.parse(rawText)?.error?.message || message; } catch {}
@@ -136,7 +146,7 @@ export class LLMService {
           const until = retryAfter ? Date.parse(retryAfter) : NaN;
           const seconds = Number.isFinite(numeric) && numeric > 0 ? numeric
             : Number.isFinite(until) && until > Date.now() ? (until - Date.now()) / 1000 : 60;
-          this.webQueue.coolDown(Math.max(1, Math.min(86400, seconds)));
+          this.webQueue.coolDown(Math.max(1, seconds));
           throw new Error(message);
         }
         const waitSeconds = this.resolveBackoffSeconds(response.headers.get('Retry-After'), attempt);
@@ -192,6 +202,7 @@ export class LLMService {
       if (!content) {
         throw new Error(message?.reasoning_content ? '模型只返回了思考过程，没有最终答案；请关闭深度思考或增加最大输出长度' : '大模型未返回有效内容');
       }
+      if (isWeb) this.pendingWebRequests.delete(fingerprint);
       return content;
     }
 

@@ -60,7 +60,7 @@ test('applies SET snapshots once and relative BATCH patches; refuses interrupted
   assert.equal((await collectCompletion(explicitFinish)).content, '{"ok":true}');
 });
 
-function mockAdapter() {
+function mockAdapter(completionResponse) {
   const calls = [];
   const adapter = new DeepSeekWebAdapter({
     credentials: async () => ({ token: 'web-login-token-123456' }), solve: async () => 'local-pow-result',
@@ -70,7 +70,7 @@ function mockAdapter() {
       const bizData = route === 'users/current' ? { token: 'validated-access-token' }
         : route === 'chat_session/create' ? { chat_session: { id: 'owned-temporary-session' } }
         : route === 'chat/create_pow_challenge' ? { challenge: { algorithm: 'DeepSeekHashV1' } } : {};
-      if (route === 'chat/completion') return new Response(sse(fragments), { headers: { 'Content-Type': 'text/event-stream' } });
+      if (route === 'chat/completion') return completionResponse ? completionResponse() : new Response(sse(fragments), { headers: { 'Content-Type': 'text/event-stream' } });
       return new Response(JSON.stringify({ code: 0, data: { biz_code: 0, biz_data: bizData } }));
     },
   });
@@ -103,6 +103,59 @@ test('uses web auth, ordinary model_type and JSON prompts; deletes only its temp
   assert.ok(!calls.some((call) => /delete_all/.test(call.url)));
   await assert.rejects(adapter.complete({ model: 'deepseek-v4-pro', messages }), (error) => error.code === 'invalid_model');
   assert.equal(calls.filter((call) => call.url.endsWith('/chat/completion')).length, 1, '移除的 Pro 模式不能发起上游请求');
+});
+
+test('preserves long and HTTP-date cooldowns, including upstream 503', async () => {
+  const adapter = mockAdapter().adapter;
+  for (const status of [429, 503]) {
+    await assert.rejects(adapter.readJson(new Response('{}', { status, headers: { 'Retry-After': '1800' } })),
+      error => error.status === status && error.retryAfter === 1800);
+    const date = new Date(Date.now() + 900000).toUTCString();
+    await assert.rejects(adapter.readJson(new Response('{}', { status, headers: { 'Retry-After': date } })),
+      error => error.retryAfter >= 898 && error.retryAfter <= 900);
+  }
+});
+
+test('replays the same local request ID after success without submitting another chat', async () => {
+  const { adapter, calls } = mockAdapter();
+  const request = { model: 'deepseek-v4-flash', request_id: 'stable-local-request', messages: [{ role: 'user', content: '虚构岗位' }] };
+  const first = await adapter.complete(request);
+  assert.deepEqual(await adapter.complete(request), first);
+  assert.equal(calls.filter(call => call.url.endsWith('/chat/completion')).length, 1);
+  assert.equal(adapter.requests.list().length, 0);
+});
+
+test('lost transport or incomplete stream retains its session and blocks new submissions until explicitly retried', async () => {
+  for (const fail of [() => { throw new Error('network lost after submit'); },
+    () => new Response(sse(fragments.slice(0, -1), false), { headers: { 'Content-Type': 'text/event-stream' } })]) {
+    let shouldFail = true;
+    const { adapter, calls } = mockAdapter(() => shouldFail ? fail() : new Response(sse(fragments), { headers: { 'Content-Type': 'text/event-stream' } }));
+    const request = { model: 'deepseek-v4-flash', request_id: 'uncertain-local-request', messages: [{ role: 'user', content: '虚构岗位' }] };
+    await assert.rejects(adapter.complete(request), error => error.code === 'completion_uncertain');
+    const pending = adapter.requests.list();
+    assert.equal(pending.length, 1); assert.equal(pending[0].sessionId, 'owned-temporary-session');
+    assert.equal(calls.filter(call => call.url.endsWith('/chat_session/delete')).length, 0, '断流时不能删除待检查的聊天');
+    const previousCount = calls.length;
+    await assert.rejects(adapter.complete(request), error => error.code === 'completion_uncertain');
+    await assert.rejects(adapter.complete({ ...request, request_id: 'different-request-id' }), error => error.code === 'completion_uncertain');
+    assert.equal(calls.length, previousCount, '不确定时只读本地状态，不能创建另一个上游会话');
+    adapter.requests.clear(pending[0].requestId); shouldFail = false;
+    await adapter.complete(request);
+    assert.equal(calls.filter(call => call.url.endsWith('/chat/completion')).length, 2);
+  }
+});
+
+test('confirmed HTTP or business rate-limit rejection can be retried and never becomes an uncertain completion', async () => {
+  for (const rejected of [new Response('{}', { status: 429, headers: { 'Retry-After': '900' } }),
+    new Response(JSON.stringify({ code: 0, data: { biz_code: 1, biz_msg: '请求频率上限' } }))]) {
+    let attempts = 0;
+    const { adapter, calls } = mockAdapter(() => ++attempts === 1 ? rejected : new Response(sse(fragments), { headers: { 'Content-Type': 'text/event-stream' } }));
+    const request = { model: 'deepseek-v4-flash', messages: [{ role: 'user', content: '虚构岗位' }] };
+    await assert.rejects(adapter.complete(request), error => error.code === 'rate_limited');
+    assert.equal(adapter.requests.list().length, 0);
+    await adapter.complete(request);
+    assert.equal(calls.filter(call => call.url.endsWith('/chat/completion')).length, 2);
+  }
 });
 
 test('missing login makes no upstream requests; expired / verification / rate limits are distinct', async () => {

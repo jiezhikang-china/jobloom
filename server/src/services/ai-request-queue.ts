@@ -30,13 +30,14 @@ export class AiRequestQueue {
     if (options.signal?.aborted) return Promise.reject(options.signal.reason);
     const queued = this.tail.catch(() => {}).then(async () => {
       options.signal?.throwIfAborted();
-      const cooling = this.cooldownUntil - this.clock.now();
-      if (cooling > 0) throw new Error('DeepSeek 网页正在冷却，还需 ' + Math.ceil(cooling / 1000) + ' 秒，请稍后恢复任务');
-      const delay = this.completedAt === undefined ? 0
-        : Math.max(0, this.completedAt + intervalSeconds * 1000 - this.clock.now());
-      if (delay > 0) {
+      for (;;) {
+        const intervalUntil = this.completedAt === undefined ? 0 : this.completedAt + intervalSeconds * 1000;
+        const delay = Math.max(this.cooldownUntil, intervalUntil) - this.clock.now();
+        if (delay <= 0) break;
         options.onWait?.(Math.ceil(delay / 1000));
-        await this.clock.sleep(delay, options.signal);
+        // Keep long provider cooldowns interruptible, and re-read extensions after each wait.
+        await this.clock.sleep(Math.min(delay, 60000), options.signal);
+        options.signal?.throwIfAborted();
       }
       options.signal?.throwIfAborted();
       try { return await operation(); }
