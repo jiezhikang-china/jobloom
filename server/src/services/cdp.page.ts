@@ -1,4 +1,6 @@
 const WebSocket = require('ws') as any;
+import { bossActionScheduler, type BossActionKind } from './boss-action-scheduler.js';
+import { bossAutomationSafety, visibleBossRestriction, BossAutomationBlockedError, type BossAutomationSafety } from './boss-automation-safety.js';
 
 type CommandResult = { result?: any; error?: { message: string } };
 type LocatorStep = { selector: string; position?: 'first' | 'last' | number; hasSelector?: string; visible?: boolean };
@@ -110,6 +112,7 @@ function resolveElements(steps: LocatorStep[]): Element[] {
 }
 
 export class CdpPage {
+  private static activePages = new Set<CdpPage>();
   private currentUrl: string;
   private mainFrameId = '';
   private mainLoaderId = '';
@@ -127,9 +130,21 @@ export class CdpPage {
     return entry;
   }
 
-  constructor(public readonly id: string, private readonly connection: CdpConnection, initialUrl: string) {
+  constructor(public readonly id: string, private readonly connection: CdpConnection, initialUrl: string, private readonly paceActions = true,
+    private readonly safety: BossAutomationSafety = bossAutomationSafety) {
     this.currentUrl = initialUrl;
+    CdpPage.activePages.add(this);
     connection.onEvent((message) => {
+      if (message.method === 'Network.responseReceived' && this.paceActions) {
+        const response = message.params?.response;
+        try {
+          if (response?.status === 429 && new URL(response.url).hostname === 'www.zhipin.com') {
+            const header = Object.entries(response.headers || {}).find(([key]) => key.toLowerCase() === 'retry-after')?.[1];
+            const retry = typeof header === 'string' ? /^\d+$/.test(header) ? Number(header) * 1000 : Math.max(0, Date.parse(header) - Date.now()) : 0;
+            bossActionScheduler.limit(Number.isFinite(retry) ? retry : 0);
+          }
+        } catch {}
+      }
       if (message.method === 'Page.frameNavigated' && !message.params?.frame?.parentId) {
         const frame = message.params.frame;
         this.currentUrl = frame.url || this.currentUrl;
@@ -148,6 +163,7 @@ export class CdpPage {
   }
   async initialize(): Promise<this> {
     await this.connection.send('Page.enable');
+    await this.connection.send('Network.enable');
     // Connected/background Chrome tabs can otherwise update :hover while discarding clicks.
     await this.connection.send('Input.setIgnoreInputEvents', { ignore: false });
     await this.connection.send('Emulation.setFocusEmulationEnabled', { enabled: true });
@@ -160,18 +176,56 @@ export class CdpPage {
   }
   url(): string { return this.currentUrl; }
   isClosed(): boolean { return this.connection.closed; }
-  closeConnection(): void { this.connection.close(); }
+  closeConnection(): void { CdpPage.activePages.delete(this); this.connection.close(); }
+  static async assertPagesReady(safety = bossAutomationSafety): Promise<void> {
+    safety.assertAllowed();
+    for (const page of CdpPage.activePages) {
+      if (page.isClosed()) { CdpPage.activePages.delete(page); continue; }
+      if (!page.paceActions || page.safety !== safety || !page.url().startsWith('https://www.zhipin.com/')) continue;
+      const restriction = await page.evaluate(visibleBossRestriction);
+      if (restriction) {
+        const hold = safety.halt(restriction.reason, restriction.message);
+        if (restriction.reason === 'verification') throw new Error('CAPTCHA_REQUIRED: ' + restriction.message);
+        throw new BossAutomationBlockedError(hold);
+      }
+    }
+  }
   async refreshUrl(): Promise<string> {
     this.currentUrl = await this.evaluate(() => location.href).catch(() => this.currentUrl);
     return this.currentUrl;
   }
   async bringToFront(): Promise<void> { await this.connection.send('Page.bringToFront'); }
+  async action<T>(kind: BossActionKind, work: () => Promise<T>, targetUrl = this.currentUrl): Promise<T> {
+    let boss = false;
+    try { boss = new URL(targetUrl).hostname === 'www.zhipin.com'; } catch {}
+    if (!this.paceActions || !boss) return work();
+    this.safety.assertAllowed();
+    return bossActionScheduler.run(kind, async () => {
+      await CdpPage.assertPagesReady(this.safety);
+      return work();
+    });
+  }
+  async fileInput(selector: string, files: string[]): Promise<void> {
+    await this.action('submit', async () => {
+      const { root } = await this.connection.send('DOM.getDocument', { depth: 0 });
+      const { nodeId } = await this.connection.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+      if (!nodeId) throw new Error('没有找到附件文件选择控件');
+      await this.connection.send('DOM.setFileInputFiles', { nodeId, files });
+    });
+  }
+  async cookiesFor(url: string): Promise<Array<{ name: string; value: string }>> {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'docdownload.zhipin.com') throw new Error('附件备份下载地址无效');
+    const result = await this.connection.send('Network.getCookies', { urls: [url] });
+    return result.cookies || [];
+  }
   async title(): Promise<string> { return this.evaluate(() => document.title); }
   async waitForTimeout(ms: number): Promise<void> { await pause(ms); }
   locator(selector: string): CdpLocator { return new CdpLocator(this, [{ selector }]); }
 
   async evaluate<T, A = undefined>(fn: ((arg: A) => T) | (() => T), arg?: A): Promise<T> {
-    const expression = `(${fn.toString()})(${JSON.stringify(arg ?? null)})`;
+    // tsx/esbuild can retain local function names with __name inside serialized callbacks.
+    const expression = `(() => { const __name = (fn, _name) => fn; return (${fn.toString()})(${JSON.stringify(arg ?? null)}); })()`;
     const response: CommandResult = await this.connection.send('Runtime.evaluate', {
       expression, returnByValue: true, awaitPromise: true, userGesture: false,
     });
@@ -184,6 +238,9 @@ export class CdpPage {
   }
 
   async goto(url: string, options: { timeout?: number; waitUntil?: string } = {}): Promise<void> {
+    return this.action('navigation', () => this.navigate(url, options), url);
+  }
+  private async navigate(url: string, options: { timeout?: number; waitUntil?: string } = {}): Promise<void> {
     const timeout = options.timeout ?? 30000;
     const waitUntil = options.waitUntil ?? 'domcontentloaded';
     if (waitUntil !== 'domcontentloaded' && waitUntil !== 'load') throw new Error(`不支持的页面等待状态：${waitUntil}`);
@@ -237,7 +294,7 @@ export class CdpPage {
     await this.connection.send(method, params);
   }
   async elements<T, A>(steps: LocatorStep[], fn: (elements: any, arg: A) => T, arg?: A, single = false): Promise<T> {
-    const expression = `(() => { const resolveElements = ${resolveElements.toString()}; const elements = resolveElements(${JSON.stringify(steps)}); if (${single} && !elements[0]) throw new Error('页面元素不存在'); return (${fn.toString()})(${single ? 'elements[0]' : 'elements'}, ${JSON.stringify(arg ?? null)}); })()`;
+    const expression = `(() => { const __name = (fn, _name) => fn; const resolveElements = ${resolveElements.toString()}; const elements = resolveElements(${JSON.stringify(steps)}); if (${single} && !elements[0]) throw new Error('页面元素不存在'); return (${fn.toString()})(${single ? 'elements[0]' : 'elements'}, ${JSON.stringify(arg ?? null)}); })()`;
     const response = await this.connection.send('Runtime.evaluate', {
       expression, returnByValue: true, awaitPromise: true, userGesture: false,
     });
@@ -291,7 +348,7 @@ export class CdpLocator {
   }
   async inputValue(): Promise<string> { return this.evaluate((element) => (element as HTMLInputElement).value); }
   async scrollIntoViewIfNeeded(): Promise<void> {
-    await this.evaluate((element) => { element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }); return true; });
+    await this.owner.action('control', () => this.evaluate((element) => { element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }); return true; }));
   }
   private async point(): Promise<{ x: number; y: number }> {
     return this.evaluate((element) => {
@@ -302,22 +359,33 @@ export class CdpLocator {
     });
   }
   async hover(): Promise<void> {
-    const { x, y } = await this.point();
-    await this.owner.input('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await this.owner.action('control', async () => {
+      const { x, y } = await this.point();
+      await this.owner.input('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    });
   }
   async click(): Promise<void> {
+    const kind = this.steps.some(step => /dialog_sure|dialog_cancel|继续沟通|dialog_close/.test(step.selector)) ? 'confirm' : 'control';
+    await this.clickAs(kind);
+  }
+  async clickAs(kind: BossActionKind, before?: () => Promise<void>): Promise<void> {
+    await this.owner.action(kind, async () => { await before?.(); await this.clickNow(); });
+  }
+  private async clickNow(): Promise<void> {
     const { x, y } = await this.point();
     await this.owner.input('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     await this.owner.input('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1, pointerType: 'mouse' });
     await this.owner.input('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1, pointerType: 'mouse' });
   }
   async fill(value: string): Promise<void> {
-    await this.click();
-    await this.evaluate((element) => {
-      if (!(element instanceof HTMLInputElement) && !(element instanceof HTMLTextAreaElement)) throw new Error('当前元素不是文本输入框');
-      element.focus(); element.select(); return true;
+    await this.owner.action('input', async () => {
+      await this.clickNow();
+      await this.evaluate((element) => {
+        if (!(element instanceof HTMLInputElement) && !(element instanceof HTMLTextAreaElement)) throw new Error('当前元素不是文本输入框');
+        element.focus(); element.select(); return true;
+      });
+      await this.owner.input('Input.insertText', { text: value });
+      if (await this.inputValue() !== value) throw new Error('页面输入未成功，已停止确认操作');
     });
-    await this.owner.input('Input.insertText', { text: value });
-    if (await this.inputValue() !== value) throw new Error('页面输入未成功，已停止确认操作');
   }
 }

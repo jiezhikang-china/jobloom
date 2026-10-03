@@ -43,6 +43,13 @@ export interface AppConfig {
     dailyMaxQuota: number; // 每日最大投递数，0~150；0 表示停止自动投递
     minDelaySeconds: number; // 最小等待秒数，默认 8
     maxDelaySeconds: number; // 最大等待秒数，默认 20
+    operationIntervalSeconds?: number;
+    operationBurstLimit?: number;
+    operationRestSeconds?: number;
+    feedbackIntervalSeconds?: number;
+    operationMaxPerMinute?: number;
+    operationMaxPerHour?: number;
+    writeMaxPerHour?: number;
   };
   targetPosition?: BossPositionSelection;
   targetPositions?: BossPositionSelection[];
@@ -98,8 +105,7 @@ export interface WorkConditionReview {
 /** Coordinates from the same BOSS map; never mix with raw GPS/another provider. */
 export interface BossMapPoint { longitude: number; latitude: number; coordinateSystem: 'boss' | 'gcj02' | 'bd09'; }
 export interface CommuteOrigin extends BossMapPoint { name: string; address: string; cityName: string; query: string; source?: 'boss' | 'amap' | 'baidu' | 'manual' | 'openstreetmap'; }
-export interface LocationApiConfig { provider: 'open' | 'boss' | 'amap' | 'baidu'; apiKey?: string; }
-export interface CommuteFilter { origin?: CommuteOrigin; maxDistanceKm?: number; maxTransitMinutes?: number; locationApi?: LocationApiConfig; }
+export interface CommuteFilter { origin?: CommuteOrigin; maxDistanceKm?: number; maxTransitMinutes?: number; }
 export interface BossWorkAddress { address: string; point?: BossMapPoint; }
 export interface JobCommute {
   origin: CommuteOrigin;
@@ -159,7 +165,16 @@ export interface TailoredResumeResult {
   rewrittenResumeMarkdown: string;
   topHighlights: string[];
   defaultGreetingPitch: string;
+  pdf?: ResumePdfArtifact;
 }
+export interface ResumeSource { id: string; fileName: string; format: string; text: string; updatedAt: string; }
+export interface ResumePdfChange { id: string; page: number; before: string; after: string; }
+export interface ResumePdfArtifact {
+  id: string; sourceId: string; targetRole: string; fileName: string; pageCount: number; createdAt: string;
+  downloadUrl: string; previewUrls: string[]; text: string; changes: ResumePdfChange[];
+  bossUpload?: { attachmentId: string; fileName: string; uploadedAt: string };
+}
+export interface BossResumeAttachment { id: string; name: string; description: string; canReplace: boolean; }
 
 export interface BossCompanyInfo {
   url: string;

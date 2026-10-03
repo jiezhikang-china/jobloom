@@ -1,5 +1,5 @@
 import type { AppConfig, BossMapPoint, BossWorkAddress, CommuteFilter, CommuteOrigin, JobCommute } from '../types.js';
-import { convertMapPoint } from './coordinates.js';
+import { convertMapPoint, wgs84ToGcj02 } from './coordinates.js';
 
 export const TRANSIT_CACHE_MS = 10 * 60 * 1000;
 const text = (v: unknown, max = 300) => typeof v === 'string' && v.length <= max;
@@ -26,21 +26,27 @@ export function validWorkAddress(v: any): v is BossWorkAddress {
 export function validateCommuteFilter(v: any): boolean {
   return v !== null && typeof v === 'object' && !Array.isArray(v)
     && (v.origin === undefined || validCommuteOrigin(v.origin))
-    && (v.locationApi === undefined || validLocationApi(v.locationApi))
     && (v.maxDistanceKm === undefined || typeof v.maxDistanceKm === 'number' && Number.isFinite(v.maxDistanceKm) && v.maxDistanceKm >= 0 && v.maxDistanceKm <= 200)
     && (v.maxTransitMinutes === undefined || typeof v.maxTransitMinutes === 'number' && Number.isInteger(v.maxTransitMinutes) && v.maxTransitMinutes >= 0 && v.maxTransitMinutes <= 240);
-}
-export function validLocationApi(v: any): boolean {
-  return v !== null && typeof v === 'object' && !Array.isArray(v) && ['open', 'boss', 'amap', 'baidu'].includes(v.provider)
-    && (v.apiKey === undefined || typeof v.apiKey === 'string' && v.apiKey.length <= 512 && !/[\r\n\s]/.test(v.apiKey));
 }
 export function normalizeCommuteFilter(v: unknown): CommuteFilter {
   if (!validateCommuteFilter(v)) return {};
   const input = v as CommuteFilter;
   return { ...(input.origin ? { origin: { ...normalizedCommuteOrigin(input.origin), name: input.origin.name.trim(), address: input.origin.address.trim(),
     cityName: input.origin.cityName.trim(), query: input.origin.query.trim() } } : {}),
-    maxDistanceKm: input.maxDistanceKm || 0, maxTransitMinutes: input.maxTransitMinutes || 0,
-    ...(input.locationApi ? { locationApi: { provider: input.locationApi.provider, apiKey: input.locationApi.apiKey || '' } } : {}) };
+    maxDistanceKm: input.maxDistanceKm || 0, maxTransitMinutes: input.maxTransitMinutes || 0 };
+}
+/** Coordinate conversion is local; old saved positions remain usable after removing API settings. */
+export function manualCommuteOrigin(input: any): CommuteOrigin {
+  const { longitude, latitude, coordinateSystem } = input || {};
+  if (!isBossPoint({ longitude, latitude, coordinateSystem: 'gcj02' }) || !['gcj02', 'bd09', 'wgs84'].includes(coordinateSystem)) {
+    throw new Error('请填写有效经纬度并选择正确的坐标系');
+  }
+  const pair = coordinateSystem === 'wgs84' ? wgs84ToGcj02(longitude, latitude) : [longitude, latitude];
+  const origin = { longitude: pair[0], latitude: pair[1], coordinateSystem: coordinateSystem === 'wgs84' ? 'gcj02' : coordinateSystem,
+    name: input.name, address: input.address || '', cityName: input.cityName, query: input.name, source: 'manual' };
+  if (!validCommuteOrigin(origin)) throw new Error('出发位置名称、城市或坐标无效');
+  return origin;
 }
 export function hasCommuteLimits(filter: AppConfig['filter']): boolean {
   return Boolean(filter.commute?.maxDistanceKm || filter.commute?.maxTransitMinutes);

@@ -1,5 +1,6 @@
 # Local accounts, resumes, browser profiles, runtime state and logs
 /data/
+/output/pdf/
 .env
 .env.*
 !.env.example
@@ -16,6 +17,7 @@ __pycache__/
 
 # Downloaded upstream archive; the adapted component remains tracked
 /vendor/chat2api-source/
+/vendor/pdf-runtime/
 *.zip
 
 # Machine and assistant settings

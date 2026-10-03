@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { PublicLocationService, publicMapConfig } from '../src/services/public-location.service.js';
 import { DeviceLocationService } from '../src/services/device-location.service.js';
-import { LocationApiService } from '../src/services/location-api.service.js';
 import { mapPointToGps, wgs84ToGcj02 } from '../src/services/coordinates.js';
-import { straightDistanceKm, validateCommuteFilter } from '../src/services/commute.js';
+import { straightDistanceKm, validateCommuteFilter, manualCommuteOrigin } from '../src/services/commute.js';
 import { JobCommuteService } from '../src/services/job-commute.service.js';
 import type { AppConfig, BossJobItem } from '../src/types.js';
 
@@ -53,14 +52,11 @@ async function main() {
   await assert.rejects(new DeviceLocationService(async () => JSON.stringify({ ...raw, longitude: 0 }), 'win32').getPosition(), /国内范围/);
   await assert.rejects(new DeviceLocationService(async () => JSON.stringify({ ...raw, timestamp: new Date(now - 301000).toISOString() }), 'win32', () => now).getPosition(), /已过期/);
   await assert.rejects(new DeviceLocationService(async () => { throw Error('must not run'); }, 'linux').getPosition(), /Windows/);
-  let privateRequests = 0;
-  const local = new LocationApiService((async () => { privateRequests++; throw Error('GPS转换不可访问外网'); }) as typeof fetch);
-  const origin = await local.manualOrigin({ ...position, name: '地图出发点', address: '', cityName: '上海' }, { provider: 'open' });
-  assert.equal(privateRequests, 0);
-  assert.equal(validateCommuteFilter({ origin, locationApi: { provider: 'open' }, maxDistanceKm: 15 }), true);
+  const origin = manualCommuteOrigin({ ...position, name: '地图出发点', address: '', cityName: '上海' });
+  assert.equal(validateCommuteFilter({ origin, maxDistanceKm: 15 }), true);
   assert.ok(straightDistanceKm(origin, { ...origin, longitude: expected[0], latitude: expected[1] }) < .000001);
   const job = { cityName: '上海', workAddress: { address: '工作地点', point: { ...origin, longitude: origin.longitude + .01 } } } as unknown as BossJobItem;
-  const filter = { commute: { origin, locationApi: { provider: 'open' }, maxDistanceKm: 15, maxTransitMinutes: 60 } } as AppConfig['filter'];
+  const filter = { commute: { origin, maxDistanceKm: 15, maxTransitMinutes: 60 } } as AppConfig['filter'];
   let nativeRoutes = 0;
   await new JobCommuteService().enrich(job, filter, async () => { nativeRoutes++; return { minutes: 25, summary: 'BOSS原生公交路线' }; });
   assert.equal(nativeRoutes, 1); assert.equal(job.commute?.transitStatus, 'ok'); assert.equal(job.commute?.transitMinutes, 25);

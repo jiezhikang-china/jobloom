@@ -64,7 +64,7 @@ async function readJson(url, timeout = 1500) {
 async function isOurService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
-    return health.app === 'boss-job-agent' && health.integrationVersion === 23 && health.status === 'ok';
+    return health.app === 'boss-job-agent' && health.integrationVersion === 25 && health.status === 'ok';
   } catch {
     return false;
   }
@@ -74,7 +74,7 @@ async function isActivePreviousService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
     if (health.app !== 'boss-job-agent' || health.status !== 'ok' || !Number.isInteger(health.integrationVersion)
-      || health.integrationVersion < 22 || health.integrationVersion >= 23) return false;
+      || health.integrationVersion < 22 || health.integrationVersion >= 25) return false;
     const result = await readJson(`${address(port)}/api/delivery/status`, 2500);
     return activeStatuses.has(result?.data?.stats?.status);
   } catch { return false; }
@@ -87,6 +87,10 @@ function rememberedPort() {
   } catch {
     return null;
   }
+}
+function hasAutomationHold() {
+  try { return Boolean(JSON.parse(fs.readFileSync(path.join(dataDir, 'boss-automation-safety.json'), 'utf8')).hold); }
+  catch (error) { return error.code !== 'ENOENT'; }
 }
 
 function freePort() {
@@ -108,7 +112,16 @@ async function startServer() {
   fs.mkdirSync(dataDir, { recursive: true });
 
   for (const port of new Set([rememberedPort(), 3001])) {
-    if (port && (await isOurService(port) || await isActivePreviousService(port))) {
+    if (!port) continue;
+    const current = await isOurService(port);
+    const previous = !current && await isActivePreviousService(port);
+    if (previous && hasAutomationHold()) {
+      const stopped = await fetch(`${address(port)}/api/delivery/stop`, { method: 'POST', signal: AbortSignal.timeout(2500) });
+      if (!stopped.ok || (await stopped.json()).success !== true) throw new Error('账号自动操作已停止，但旧版任务尚未确认停止；请关闭旧版后再启动');
+      log(`stopped previous delivery on ${port} because an account hold exists`);
+      continue;
+    }
+    if (current || previous) {
       serverPort = port;
       serverUrl = address(port);
       log(`using local service on ${port}`);

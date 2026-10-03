@@ -3,6 +3,7 @@ import type { CdpPage } from './cdp.page.js';
 import { isBossPoint, parseTransitMinutes, sameBossPoint, sameWorkAddress, validCommuteOrigin } from './commute.js';
 import { decodeBossText } from './boss-text.js';
 import { convertMapPoint } from './coordinates.js';
+import { runBossAction } from './boss-action-scheduler.js';
 
 const DIALOG = '.boss-map-commuting-dialog';
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -124,14 +125,14 @@ export class BossMapService {
       const point = convertMapPoint(origin, native.mapperType === 1 ? 'bd09' : 'gcj02');
       // This is the site's own selected-POI handler. It also accepts a map/GPS point;
       // the source name need not be an exact search suggestion. It starts one route request.
-      const selected = await page.evaluate(({ place, cityName }) => {
+      const selected = await runBossAction(page, 'route', () => page.evaluate(({ place, cityName }) => {
         const vm = (document.querySelector('.boss-map-commuting-dialog .path-plan-search') as any)?.__vue__;
         if (!(vm?.mapLoaded ?? vm?.$props?.mapLoaded) || !vm?.$data?.isFinish || typeof vm.selectStartPointAction !== 'function') return false;
         vm.currentPlanType = 'bus';
         vm.startCity = cityName;
         vm.selectStartPointAction(place);
         return true;
-      }, { place: { name: origin.name, desc: origin.address, longitude: point.longitude, latitude: point.latitude }, cityName: origin.cityName });
+      }, { place: { name: origin.name, desc: origin.address, longitude: point.longitude, latitude: point.latitude }, cityName: origin.cityName }));
       if (!selected) throw new Error('BOSS 地图的起点选择尚未就绪');
       const deadline = Date.now() + 10000;
       while (Date.now() < deadline) {

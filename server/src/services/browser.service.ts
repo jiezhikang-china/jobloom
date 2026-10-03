@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { CdpConnection, CdpPage } from './cdp.page.js';
+import { bossActionScheduler } from './boss-action-scheduler.js';
+import { bossAutomationSafety, visibleBossRestriction } from './boss-automation-safety.js';
 
 const BOSS_ORIGIN = 'https://www.zhipin.com';
 const LOGIN_URL = `${BOSS_ORIGIN}/web/user/?ka=header-login`;
@@ -14,7 +16,7 @@ export interface LoginStatus {
   isLoggedIn: boolean;
   isBrowserActive: boolean;
   reason?: string;
-  reasonCode?: 'login_required' | 'verification_required' | 'browser_unavailable' | 'unverified';
+  reasonCode?: 'login_required' | 'verification_required' | 'browser_unavailable' | 'unverified' | 'automation_blocked';
 }
 
 interface ChromeTarget {
@@ -105,6 +107,7 @@ export class BrowserService {
   }
 
   private async ensureChrome(openLogin: boolean): Promise<void> {
+    if (!this.options.headless) bossAutomationSafety.assertAllowed();
     if (this.port) {
       try { await this.listTabs(); return; } catch {
         for (const page of this.pages.values()) page.closeConnection();
@@ -153,13 +156,18 @@ export class BrowserService {
     const existing = this.pages.get(tab.id);
     if (existing && !existing.isClosed()) return existing;
     if (!tab.webSocketDebuggerUrl) throw new Error('Chrome 页面没有调试地址');
-    const page = await new CdpPage(tab.id, await CdpConnection.connect(tab.webSocketDebuggerUrl), tab.url).initialize();
+    const page = await new CdpPage(tab.id, await CdpConnection.connect(tab.webSocketDebuggerUrl), tab.url, !this.options.headless).initialize();
     this.pages.set(tab.id, page);
     return page;
   }
 
   private async createPage(url: string, background = false): Promise<CdpPage> {
     await this.ensureChrome(false);
+    return this.options.headless ? this.createPageNow(url, background) : bossActionScheduler.run('navigation', async () => {
+      await CdpPage.assertPagesReady(); return this.createPageNow(url, background);
+    });
+  }
+  private async createPageNow(url: string, background = false): Promise<CdpPage> {
     if (background) {
       const identity = await this.browserIdentity(this.port!);
       const connection = await CdpConnection.connect(`ws://127.0.0.1:${this.port}${identity}`);
@@ -198,6 +206,9 @@ export class BrowserService {
   }
 
   public async withExpectationEditor<T>(edit: (page: CdpPage) => Promise<T>): Promise<T> {
+    return this.withBossInspection(`${BOSS_ORIGIN}/web/geek/resume/`, /^\/web\/geek\/resume\/$/, edit);
+  }
+  public async withResumeEditor<T>(edit: (page: CdpPage) => Promise<T>): Promise<T> {
     return this.withBossInspection(`${BOSS_ORIGIN}/web/geek/resume/`, /^\/web\/geek\/resume\/$/, edit);
   }
 
@@ -309,14 +320,31 @@ export class BrowserService {
   }
 
   /** Cookie 只是线索；职位页 DOM 才能证实已登录。 */
-  public async checkLoginStatus(): Promise<LoginStatus> {
-    try { await this.restoreSession(); } catch (error) {
+  public async checkLoginStatus(options: { restore?: boolean; observeBlocked?: boolean } = {}): Promise<LoginStatus> {
+    const hold = bossAutomationSafety.status().hold;
+    if (!this.options.headless && hold && !options.observeBlocked) return {
+      isLoggedIn: false, isBrowserActive: !!this.port, reasonCode: 'automation_blocked', reason: hold.message,
+    };
+    try {
+      if (options.restore !== false) await this.restoreSession();
+      else if (!this.port) await this.tryReconnectChrome();
+    } catch (error) {
       return { isLoggedIn: false, isBrowserActive: !!this.port, reasonCode: 'browser_unavailable', reason: `恢复 BOSS 会话失败：${(error as Error).message}` };
     }
     if (!this.port) return { isLoggedIn: false, isBrowserActive: false, reasonCode: 'login_required', reason: '尚无可用的 BOSS 登录会话' };
     try {
       const tabs = await this.listTabs();
       if (!tabs.length) return { isLoggedIn: false, isBrowserActive: false, reasonCode: 'browser_unavailable', reason: 'Chrome 窗口已关闭' };
+      // Status observation only attaches to a tab the user already opened. It cannot launch, create or navigate one.
+      if (options.restore === false && (!this.workerPage || this.workerPage.isClosed())) {
+        const existing = tabs.find(tab => tab.url.startsWith(JOBS_URL)) || tabs.find(tab => tab.url.startsWith(BOSS_ORIGIN + '/web/geek/'));
+        if (existing) this.workerPage = await this.pageFor(existing);
+        else {
+          const login = tabs.find(tab => tab.url.startsWith(BOSS_ORIGIN + '/web/user/'));
+          if (login) this.loginPage = await this.pageFor(login);
+          else return { isLoggedIn: false, isBrowserActive: true, reasonCode: 'unverified', reason: '没有已打开的 BOSS 页面；请主动打开或验证会话' };
+        }
+      }
       let pageIssue = '';
       if (this.loginPage && !this.loginPage.isClosed()) {
         const loginUrl = await this.loginPage.refreshUrl();
@@ -409,7 +437,8 @@ export class BrowserService {
 
   public async checkCaptcha(): Promise<boolean> {
     const active = this.workerPage && !this.workerPage.isClosed() ? this.workerPage : this.loginPage;
-    const pages = [active, this.verificationPage].filter((page): page is CdpPage => !!page && !page.isClosed());
+    const pages = [...new Set([active, this.verificationPage, ...this.pages.values()])]
+      .filter((page): page is CdpPage => !!page && !page.isClosed());
     for (const page of pages) {
       if (isSecurityUrl(await page.refreshUrl())) return true;
       const visible = await page.locator('.geetest_radar_tip, .geetest_popup, [class*="security-check"]').first()
@@ -417,6 +446,16 @@ export class BrowserService {
       if (visible) return true;
       const securityText = await page.evaluate(() => /请完成安全验证|请进行安全验证/.test(document.body?.innerText || '')).catch(() => false);
       if (securityText) return true;
+    }
+    return false;
+  }
+  public async checkVisibleRestriction(): Promise<boolean> {
+    if (!this.port) return true;
+    for (const tab of await this.listTabs()) {
+      if (tab.url.startsWith(BOSS_ORIGIN + '/')) await this.pageFor(tab);
+    }
+    for (const page of this.pages.values()) {
+      if (!page.isClosed() && page.url().startsWith(BOSS_ORIGIN + '/') && await page.evaluate(visibleBossRestriction)) return true;
     }
     return false;
   }

@@ -25,12 +25,10 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
   useEffect(() => {
     let disposed = false;
     void fetch('/health').then(response => response.json()).then(data => {
-      if (!disposed && data.app === 'boss-job-agent' && data.integrationVersion < 23) setOldService(true);
+      if (!disposed && data.app === 'boss-job-agent' && data.integrationVersion < 25) setOldService(true);
     }).catch(() => {});
     return () => { disposed = true; };
   }, []);
-  const locationApi = value.locationApi || { provider: 'open' as const };
-  const ownApi = locationApi.provider === 'amap' || locationApi.provider === 'baidu';
   const busy = disabled || searching;
   const getDeviceLocation = async () => {
     if (busy) return;
@@ -48,7 +46,7 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
     setSearching(true); setError('');
     try {
       const response = await fetch('/api/location/manual', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locationApi: { provider: 'open' }, position: { ...candidate, name: pointName.trim(), address: pointAddress.trim(), cityName: originCity.trim() } }) });
+        body: JSON.stringify({ position: { ...candidate, name: pointName.trim(), address: pointAddress.trim(), cityName: originCity.trim() } }) });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || '无法使用此出发点');
       onChange({ ...value, origin: data.data }); setCandidate(undefined); setResults([]); setMapOpen(false);
@@ -56,11 +54,11 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
     finally { setSearching(false); }
   };
   const search = async () => {
-    if (busy || (oldService && locationApi.provider === 'open')) return;
+    if (busy || oldService) return;
     setSearching(true); setError(''); setResults([]);
     try {
       const response = await fetch('/api/location/search', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim(), cityName: originCity.trim(), locationApi }) });
+        body: JSON.stringify({ query: query.trim(), cityName: originCity.trim() }) });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || '位置查询失败');
       setResults(data.data);
@@ -72,7 +70,7 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
     setSearching(true); setError('');
     try {
       const response = await fetch('/api/location/manual', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locationApi, position: { name: manualName.trim(), address: manualAddress.trim(), cityName: originCity.trim(),
+        body: JSON.stringify({ position: { name: manualName.trim(), address: manualAddress.trim(), cityName: originCity.trim(),
           longitude: Number(longitude), latitude: Number(latitude), coordinateSystem } }) });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || '无法保存出发位置');
@@ -104,20 +102,6 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
       </div>
       <p className="location-help">出发城市：{originCity}，请核对下方城市填写是否正确。确认后保存筛选规则。</p>
     </div>}
-    <details className="location-manual location-source"><summary>选择地址搜索与通勤来源</summary><div className="location-api-config">
-      <label>来源<select aria-label="定位接口来源" disabled={busy} value={locationApi.provider} onChange={event => {
-        onChange({ ...value, locationApi: { provider: event.target.value as 'open' | 'boss' | 'amap' | 'baidu', apiKey: '' } });
-        setResults([]); setError('');
-      }}><option value="open" disabled={oldService}>公共地图（免 Key）</option><option value="boss">BOSS 内置地图（免 Key）</option><option value="amap">自己的高德 API</option><option value="baidu">自己的百度 API</option></select></label>
-      {ownApi && <label>{locationApi.provider === 'amap' ? '高德 Web 服务 Key' : '百度 Web 服务 AK'}
-        <input type="password" aria-label="地图 API Key" autoComplete="off" disabled={busy} maxLength={512} value={locationApi.apiKey || ''}
-          placeholder="填写你自己的 Key" onChange={event => onChange({ ...value, locationApi: { ...locationApi, apiKey: event.target.value.trim() } })} /></label>}
-    </div>
-    {ownApi && <p className="location-help">点击搜索时使用你填写的地图 API，无需打开 BOSS。
-      <a href={locationApi.provider === 'amap' ? 'https://console.amap.com/dev/key/app' : 'https://lbsyun.baidu.com/apiconsole/key#/home'} target="_blank" rel="noreferrer">管理自己的地图 Key</a>。
-      保存筛选规则后，通勤查询也使用所选接口，并缓存路线结果。</p>}
-    <p className="location-help">公共地图用于地址搜索和选点，公交／地铁继续读取 BOSS 内置路线。自己的高德／百度接口为可选项。</p>
-    </details>
     <div className="location-search">
       <label>出发城市<input aria-label="出发城市" value={originCity} maxLength={30} disabled={busy}
         onChange={event => { setOriginCity(event.target.value); setResults([]); }} /></label>
@@ -125,11 +109,10 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
         placeholder="例如：人民广场地铁站、某小区"
         onChange={event => { setQuery(event.target.value); setResults([]); }}
         onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void search(); } }} /></label>
-      <button type="button" disabled={busy || (oldService && locationApi.provider === 'open') || query.trim().length < 2 || (ownApi && !locationApi.apiKey?.trim())} onClick={() => void search()}><Search size={15} /> {searching ? '查询中…' : '搜索位置'}</button>
+      <button type="button" disabled={busy || oldService || query.trim().length < 2} onClick={() => void search()}><Search size={15} /> {searching ? '查询中…' : '搜索位置'}</button>
     </div>
-    <p className="location-help">当前地址来源：{({ open: '公共地图', boss: 'BOSS 内置地图', amap: '自己的高德 API', baidu: '自己的百度 API' })[locationApi.provider]}。可在“选择地址搜索与通勤来源”切换。</p>
-    {locationApi.provider === 'open' && <p className="location-help">公共地址搜索使用 Nominatim，仅点击时查询，限速并缓存，不做输入联想。适合地铁站、楼宇等公开地点，住处可直接在地图选点。
-      <a href="https://operations.osmfoundation.org/policies/nominatim/" target="_blank" rel="noreferrer">服务使用规定</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a></p>}
+    <p className="location-help">公共地址搜索使用 Nominatim，仅点击时查询，限速并缓存，不做输入联想。适合地铁站、楼宇等公开地点，住处可直接在地图选点。
+      <a href="https://operations.osmfoundation.org/policies/nominatim/" target="_blank" rel="noreferrer">服务使用规定</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a></p>
     {error && <p role="alert" className="work-review-error">{error}</p>}
     {results.length > 0 && <div className="location-results" aria-label="选择出发位置">
       <p>请选择准确地点，同名地铁站和楼宇可能位于不同位置。</p>
@@ -138,7 +121,7 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
       }}><strong>{place.name}</strong><span>{place.address || place.cityName}</span></button>)}
     </div>}
     <details className="location-manual"><summary>手动填写经纬度</summary>
-      <p className="location-help">可从自己的地图或定位 API 复制坐标。请按来源选择坐标系，先填写上方的出发城市。</p>
+      <p className="location-help">也可填写已有坐标。请选择正确坐标系，先填写上方的出发城市；坐标转换在本机完成。</p>
       <div className="location-manual-fields">
         <label>位置名称<input aria-label="手动位置名称" maxLength={150} disabled={busy} value={manualName} placeholder="例如：住处、某地铁站" onChange={event => setManualName(event.target.value)} /></label>
         <label>地址说明<input aria-label="手动位置地址" maxLength={300} disabled={busy} value={manualAddress} onChange={event => setManualAddress(event.target.value)} /></label>
@@ -149,7 +132,6 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
         <button type="button" disabled={busy || !manualName.trim() || !longitude || !latitude || originCity.trim().length < 2}
           onClick={() => void setManualOrigin()}>使用这组坐标</button>
       </div>
-      {coordinateSystem === 'wgs84' && <p className="location-help">选择公共地图或 BOSS 时，GPS 坐标在本机转换，无需 Key。</p>}
     </details>
     {value.origin ? <div className="location-origin" role="status">
       <MapPin size={17} /><div><strong>出发位置：{value.origin.cityName} · {value.origin.name}</strong>
@@ -167,6 +149,6 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
         <label className="location-limit-input"><input type="number" aria-label="最大公交地铁通勤时间" min="0" max="240" step="1"
           value={value.maxTransitMinutes || 0} disabled={busy} onChange={event => onChange({ ...value, maxTransitMinutes: Number(event.target.value) })} /> 分钟以内</label></div>
     </div>
-    <p className="location-help">0 表示不限。距离会统一坐标系后计算；公交／地铁采用所选地图的较快预计方案，包含路线给出的步行时间，实际等车和交通状况可能变化。没有准确地址或路线的岗位保留待确认。更改后保存筛选规则。</p>
+    <p className="location-help">0 表示不限。距离会统一坐标系后计算；公交／地铁读取 BOSS 的较快预计方案，包含路线给出的步行时间。没有准确地址或路线的岗位保留待确认。更改后保存筛选规则。</p>
   </section>;
 }

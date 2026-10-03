@@ -1,0 +1,49 @@
+import assert from 'node:assert/strict';
+import { BossActionScheduler } from '../src/services/boss-action-scheduler.js';
+
+async function main() {
+  let clock = 100000;
+  const settings = { intervalMs: 2000, burst: 3, restMs: 20000, feedbackMs: 15000 };
+  const scheduler = new BossActionScheduler(() => settings, () => clock, async ms => { clock += ms; });
+  const starts: number[] = [];
+  let simultaneous = 0, maximum = 0;
+  await Promise.all(['control', 'input', 'control'].map(kind => scheduler.run(kind as any, async () => {
+    simultaneous++; maximum = Math.max(maximum, simultaneous); starts.push(clock); await Promise.resolve(); simultaneous--;
+  })));
+  assert.equal(maximum, 1); assert.deepEqual(starts, [100000, 102000, 104000], '所有页面动作共用一条队列');
+  await scheduler.run('control', async () => { starts.push(clock); });
+  assert.equal(starts.at(-1), 124000, '达到连续操作次数后先短休息，不集中补发');
+  await scheduler.run('submit', async () => {}); const writeAt = clock;
+  await scheduler.run('confirm', async () => {});
+  assert.equal(clock - writeAt, 600, '已发送后的继续沟通确认没有额外长停顿');
+  await scheduler.run('feedback', async () => {});
+  assert.ok(clock - writeAt >= 15000, '反馈和保存共用写入间隔');
+  clock += 21000;
+  await scheduler.run('route', async () => {}); const routeAt = clock;
+  await scheduler.run('route', async () => {}); assert.ok(clock - routeAt >= 10000);
+
+  let persisted: any;
+  const limited = new BossActionScheduler(() => settings, () => clock, async ms => { clock += ms; }, state => { persisted = state; });
+  limited.limit(120000); const blockedAt = clock;
+  limited.limit(0); assert.equal(limited.status().level, 1, '同一时刻的重复限频信号只累计一次');
+  const restored = new BossActionScheduler(() => settings, () => clock, async ms => { clock += ms; });
+  restored.restore(persisted);
+  await restored.run('navigation', async () => {});
+  assert.ok(clock - blockedAt >= 120000, '重启仍遵守平台 Retry-After');
+  clock += 1000; limited.limit(); assert.equal(limited.status().level, 2, '重复限频提高退避级别');
+
+  let release: () => void = () => {};
+  const entered = new Promise<void>(resolve => { release = resolve; });
+  const cancellable = new BossActionScheduler(() => settings, () => clock, (_ms, signal) => new Promise((_resolve, reject) => {
+    release(); signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+  }));
+  await cancellable.run('control', async () => {});
+  const controller = new AbortController(); let clicked = false;
+  const pending = cancellable.withScope({ signal: controller.signal }, () => cancellable.run('submit', async () => { clicked = true; }));
+  await entered; controller.abort(new Error('停止任务'));
+  await assert.rejects(pending, /停止任务/); assert.equal(clicked, false, '停止后排队中的提交不能继续点击');
+  clock += 21000;
+  await cancellable.run('control', async () => { clicked = true; }); assert.equal(clicked, true, '取消不会破坏后续队列');
+  console.log('PASS | 全页面单队列、连续操作短休息、快速继续沟通、写入与路线间隔、限频持久化、停止取消待执行提交');
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -14,11 +14,14 @@ import { deepseekProxyService } from '../services/deepseek.proxy.service.js';
 import { workConditionReviews } from '../services/work-condition-reviews.js';
 import { notSuitableStore } from '../services/not-suitable-store.js';
 import { configuredWorkRequirements, validateWorkRequirements } from '../services/work-requirements.js';
-import { hasCommuteLimits, isBossPoint, validateCommuteFilter, validCommuteOrigin, validLocationApi } from '../services/commute.js';
-import { locationApiService } from '../services/location-api.service.js';
+import { hasCommuteLimits, isBossPoint, validateCommuteFilter, validCommuteOrigin, manualCommuteOrigin } from '../services/commute.js';
 import { publicLocationService, publicMapConfig } from '../services/public-location.service.js';
 import { deviceLocationService } from '../services/device-location.service.js';
 import { mapPointToGps } from '../services/coordinates.js';
+import { randomUUID } from 'node:crypto';
+import { resumePdfService } from '../services/resume-pdf.service.js';
+import { ResumeCapacityError, resumeBossUploadService } from '../services/resume-boss-upload.service.js';
+import { bossAutomationSafety } from '../services/boss-automation-safety.js';
 
 const uploadDir = path.resolve(process.cwd(), '../data/resumes');
 if (!fs.existsSync(uploadDir)) {
@@ -33,7 +36,7 @@ const storage = multer.diskStorage({
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     const safeExt = ALLOWED_EXTENSIONS.includes(ext) ? ext : '.bin';
-    cb(null, `resume_${Date.now()}${safeExt}`);
+    cb(null, `resume_${randomUUID()}${safeExt}`);
   },
 });
 
@@ -51,6 +54,28 @@ const upload = multer({
 });
 
 export const apiRouter = Router();
+const bossOperationRoutes = new Set(['/browser/login', '/browser/verify', '/browser/page-state', '/resume/boss/attachments', '/resume/boss/upload',
+  '/delivery/start', '/delivery/resume', '/delivery/work-condition-reviews/apply']);
+apiRouter.use((req, res, next) => {
+  const status = bossAutomationSafety.status();
+  if (bossOperationRoutes.has(req.path) && status.blocked) return res.status(423).json({ success: false,
+    code: 'BOSS_AUTOMATION_BLOCKED', message: status.hold!.message, data: status });
+  next();
+});
+apiRouter.get('/boss/automation-safety', (_req, res) => res.json({ success: true, data: bossAutomationSafety.status() }));
+apiRouter.post('/boss/automation-safety/report', (_req, res) => {
+  const hold = bossAutomationSafety.halt('user_reported_ban', '你已报告 BOSS 账号受限，自动操作已停止。请先通过平台核实或申诉，账号恢复前不能继续投递。');
+  deliveryService.stop(); res.json({ success: true, data: { blocked: true, hold } });
+});
+apiRouter.post('/boss/automation-safety/confirm', async (req, res) => {
+  if (req.body?.platformAccessRestored !== true || typeof req.body?.holdId !== 'string') return res.status(400).json({ success: false, message: '请先人工确认 BOSS 账号已恢复正常使用' });
+  try {
+    const login = await browserService.checkLoginStatus({ restore: false, observeBlocked: true });
+    if (!login.isLoggedIn || await browserService.checkVisibleRestriction()) return res.status(409).json({ success: false, message: '尚未看到可正常使用的已登录 BOSS 页面；请先在浏览器人工核实，系统不会自动刷新或测试账号' });
+    bossAutomationSafety.confirmRecovery(req.body.holdId);
+    res.json({ success: true, data: bossAutomationSafety.status(), message: '停止状态已解除，任务仍需主动开始或恢复' });
+  } catch (error) { res.status(409).json({ success: false, message: (error as Error).message }); }
+});
 
 // 1. 配置与官方免费预设相关接口
 apiRouter.get('/config', (_req: Request, res: Response) => {
@@ -124,27 +149,20 @@ apiRouter.post('/location/search', async (req: Request, res: Response) => {
     return res.status(409).json({ success: false, message: '请先结束投递任务或等待当前位置查询完成，再选择出发位置。' });
   }
   const query = req.body?.query, cityName = req.body?.cityName || configManager.getConfig().filter.cityName;
-  const api = req.body?.locationApi || configManager.getConfig().filter.commute?.locationApi || { provider: 'open' };
-  if (!validLocationApi(api)) return res.status(400).json({ success: false, message: '地图 API 设置无效' });
   if (typeof query !== 'string' || query.trim().length < 2 || query.length > 100
     || typeof cityName !== 'string' || cityName.trim().length < 2 || cityName.length > 30) {
     return res.status(400).json({ success: false, message: '请填写城市及2至100字的地址、楼宇或地铁站名称。' });
   }
   locationSearchActive = true;
   try {
-    const filter = configManager.getConfig().filter;
-    const data = api.provider === 'open' ? await publicLocationService.searchOrigins(query.trim(), cityName.trim())
-      : api.provider === 'boss' ? await bossPageService.searchCommuteOrigins(query.trim(), cityName.trim(), filter.cityCode)
-      : await locationApiService.searchOrigins(query.trim(), cityName.trim(), api);
+    const data = await publicLocationService.searchOrigins(query.trim(), cityName.trim());
     res.json({ success: true, data });
   } catch (cause) { res.status(502).json({ success: false, message: (cause as Error).message }); }
   finally { locationSearchActive = false; }
 });
 apiRouter.post('/location/manual', async (req: Request, res: Response) => {
   if (deliveryService.isActive()) return res.status(409).json({ success: false, message: '请先结束投递任务再修改位置' });
-  const api = req.body?.locationApi || configManager.getConfig().filter.commute?.locationApi || { provider: 'boss' };
-  if (!validLocationApi(api)) return res.status(400).json({ success: false, message: '地图 API 设置无效' });
-  try { res.json({ success: true, data: await locationApiService.manualOrigin(req.body?.position, api) }); }
+  try { res.json({ success: true, data: manualCommuteOrigin(req.body?.position) }); }
   catch (cause) { res.status(400).json({ success: false, message: (cause as Error).message }); }
 });
 
@@ -223,10 +241,14 @@ apiRouter.post('/resume/upload', (req: Request, res: Response) => {
         return res.status(400).json({ success: false, message: '请选择要上传的简历文件' });
       }
       const extractedText = await resumeService.extractTextFromFile(req.file.path);
+      const originalName = /[\u0080-\u00ff]/.test(req.file.originalname) ? Buffer.from(req.file.originalname, 'latin1').toString('utf8') : req.file.originalname;
+      const source = await resumePdfService.saveSource(req.file.path, originalName, extractedText);
       res.json({
         success: true,
         data: {
-          fileName: req.file.originalname,
+          id: source.id,
+          format: source.format,
+          fileName: source.fileName,
           savedPath: req.file.path,
           text: extractedText,
         },
@@ -235,6 +257,43 @@ apiRouter.post('/resume/upload', (req: Request, res: Response) => {
       res.status(500).json({ success: false, message: err.message });
     }
   });
+});
+
+apiRouter.get('/resume/current', async (_req: Request, res: Response) => {
+  try {
+    const source = await resumePdfService.current(file => resumeService.extractTextFromFile(file));
+    const tailored = await resumePdfService.latest();
+    res.json({ success: true, data: { source, tailored: tailored?.pdf?.sourceId === source?.id ? tailored : null } });
+  } catch (cause) { res.status(500).json({ success: false, message: (cause as Error).message }); }
+});
+apiRouter.get('/resume/pdf/:id', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id), result = await resumePdfService.result(id);
+    res.download(await resumePdfService.pdfPath(id), result.pdf!.fileName);
+  } catch (cause) { res.status(404).json({ success: false, message: (cause as Error).message }); }
+});
+apiRouter.get('/resume/pdf/:id/pages/:page', async (req: Request, res: Response) => {
+  try { res.type('png').sendFile(await resumePdfService.pagePath(String(req.params.id), Number(req.params.page))); }
+  catch (cause) { res.status(404).json({ success: false, message: (cause as Error).message }); }
+});
+apiRouter.get('/resume/boss/attachments', async (_req: Request, res: Response) => {
+  if (deliveryService.isActive()) return res.status(409).json({ success: false, message: '请先结束当前投递任务，再查看 BOSS 附件' });
+  try { res.json({ success: true, data: await resumeBossUploadService.list() }); }
+  catch (cause) { res.status(502).json({ success: false, message: (cause as Error).message }); }
+});
+apiRouter.post('/resume/boss/upload', async (req: Request, res: Response) => {
+  if (deliveryService.isActive()) return res.status(409).json({ success: false, message: '请先结束当前投递任务，再上传优化 PDF' });
+  const { artifactId, replaceId } = req.body || {};
+  if (typeof artifactId !== 'string' || !/^[a-f0-9]{32}$/.test(artifactId)
+    || replaceId !== undefined && (typeof replaceId !== 'string' || !/^[a-zA-Z0-9_-]{8,180}$/.test(replaceId))) {
+    return res.status(400).json({ success: false, message: '请选择已生成的优化 PDF 和有效的待替换附件' });
+  }
+  try { res.json({ success: true, data: await resumeBossUploadService.upload(artifactId, replaceId) }); }
+  catch (cause) {
+    if (cause instanceof ResumeCapacityError) return res.status(409).json({ success: false, message: cause.message, code: 'ATTACHMENTS_FULL',
+      data: { attachments: cause.attachments, capacity: cause.capacity } });
+    res.status(502).json({ success: false, message: (cause as Error).message });
+  }
 });
 
 // 3. 简历诊断与职业推荐
@@ -254,11 +313,11 @@ apiRouter.post('/resume/diagnose', async (req: Request, res: Response) => {
 // 4. 针对目标职业重写简历
 apiRouter.post('/resume/rewrite', async (req: Request, res: Response) => {
   try {
-    const { resumeText, targetRole } = req.body || {};
-    if (!resumeText || !targetRole) {
-      return res.status(400).json({ success: false, message: '缺少简历文本或目标岗位名称' });
+    const { sourceId, targetRole } = req.body || {};
+    if (typeof sourceId !== 'string' || typeof targetRole !== 'string' || !targetRole.trim() || targetRole.length > 100) {
+      return res.status(400).json({ success: false, message: '请上传原 PDF 并选择目标岗位' });
     }
-    const rewritten = await resumeService.rewriteForTargetRole(resumeText, targetRole);
+    const rewritten = await resumeService.rewriteForTargetRole(sourceId, targetRole.trim());
     res.json({ success: true, data: rewritten });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -268,7 +327,7 @@ apiRouter.post('/resume/rewrite', async (req: Request, res: Response) => {
 // 5. 浏览器与登录状态
 apiRouter.get('/browser/status', async (_req: Request, res: Response) => {
   try {
-    const status = await browserService.checkLoginStatus();
+    const status = await browserService.checkLoginStatus({ restore: false });
     res.json({ success: true, data: status });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -288,6 +347,7 @@ apiRouter.get('/browser/page-state', async (_req: Request, res: Response) => {
 });
 
 apiRouter.post('/browser/login', async (_req: Request, res: Response) => {
+  if (resumeBossUploadService.isBusy()) return res.status(409).json({ success: false, message: '请等待简历上传完成' });
   try {
     await browserService.promptLogin();
     res.json({ success: true, message: '登录页面已打开，请在 Chrome 中扫码，然后点击“验证登录”' });
@@ -297,6 +357,7 @@ apiRouter.post('/browser/login', async (_req: Request, res: Response) => {
 });
 
 apiRouter.post('/browser/verify', async (_req: Request, res: Response) => {
+  if (resumeBossUploadService.isBusy()) return res.status(409).json({ success: false, message: '请等待简历上传完成' });
   try {
     const status = await browserService.verifyLogin();
     res.json({ success: status.isLoggedIn, data: status, message: status.isLoggedIn ? '登录已确认' : status.reason });
@@ -307,6 +368,7 @@ apiRouter.post('/browser/verify', async (_req: Request, res: Response) => {
 
 // 6. 投递任务控制
 apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
+  if (resumeBossUploadService.isBusy()) return res.status(409).json({ success: false, message: '请等待简历上传完成再投递' });
   try {
     let { targetRole } = req.body || {};
     const { keywords, resumeText, requirementsText, defaultGreeting } = req.body || {};
@@ -362,6 +424,7 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
     }
 
     // 异步执行投递任务，不阻塞 HTTP 响应；必须接管 promise，否则一次异常会带走整个进程
+    if (resumeBossUploadService.isBusy()) return res.status(409).json({ success: false, message: '请等待简历上传完成再投递' });
     deliveryService
       .startDelivery({
         targetRole,
@@ -434,6 +497,7 @@ apiRouter.get('/delivery/work-condition-reviews', (_req: Request, res: Response)
 });
 
 apiRouter.post('/delivery/work-condition-reviews/apply', async (req: Request, res: Response) => {
+  if (resumeBossUploadService.isBusy()) return res.status(409).json({ success: false, message: '请等待简历上传完成再投递' });
   try {
     const ids = req.body?.ids;
     if (!Array.isArray(ids) || !ids.length || ids.length > 150
@@ -455,6 +519,7 @@ apiRouter.post('/delivery/work-condition-reviews/apply', async (req: Request, re
       .json({ success: false, message: login.reason || '无法确认 BOSS 登录状态', reasonCode: login.reasonCode });
     if (locationSearchActive) return res.status(409).json({ success: false, message: '请等待位置查询完成再投递。' });
     if (deliveryService.isActive()) return res.status(409).json({ success: false, message: '投递任务已经在运行中' });
+    if (resumeBossUploadService.isBusy()) return res.status(409).json({ success: false, message: '请等待简历上传完成再投递' });
     deliveryService.startReviewDelivery(reviews as NonNullable<typeof reviews[number]>[])
       .catch(error => deliveryService.log('error', '待确认岗位投递失败：' + (error as Error).message));
     res.json({ success: true, data: deliveryService.getStats(), message: '已开始投递所选岗位，未确认的工作条件仍保留原状态' });

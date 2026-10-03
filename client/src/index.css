@@ -313,9 +313,9 @@ button:disabled { cursor: not-allowed; }
   .position-picker-head { align-items: flex-start; }
   .position-picker-head strong span { display: block; margin: 5px 0 0; }
 }
-.location-api-config, .location-manual-fields { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; align-items: end; }
-.location-api-config label, .location-manual-fields label { display: flex; flex-direction: column; gap: 7px; flex: 1 1 190px; }
-.location-api-config input, .location-api-config select, .location-manual-fields input, .location-manual-fields select { width: 100%; padding: 9px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; }
+.location-manual-fields { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; align-items: end; }
+.location-manual-fields label { display: flex; flex-direction: column; gap: 7px; flex: 1 1 190px; }
+.location-manual-fields input, .location-manual-fields select { width: 100%; padding: 9px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; }
 .location-manual { padding: 14px; border: 1px solid #334155; border-radius: 10px; margin: 14px 0; }
 .location-manual summary { cursor: pointer; color: #b7e9de; }
 .location-manual button { padding: 10px 16px; color: #b7e9de; background: #1e3e3a; border: 1px solid #386459; border-radius: 8px; }
@@ -327,3 +327,40 @@ button:disabled { cursor: not-allowed; }
 .not-suitable-list > div { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #334155; gap: 12px; }
 .not-suitable-list small { display: block; color: #94a3b8; margin-top: 5px; }
 .not-suitable-list button { color: #a5f3e3; background: #1c403c; border: 1px solid #335c53; border-radius: 6px; padding: 8px 12px; cursor: pointer; }
+/* Original-format PDF preview and native BOSS attachment upload. */
+.resume-source-help { color: #9cc2c9; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.resume-source-help button { padding: 7px 12px; background: #23413f; border-radius: 7px; }
+.resume-pdf-panel { padding: 22px; background: #14252d; border: 1px solid #35515b; border-radius: 12px; }
+.resume-pdf-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+.resume-pdf-header h3 { display: flex; align-items: center; gap: 8px; font-size: 17px; }
+.resume-pdf-header p { color: #a9c2c9; font-size: 13px; margin-top: 8px; }
+.resume-pdf-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.resume-pdf-actions button, .resume-download { display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; border-radius: 8px; background: #25554b; border: 1px solid #377b6c; color: #d2f7e8; text-decoration: none; font-size: 14px; }
+.resume-pdf-actions button:disabled { opacity: .5; cursor: default; }
+.resume-upload-success { color: #a4e7bb; margin-top: 14px; }
+.resume-replace-choice { margin-top: 18px; padding: 16px; border-radius: 10px; background: #20333c; border: 1px solid #486068; }
+.resume-replace-choice label { display: grid; gap: 10px; }
+.resume-replace-choice select { width: 100%; }
+.resume-replace-choice p { color: #9fbbc7; margin: 12px 0; font-size: 13px; }
+.resume-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 22px; margin-top: 22px; }
+.resume-pdf-pages figure { width: min(100%, 780px); margin: 0; }
+.resume-pdf-pages img { width: 100%; height: auto; display: block; background: #fff; border-radius: 3px; box-shadow: 0 3px 16px #0004; }
+.resume-pdf-pages figcaption { text-align: center; color: #96adb8; font-size: 12px; margin-top: 9px; }
+.resume-pdf-changes { margin-top: 16px; color: #b4cdd2; }
+.resume-pdf-changes summary { cursor: pointer; }
+.resume-pdf-changes div { padding: 12px 0; border-bottom: 1px solid #2d444b; font-size: 13px; line-height: 1.7; }
+.resume-pdf-changes div p:last-child { color: #b0e9c5; margin-top: 6px; }
+.resume-pdf-changes pre { white-space: pre-wrap; padding: 14px; font-family: inherit; font-size: 13px; line-height: 1.6; }
+.resume-use { justify-content: flex-end; margin-top: 20px; }
+.operation-pacing { margin-top: 22px; padding: 18px; border: 1px solid #334155; border-radius: 10px; background: #111d2b; }
+.operation-pacing h3 { font-size: 15px; margin: 0 0 8px; }
+.operation-pacing p { font-size: 12px; line-height: 1.7; color: #94a3b8; }
+.operation-pacing-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 16px 0; }
+.operation-pacing-fields label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.operation-pacing-fields input { width: 100%; padding: 8px 12px; border: 1px solid #334155; border-radius: 8px; background: #0f172a; color: #e2e8f0; }
+.boss-safety-panel { margin: 16px 28px; padding: 14px 18px; border: 1px solid #475569; border-radius: 10px; background: #15262d; font-size: 13px; color: #cbd5e1; }
+.boss-safety-panel.blocked { border-color: #d98770; background: #342429; color: #ffd7cc; }
+.boss-safety-panel h2 { margin-bottom: 8px; font-size: 16px; }
+.boss-safety-panel p { margin: 8px 0; line-height: 1.65; }
+.boss-safety-panel label { display: block; margin: 12px 0; }
+.boss-safety-panel button { margin-left: 12px; padding: 7px 12px; border-radius: 7px; background: #334155; color: #f8fafc; }

@@ -4,6 +4,7 @@
   "description": "BOSS直聘智能求职与投递助手",
   "main": "desktop/electron-main.cjs",
   "scripts": {
+    "setup:pdf": "node server/scripts/setup-pdf.cjs",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
     "build:client": "cd client && npm run build",

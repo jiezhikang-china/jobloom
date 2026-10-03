@@ -8,7 +8,7 @@ const { profileDirectory } = require('../user-profile.cjs');
 
 const entry = path.resolve(__dirname, '..', 'electron-main.cjs');
 const source = fs.readFileSync(entry, 'utf8');
-const health = { app: 'boss-job-agent', integrationVersion: 23, status: 'ok' };
+const health = { app: 'boss-job-agent', integrationVersion: 25, status: 'ok' };
 
 function desktop(options = {}) {
   const windows = [];
@@ -71,7 +71,8 @@ function desktop(options = {}) {
     mkdirSync() {},
     appendFileSync(_file, value) { logs.push(value); },
     existsSync: () => !options.missingBuild,
-    readFileSync: () => JSON.stringify({ port: savedPorts.at(-1)?.port || 1878 }),
+    readFileSync: file => file.endsWith('boss-automation-safety.json') ? JSON.stringify({ hold: options.automationHold ? { reason: 'user_reported_ban' } : null })
+      : JSON.stringify({ port: savedPorts.at(-1)?.port || 1878 }),
     writeFileSync(_file, value) { savedPorts.push(JSON.parse(value)); },
     unlinkSync() { removedPort = true; },
     openSync: () => 20,
@@ -134,6 +135,7 @@ function desktop(options = {}) {
         if (options.startOwnServer && !url.includes(':4567/')) throw new Error('No service');
         return { ok: true, json: async () => health };
       }
+      if (url.endsWith('/api/delivery/stop')) return { ok: true, json: async () => ({ success: true }) };
       return {
         ok: true,
         json: async () => ({ data: { stats: { status: options.deliveryStatus || 'idle' } } }),
@@ -181,8 +183,16 @@ test('升级时复用仍在投递的上一版后台，不创建第二个投递�
 });
 
 test('上一版空闲后台不会阻止新版本启动', async () => {
-  const run = desktop({ healthRequest: async url => ({ ok: true, json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 23 : 22 }) }) });
+  const run = desktop({ healthRequest: async url => ({ ok: true, json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 25 : 24 }) }) });
   await settled();
+  assert.equal(run.windows[0].url, 'http://127.0.0.1:4567/');
+  assert.equal(run.children.length, 1); assert.equal(run.errors.length, 0);
+});
+test('账号已有停止状态时，停止旧版任务并加载带保护的新版本', async () => {
+  const run = desktop({ automationHold: true, deliveryStatus: 'running', healthRequest: async url => ({ ok: true,
+    json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 25 : 24 }) }) });
+  await settled();
+  assert.ok(run.requests.some(request => request.url.endsWith('/api/delivery/stop') && request.method === 'POST'));
   assert.equal(run.windows[0].url, 'http://127.0.0.1:4567/');
   assert.equal(run.children.length, 1); assert.equal(run.errors.length, 0);
 });

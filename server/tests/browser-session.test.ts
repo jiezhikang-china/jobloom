@@ -5,8 +5,10 @@ import path from 'node:path';
 import http from 'node:http';
 import net from 'node:net';
 import { BrowserService } from '../src/services/browser.service.js';
+import { isolateBossSafety } from './fixtures/safety.js';
 
 async function main(): Promise<void> {
+  const restoreSafety = isolateBossSafety();
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'boss-session-test-'));
   const profile = path.join(tempRoot, 'profile');
   fs.mkdirSync(path.join(profile, 'Default', 'Network'), { recursive: true });
@@ -51,6 +53,7 @@ async function main(): Promise<void> {
     assert.equal((reconnected as any).port, null);
     process.stdout.write('PASS | 已保存会话重连、后台重启复用浏览器、实例标识验证与扫码提示区分\n');
   } finally {
+    restoreSafety();
     await service.close();
     await new Promise<void>((resolve, reject) => debugServer.close((error) => error ? reject(error) : resolve()));
     const resolved = path.resolve(tempRoot);

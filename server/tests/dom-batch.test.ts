@@ -56,6 +56,7 @@ async function main(): Promise<void> {
     headless: true,
   });
   const page = await browser.newPage();
+  await page.addInitScript('window.__name = (fn) => fn');
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   const originalGetWorkerPage = browserService.getWorkerPage;

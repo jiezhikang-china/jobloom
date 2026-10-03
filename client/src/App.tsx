@@ -4,6 +4,9 @@ import DeepSeekAccountPanel from './DeepSeekAccountPanel.js';
 import WorkConditionOptions, { withWorkConditionPresets } from './WorkConditionOptions.js';
 import WorkConditionReviewPanel from './WorkConditionReviewPanel.js';
 import LocationFilterOptions from './LocationFilterOptions.js';
+import ResumePdfPanel from './ResumePdfPanel.js';
+import OperationPacingOptions from './OperationPacingOptions.js';
+import BossAutomationSafetyPanel from './BossAutomationSafetyPanel.js';
 import NotSuitablePanel from './NotSuitablePanel.js';
 import {
   FileText,
@@ -21,7 +24,6 @@ import {
   RefreshCw,
   Plus,
   X,
-  Coffee,
   ExternalLink,
 } from 'lucide-react';
 import {
@@ -55,6 +57,9 @@ export default function App() {
   
   // 简历与分析数据
   const [resumeFileName, setResumeFileName] = useState('');
+  const [resumeSourceId, setResumeSourceId] = useState('');
+  const [resumeFormat, setResumeFormat] = useState('');
+  const resumeUploadEpoch = useRef(0);
   const [resumeText, setResumeText] = useState('');
   const [isDiagnosing, setIsDiagnosing] = useState(false);
   const [diagnosis, setDiagnosis] = useState<ResumeAnalysisResult | null>(null);
@@ -70,6 +75,19 @@ export default function App() {
   const [isRewriting, setIsRewriting] = useState(false);
   const [tailoredResult, setTailoredResult] = useState<TailoredResumeResult | null>(null);
   const [customGreeting, setCustomGreeting] = useState('');
+  const rewriteContext = useRef('');
+  rewriteContext.current = resumeSourceId + '|' + selectedRole;
+  useEffect(() => {
+    let disposed = false;
+    const epoch = resumeUploadEpoch.current;
+    void fetch('/api/resume/current').then(response => response.json()).then(json => {
+      if (disposed || resumeUploadEpoch.current !== epoch || !json.success || !json.data.source) return;
+      const source = json.data.source;
+      setResumeSourceId(source.id); setResumeFormat(source.format); setResumeFileName(source.fileName); setResumeText(source.text);
+      if (json.data.tailored) { setTailoredResult(json.data.tailored); setCustomGreeting(json.data.tailored.defaultGreetingPitch); }
+    }).catch(() => {});
+    return () => { disposed = true; };
+  }, []);
 
   // 投递设置与运行状态
   const [searchKeywords, setSearchKeywords] = useState<string[]>([]);
@@ -90,6 +108,7 @@ export default function App() {
     skippedByLlmErrorCount: 0,
   });
   const [logs, setLogs] = useState<DeliveryLogItem[]>([]);
+  const [bossAutomationBlocked, setBossAutomationBlocked] = useState(true);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // 初始化加载配置与状态
@@ -327,6 +346,7 @@ export default function App() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    resumeUploadEpoch.current++;
 
     const formData = new FormData();
     formData.append('file', file);
@@ -340,6 +360,8 @@ export default function App() {
       const json = await res.json();
       if (json.success) {
         setResumeFileName(json.data.fileName);
+        setResumeSourceId(json.data.id);
+        setResumeFormat(json.data.format);
         setResumeText(json.data.text);
         setDiagnosis(null);
         setTailoredResult(null);
@@ -400,15 +422,17 @@ export default function App() {
 
   // 执行针对性改写
   const handleRewrite = async () => {
-    if (!selectedRole || !resumeText) return;
+    if (!selectedRole || !resumeSourceId || resumeFormat !== 'pdf') return;
+    const context = rewriteContext.current;
     setIsRewriting(true);
     try {
       const res = await fetch('/api/resume/rewrite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resumeText, targetRole: selectedRole }),
+        body: JSON.stringify({ sourceId: resumeSourceId, targetRole: selectedRole }),
       });
       const json = await res.json();
+      if (rewriteContext.current !== context) return;
       if (json.success) {
         setTailoredResult(json.data);
         setCustomGreeting(json.data.defaultGreetingPitch);
@@ -431,6 +455,7 @@ export default function App() {
 
   const handleStartDelivery = async () => {
     setStartMessage('');
+    if (bossAutomationBlocked) { setStartMessage('BOSS 自动操作已停止，请先查看账号状态。'); return; }
     if (!config) {
       setStartMessage('设置尚未载入，请稍后重试。');
       return;
@@ -491,7 +516,8 @@ export default function App() {
           keywords: searchKeywords.length || !searchByConditions ? searchKeywords
             : selectedConditions.filter((item) => item.builtin).map((item) => ({ eightHours: '八小时', doubleRest: '双休', noExperience: '经验不限' })[item.builtin!]),
           mode: deliveryMode,
-          resumeText: deliveryMode === 'resume' ? (!usesSavedExpectations && tailoredResult?.targetRole === selectedRole ? tailoredResult.rewrittenResumeMarkdown : resumeText) : undefined,
+          resumeText: deliveryMode === 'resume' ? (tailoredResult?.targetRole === selectedRole && tailoredResult.pdf?.sourceId === resumeSourceId
+            ? tailoredResult.pdf.text : resumeText) : undefined,
           requirementsText: deliveryMode === 'manual' ? [conditionDescription ? '希望寻找满足以下条件的工作：' + conditionDescription : '', manualRequirements.trim()].filter(Boolean).join('；') : undefined,
           defaultGreeting: deliveryMode === 'resume' && !usesSavedExpectations && tailoredResult?.targetRole === selectedRole ? customGreeting : undefined,
         }),
@@ -654,6 +680,7 @@ export default function App() {
           </button>
         </div>
       </header>
+      <BossAutomationSafetyPanel onChange={setBossAutomationBlocked} onRestored={() => void checkLoginStatus()} />
 
       {/* 标签页导航栏 */}
       <nav
@@ -864,7 +891,7 @@ export default function App() {
               {startMessage && <p role="status" className={`launch-message ${startMessage.startsWith('投递任务已启动') ? 'success' : ''}`}>{startMessage}</p>}
               <div className="launch-footer">
                 <p>启动时会重新检查已保存的 BOSS 会话；只有确认失效时才需要扫码。</p>
-                <button type="button" className="launch-submit" onClick={handleStartDelivery} disabled={isStarting || isTaskRunning}>
+                <button type="button" className="launch-submit" onClick={handleStartDelivery} disabled={isStarting || isTaskRunning || bossAutomationBlocked}>
                   <Play size={18} /> {isStarting ? '正在检查并启动…' : isTaskRunning ? '投递任务运行中' : '开始投递'}
                 </button>
               </div>
@@ -1092,7 +1119,7 @@ export default function App() {
                 <button type="button" onClick={() => setActiveTab('launch')}>选择官方岗位</button>
                 <button
                   onClick={handleRewrite}
-                  disabled={isRewriting || !selectedRole}
+                  disabled={isRewriting || !selectedRole || !resumeSourceId || resumeFormat !== 'pdf'}
                   style={{
                     padding: '10px 20px',
                     backgroundColor: '#00be68',
@@ -1105,12 +1132,16 @@ export default function App() {
                   }}
                 >
                   <Sparkles size={16} />
-                  {isRewriting ? '正在基于岗位重构简历...' : '按此岗位一键针对性改写'}
+                  {isRewriting ? 'AI 润色并生成 PDF…' : '优化并生成原版式 PDF'}
                 </button>
               </div>
             </div>
 
-            {tailoredResult && (
+            <p className="resume-source-help">{resumeSourceId && resumeFormat === 'pdf' ? `原 PDF：${resumeFileName}，分析步骤可跳过。`
+              : '请先在简历分析页上传原 PDF 简历；可以直接优化，无需先分析。'}
+              <button type="button" disabled={isRewriting} onClick={() => setActiveTab('diagnosis')}>选择原 PDF</button></p>
+
+            {tailoredResult && tailoredResult.targetRole === selectedRole && tailoredResult.pdf?.sourceId === resumeSourceId && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {/* 3大核心亮点与首聊词 */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
@@ -1152,64 +1183,9 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 改写后简历预览 */}
-                <div
-                  style={{
-                    backgroundColor: '#1e293b',
-                    padding: '20px',
-                    borderRadius: '12px',
-                    border: '1px solid #334155',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <h3 style={{ fontSize: '15px', fontWeight: 600 }}>重构后的 Markdown 针对性简历</h3>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(tailoredResult.rewrittenResumeMarkdown);
-                        alert('已复制改写后的简历 Markdown 内容到剪贴板！');
-                      }}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        backgroundColor: '#334155',
-                        color: '#cbd5e1',
-                        fontSize: '12px',
-                      }}
-                    >
-                      一键复制全文
-                    </button>
-                  </div>
-                  <textarea
-                    rows={16}
-                    value={tailoredResult.rewrittenResumeMarkdown}
-                    onChange={(e) =>
-                      setTailoredResult({ ...tailoredResult, rewrittenResumeMarkdown: e.target.value })
-                    }
-                    style={{
-                      width: '100%',
-                      fontFamily: 'monospace',
-                      fontSize: '13px',
-                      lineHeight: '1.6',
-                      padding: '16px',
-                    }}
-                  />
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-                    <button
-                        onClick={() => { setDeliveryMode('resume'); setActiveTab('launch'); }}
-                      style={{
-                        padding: '10px 24px',
-                        backgroundColor: '#00be68',
-                        color: '#fff',
-                        borderRadius: '8px',
-                        fontWeight: 600,
-                        fontSize: '14px',
-                      }}
-                    >
-                      使用此简历去投递 →
-                    </button>
-                  </div>
-                </div>
+                <ResumePdfPanel key={tailoredResult.pdf?.id || 'legacy'} result={tailoredResult} disabled={isTaskRunning || isRewriting || bossAutomationBlocked}
+                  disabledReason={bossAutomationBlocked ? 'BOSS 自动操作已停止，账号恢复前不能上传附件。' : undefined}
+                  onUpdate={setTailoredResult} onUse={() => { setDeliveryMode('resume'); setActiveTab('launch'); }} />
               </div>
             )}
           </div>
@@ -1468,7 +1444,7 @@ export default function App() {
                 </p>
               </div>
 
-              {/* 每日投递限制与防封间隔 */}
+              {/* 每日投递限制与浏览间隔 */}
               <div style={{ marginTop: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div>
                   <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
@@ -1533,10 +1509,11 @@ export default function App() {
                     />
                     <span>秒</span>
                   </div>
-                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>用于选择和浏览岗位；读取详情、等待 AI 的时间计入间隔，点击沟通前不另加停顿。</p>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>读取详情、等待 AI 的时间计入浏览间隔。页面上的各项操作还会使用下方的统一间隔。</p>
                 </div>
               </div>
 
+              <OperationPacingOptions value={config.delivery} onChange={delivery => setConfig({ ...config, delivery })} />
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px', gap: '12px' }}>
                 <button
                   onClick={() => saveConfig(config)}
@@ -1599,6 +1576,7 @@ export default function App() {
                 </div>
                 <button
                   onClick={handleResumeDelivery}
+                  disabled={bossAutomationBlocked}
                   style={{
                     padding: '8px 16px',
                     borderRadius: '8px',
@@ -1610,31 +1588,6 @@ export default function App() {
                 >
                   我已完成滑动，继续投递
                 </button>
-              </div>
-            )}
-
-            {/* 贤者时间深度防封休眠横幅 */}
-            {deliveryStats.status === 'sage_time' && (
-              <div
-                style={{
-                  backgroundColor: 'rgba(251, 191, 36, 0.15)',
-                  border: '2px solid #fbbf24',
-                  borderRadius: '12px',
-                  padding: '16px 20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '16px',
-                }}
-              >
-                <Coffee size={32} color="#fbbf24" className="pulsing-indicator" />
-                <div>
-                  <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#fde047' }}>
-                    ☕ 触发【贤者时间】批次拟人化深度休眠 (还剩 {deliveryStats.sageTimeRemainingSeconds ?? 0} 秒)
-                  </h3>
-                  <p style={{ fontSize: '13px', color: '#fef08a', marginTop: '2px' }}>
-                    系统已连续开聊一批岗位，正在严格模拟真人去喝水与离开屏幕，打破固定频控审计，倒计时结束后将全自动恢复！
-                  </p>
-                </div>
               </div>
             )}
 
@@ -1752,6 +1705,7 @@ export default function App() {
                 {deliveryStats.isPaused && (
                   <button
                     onClick={handleResumeDelivery}
+                    disabled={bossAutomationBlocked}
                     style={{
                       padding: '10px 20px',
                       borderRadius: '8px',
@@ -1835,7 +1789,7 @@ export default function App() {
                     : deliveryStats.status === 'sage_time'
                     ? `☕ 贤者时间 (${deliveryStats.sageTimeRemainingSeconds ?? 0}s)`
                     : deliveryStats.status === 'cool_down'
-                    ? '⏳ 冷却防封休眠中'
+                    ? '⏳ 平台限频等待中'
                     : deliveryStats.status === 'finished'
                     ? '🎉 任务已完成'
                     : deliveryStats.status === 'failed'
@@ -2141,7 +2095,7 @@ export default function App() {
           </div>
         )}
         {(activeTab === 'delivery' || (activeTab === 'launch' && selectedConditions.length > 0)) && <WorkConditionReviewPanel
-          taskRunning={isTaskRunning} onStarted={stats => { setDeliveryStats(stats); setActiveTab('delivery'); }} />}
+          taskRunning={isTaskRunning || bossAutomationBlocked} onStarted={stats => { setDeliveryStats(stats); setActiveTab('delivery'); }} />}
       </main>
     </div>
   );

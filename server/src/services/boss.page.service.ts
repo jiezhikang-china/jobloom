@@ -9,6 +9,7 @@ import { readBossWorkAddress, bossMapService } from './boss-map.service.js';
 import { commuteDecision } from './commute.js';
 import { bossJobId, sameJobLink, normalizedJobName } from './job-identity.js';
 import { notSuitableStore } from './not-suitable-store.js';
+import { bossActionScheduler, runBossAction, clickBossAction } from './boss-action-scheduler.js';
 
 const ORIGIN = 'https://www.zhipin.com';
 const CARD = 'ul.rec-job-list li.job-card-box';
@@ -654,7 +655,7 @@ export class BossPageService {
     const before = await page.evaluate(() => [...document.querySelectorAll('.toast-content, .toast, .message-content, .zp-toast')]
       .filter((item) => (item as HTMLElement).getClientRects().length).map((item) => item.textContent?.trim()).join('|'));
     await button.click();
-    const deadline = Date.now() + 4500;
+    let deadline = Date.now() + 4500;
     let confirmed = false;
     while (Date.now() < deadline) {
       const feedback = await page.evaluate(({ href, oldFeedback, selectedName }) => {
@@ -668,8 +669,10 @@ export class BossPageService {
           && ((document.querySelector('.expect-item.active') as HTMLElement | null)?.innerText || '') === selectedName;
         const dialog = [...document.querySelectorAll('.zp-feedback-dialog')].find(visible);
         return { targetRemains, sameList, success: messages !== oldFeedback && /已标记|不再推荐|减少推荐|操作成功|反馈成功|已进行反馈|感谢.{0,8}反馈/.test(messages),
-          failed: messages !== oldFeedback && /失败|频繁|稍后|上限|提交内容为空/.test(messages), needsConfirmation: Boolean(dialog && visible(dialog)) };
+          failed: messages !== oldFeedback && /失败|频繁|稍后|上限|提交内容为空/.test(messages),
+          limited: messages !== oldFeedback && /操作频繁|请求过于频繁|稍后再试/.test(messages), needsConfirmation: Boolean(dialog && visible(dialog)) };
       }, { href: target.jobHref, oldFeedback: before, selectedName: selected });
+      if (feedback.limited) bossActionScheduler.limit();
       if (feedback.failed) break;
       if (confirmed && feedback.sameList && (feedback.success || !feedback.targetRemains)) {
         await page.waitForFunction(() => ![...document.querySelectorAll('.zp-feedback-dialog')]
@@ -706,8 +709,13 @@ export class BossPageService {
           || /(?:^|\s)(?:disabled|is-disabled)(?:\s|$)/.test(element.className))) {
           await dialog.locator('[ka="dialog_cancel"]').first().click().catch(() => {}); return false;
         }
-        await confirm.click();
+        await clickBossAction(confirm, 'feedback', async () => {
+          if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) {
+            throw new Error('岗位已经切换，未提交不合适反馈');
+          }
+        });
         confirmed = true;
+        deadline = Date.now() + 4500;
       }
       await pause(200);
     }
@@ -725,7 +733,9 @@ export class BossPageService {
     const text = await page.locator('.dialog-wrap, .boss-dialog, .toast-content').first()
       .innerText({ timeout: 400 }).catch(() => '');
     if (/沟通.*上限|今日.*上限|次数已满/.test(text)) return { success: false, quotaExceeded: true };
-    if (/操作频繁|稍后再试|请求过于频繁/.test(text)) return { success: false, isCoolDown: true };
+    if (/操作频繁|稍后再试|请求过于频繁/.test(text)) {
+      bossActionScheduler.limit(); return { success: false, isCoolDown: true };
+    }
     return null;
   }
 
@@ -792,7 +802,11 @@ export class BossPageService {
     if (await this.sentDialogButton(page)) return { success: false, uncertain: true };
     let clicked = false;
     try {
-      await chatButton.click();
+      await clickBossAction(chatButton, 'submit', async () => {
+        if (target && !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page))) {
+          throw new Error('岗位已经切换，未发起沟通');
+        }
+      });
       clicked = true;
       await pause(200);
       let interrupted = await this.chatInterruption(page);
@@ -809,7 +823,11 @@ export class BossPageService {
         const send = dialog.locator('button:has-text("发送"), button:has-text("确定")').first();
         if (!(await send.isVisible({ timeout: 800 }).catch(() => false))) return { success: false, uncertain: true };
         await input.fill(greeting.trim());
-        await send.click();
+        await clickBossAction(send, 'submit', async () => {
+          if (target && !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page))) {
+            throw new Error('岗位已经切换，未发送消息');
+          }
+        });
         interrupted = await this.chatInterruption(page);
         if (interrupted) return interrupted;
         const result = await this.waitForChatSignal(page, target);
@@ -828,7 +846,7 @@ export class BossPageService {
     this.throwIfUnavailable(state);
     if (state.kind !== 'jobs') return;
     await page.locator(CARD).last().scrollIntoViewIfNeeded();
-    await page.evaluate(() => {
+    await runBossAction(page, 'navigation', () => page.evaluate(() => {
       let node = document.querySelector('ul.rec-job-list');
       while (node) {
         const style = getComputedStyle(node);
@@ -839,7 +857,7 @@ export class BossPageService {
         node = node.parentElement;
       }
       window.scrollBy({ top: Math.max(800, window.innerHeight), behavior: 'instant' });
-    });
+    }));
     await pause(900);
   }
 }

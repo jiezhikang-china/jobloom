@@ -1,12 +1,44 @@
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'node:crypto';
 import mammoth from 'mammoth';
 import { extractPdfText, decodeResumeText, normalizeResumeText } from './resume-text.js';
 import { llmService, ChatMessage } from './llm.service.js';
 import { bossCatalogService, positionSelections } from './boss.catalog.service.js';
 import { ResumeAnalysisResult, TailoredResumeResult } from '../types.js';
+import { resumePdfService, type PdfEdit } from './resume-pdf.service.js';
+import { configManager } from '../config/config.manager.js';
 
 const MAX_RESUME_CHARS = 20000;
+type PdfModelResult = { edits: PdfEdit[]; topHighlights: string[]; defaultGreetingPitch: string };
+const pdfModelRequests = new Map<string, Promise<PdfModelResult>>();
+
+async function cachedPdfModelResult(messages: ChatMessage[], sourceHash: string): Promise<PdfModelResult> {
+  const llm = configManager.getConfig().llm;
+  const key = createHash('sha256').update(JSON.stringify({ sourceHash, messages, connectionMode: llm.connectionMode,
+    baseUrl: llm.baseUrl, model: llm.model, thinking: llm.thinking, webSearch: llm.webSearch })).digest('hex');
+  const cacheFile = path.resolve(__dirname, '../../../data/resume-model-cache', key + '.json');
+  const previous = await fs.promises.readFile(cacheFile, 'utf8').then(text => JSON.parse(text)).catch(() => null);
+  if (previous?.edits?.length && Array.isArray(previous.topHighlights) && typeof previous.defaultGreetingPitch === 'string') {
+    return previous;
+  }
+  let pending = pdfModelRequests.get(key);
+  if (!pending) {
+    pending = (async () => {
+      const output = await llmService.chatJson<PdfModelResult>(messages);
+      if (!Array.isArray(output.edits) || !Array.isArray(output.topHighlights) || typeof output.defaultGreetingPitch !== 'string') {
+        throw new Error('AI 未返回有效的 PDF 简历优化内容，请重试');
+      }
+      // Save before local PDF export, so a layout repair never resubmits the same body to DeepSeek.
+      await fs.promises.mkdir(path.dirname(cacheFile), { recursive: true });
+      await fs.promises.writeFile(cacheFile, JSON.stringify(output), 'utf8');
+      return output;
+    })();
+    pdfModelRequests.set(key, pending);
+  }
+  try { return structuredClone(await pending); }
+  finally { if (pdfModelRequests.get(key) === pending) pdfModelRequests.delete(key); }
+}
 
 export class ResumeService {
   /**
@@ -89,32 +121,66 @@ ${positions.map((item) => `${item.code}=${item.name}`).join('\n')}
   /**
    * 按照选定的目标岗位，对原始简历进行针对性优化和重写
    */
-  public async rewriteForTargetRole(resumeText: string, targetRole: string): Promise<TailoredResumeResult> {
+  public async rewriteForTargetRole(sourceId: string, targetRole: string): Promise<TailoredResumeResult> {
+    const layout = await resumePdfService.inspect(sourceId);
+    const regions = layout.regions.filter(region => region.editable);
+    if (!regions.length) throw new Error('原 PDF 没有可润色的经历正文，请确认上传了完整的文字 PDF 简历');
+    // Only editable body paragraphs are sent to the model. Personal/contact/education/employer headers stay local.
+    const protectedValues = layout.regions.filter(region => !region.editable).flatMap((region, index) => {
+      const tokens: string[] = region.text.match(/[\w.+-]+@[\w.-]+|1[3-9]\d{9}|[\p{Script=Han}A-Za-z（）()]{2,40}(?:有限公司|大学|学院|学校)/gu) || [];
+      if (index === 0 && /^[\p{Script=Han}]{2,6}$/u.test(region.text)) tokens.push(region.text);
+      return tokens;
+    });
+    const masks = new Map<string, string>();
+    let maskIndex = 0;
+    const anonymous = (text: string) => {
+      for (const value of protectedValues) if (value && text.includes(value)) {
+        if (!masks.has(value)) masks.set(value, `〔资料${String.fromCharCode(65 + maskIndex++)}〕`);
+        text = text.split(value).join(masks.get(value)!);
+      }
+      return text.replace(/[\w.+-]+@[\w.-]+|1[3-9]\d{9}/g, '〔联系资料〕');
+    };
+    const modelRegions = regions.map(({ id, text, maxChars, page }) => ({ id, page, text: anonymous(text), maxChars }));
     const messages: ChatMessage[] = [
       {
         role: 'system',
-        content: `你是一名顶级技术简历优化专家。现在求职者确定将【${targetRole}】作为核心求职目标。
-请你对用户的原始简历进行针对性深度润色与重构：
-1. 强化与【${targetRole}】最相关的技术栈、项目经验和业务亮点，弱化弱相关内容。
-2. 经历描述严格遵循 STAR 法则（情境、任务、行动、量化成果），突出工程深度、解决难题的能力和业务价值指标。
-3. 提炼出 3 条求职者申请【${targetRole}】的最强核心卖点（topHighlights）。
-4. 生成一条专用于 BOSS直聘向招聘方（HR/技术主管）开聊的破冰自荐语（defaultGreetingPitch，控制在 100 字以内，真诚、专业、突出与 JD 的硬核匹配）。
-
-请严格返回如下格式的 JSON 对象：
-{
-  "targetRole": "${targetRole}",
-  "rewrittenResumeMarkdown": "# 优化后的完整 Markdown 简历正文...",
-  "topHighlights": ["亮点1", "亮点2", "亮点3"],
-  "defaultGreetingPitch": "您好！我有X年研发经验，精通...主导过...看到贵司该职位与我的背景高度契合，希望能与您进一步交流！"
-}`,
+        content: `你是一名简历编辑。目标岗位为【${targetRole}】，需要在原 PDF 版式内润色经历正文。
+原 PDF 的图片、标题、个人资料和事实信息由本机直接保留，不提供给你。
+你只允许修改用户给出的可编辑区域。每项使用原 id，text 为纯文本，不得返回 Markdown 或新章节。
+将表达写得简洁、具体，与目标岗位相关。事实只来自原简历，不得编造经验、技能、成果、平台、年限或资质。
+不得添加或删除任何数字、百分比，也不得把“借助 AI 完成”写成独立精通编程；保留实际能力边界。
+每项文字长度必须小于 maxChars，优先压缩到原文的 85%至95%，给中文字体和英文词留足排版空间。
+保持原段落的项目符号，每个区域只写一个段落。原文换行由 PDF 排版负责。纠正多余的项目符号和不自然的空格。
+如果出现〔资料A〕等占位符，必须完整保留，占位符由本机还原。
+从原事实中提炼最多3条核心亮点；生成100字以内的开聊自荐语，同样不能虚构事实。
+返回 JSON：{"edits":[{"id":"原区域id","text":"润色后的完整段落"}],"topHighlights":["亮点"],"defaultGreetingPitch":"自荐语"}`,
       },
       {
         role: 'user',
-        content: `【目标岗位】：${targetRole}\n\n【原始简历全文】：\n${resumeText}`,
+        content: `【目标岗位】：${targetRole}\n【脱敏后的经历正文，仅可使用这些事实】：\n${JSON.stringify(modelRegions)}`,
       },
     ];
 
-    return await llmService.chatJson<TailoredResumeResult>(messages);
+    const output = await cachedPdfModelResult(messages, layout.sha256);
+    if (!Array.isArray(output.edits) || !Array.isArray(output.topHighlights) || typeof output.defaultGreetingPitch !== 'string') {
+      throw new Error('AI 未返回有效的 PDF 简历优化内容，请重试');
+    }
+    for (const edit of output.edits) {
+      if (!edit || typeof edit.text !== 'string') throw new Error('AI 返回的段落无效，请重试');
+      const original = modelRegions.find(region => region.id === edit.id);
+      if (!original) throw new Error('AI 返回了不存在的简历段落');
+      for (const [value, mask] of masks) {
+        if (original.text.includes(mask) && !edit.text.includes(mask)) throw new Error('AI 删除了需要保留的事实，请重试');
+        edit.text = edit.text.split(mask).join(value);
+      }
+    }
+    const restore = (text: string) => { for (const [value, mask] of masks) text = text.split(mask).join(value); return text; };
+    const result: TailoredResumeResult = { targetRole, rewrittenResumeMarkdown: '',
+      topHighlights: output.topHighlights.filter(item => typeof item === 'string').slice(0, 3).map(restore),
+      defaultGreetingPitch: restore(output.defaultGreetingPitch).slice(0, 150) };
+    result.pdf = await resumePdfService.export(sourceId, targetRole, layout, output.edits, result);
+    result.rewrittenResumeMarkdown = result.pdf.text;
+    return result;
   }
 }
 

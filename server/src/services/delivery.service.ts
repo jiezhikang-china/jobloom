@@ -16,11 +16,18 @@ import { evaluationRetrySeconds } from './ai-retry.js';
 import { bossJobId, sameJobLink } from './job-identity.js';
 import { notSuitableStore } from './not-suitable-store.js';
 import { DeliveryStats, DeliveryLogItem, BossJobItem, BossPositionSelection, WorkConditionReview, AppConfig } from '../types.js';
+import { bossActionScheduler } from './boss-action-scheduler.js';
+import { bossAutomationSafety } from './boss-automation-safety.js';
 
 const COOL_DOWN_SECONDS = 15 * 60;
 
 interface PendingCandidate { jobCard: DOMJobCardInfo; job: BossJobItem; jobDetail: string;
   detail: Awaited<ReturnType<typeof bossPageService.loadJobDetail>>; sourceHref?: string; }
+interface DeliveryRequest {
+  targetRole: string; positionCode?: string; targetPositions?: BossPositionSelection[];
+  keywords: string[]; resumeText: string; defaultGreeting?: string;
+  candidateSource?: 'resume' | 'requirements'; rulesOnly?: boolean;
+}
 
 /** Card text is only a browsing preview. The opened detail supplies screening facts. */
 function applyDetailData(card: DOMJobCardInfo, detail: PendingCandidate['detail']): void {
@@ -47,6 +54,7 @@ export class DeliveryService {
   private isTaskActive = false;
   private listeners: Array<(stats: DeliveryStats, log?: DeliveryLogItem) => void> = [];
   private evaluationAbort?: AbortController;
+  private operationAbort?: AbortController;
   private nextSelectionAt = 0;
 
   constructor() {
@@ -112,6 +120,7 @@ export class DeliveryService {
 
   public resume(): void {
     if (!this.isTaskActive || this.stats.status !== 'paused') return;
+    bossAutomationSafety.assertAllowed();
     this.stats.isPaused = false;
     this.stats.needsCaptchaVerification = false;
     this.stats.status = 'running';
@@ -122,6 +131,7 @@ export class DeliveryService {
     if (!this.isTaskActive) return;
     this.isStopRequested = true;
     this.evaluationAbort?.abort(new Error('投递任务已停止'));
+    this.operationAbort?.abort(new Error('投递任务已停止'));
     this.stats.status = 'idle';
     this.stats.isPaused = false;
     this.stats.needsCaptchaVerification = false;
@@ -187,6 +197,29 @@ export class DeliveryService {
 
   /** User-selected review applications share the same task lock, quota and verified send flow. */
   public async startReviewDelivery(reviews: WorkConditionReview[]): Promise<void> {
+    return this.withOperations(() => this.runReviewDelivery(reviews));
+  }
+  private async withOperations(task: () => Promise<void>): Promise<void> {
+    if (this.isTaskActive) throw new Error('投递任务已经在运行中');
+    bossAutomationSafety.assertAllowed();
+    const controller = new AbortController(); this.operationAbort = controller;
+    let lastWaitLogAt = 0;
+    try {
+      await bossActionScheduler.withScope({ signal: controller.signal, beforeAction: async () => {
+        bossAutomationSafety.assertAllowed();
+        while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
+        if (this.isStopRequested) throw new Error('投递任务已停止');
+        controller.signal.throwIfAborted();
+      }, onWait: (seconds, kind) => {
+        if (seconds >= 10 || Date.now() - lastWaitLogAt >= 30000) {
+          lastWaitLogAt = Date.now();
+          this.log('info', bossActionScheduler.status().remainingSeconds ? '[平台限频退避] 等待 ' + seconds + ' 秒后检查'
+            : '[页面操作间隔] 等待 ' + seconds + ' 秒后继续' + (kind === 'route' ? '查询路线' : ''));
+        }
+      } }, task);
+    } finally { if (this.operationAbort === controller) this.operationAbort = undefined; }
+  }
+  private async runReviewDelivery(reviews: WorkConditionReview[]): Promise<void> {
     if (this.isTaskActive) throw new Error('投递任务已经在运行中');
     this.isTaskActive = true;
     this.isStopRequested = false;
@@ -259,8 +292,8 @@ export class DeliveryService {
           } else if (result.uncertain) throw new Error('已触发沟通，但尚未确认发送结果；请查看平台会话后继续，勿重复投递');
           else if (result.loginRequired) throw new Error('BOSS 登录失效，请登录后投递');
           else if (result.needCaptcha) { await this.handleCaptcha(); throw new Error('验证已处理，请重新选择尚未投递的岗位'); }
-          else if (result.quotaExceeded) { this.stats.status = 'finished'; this.isStopRequested = true; this.log('warn', 'BOSS 提示沟通次数已达上限，剩余记录已保留'); }
-          else if (result.isCoolDown) { this.stats.status = 'cool_down'; this.emit(); await this.sleepInterruptible(COOL_DOWN_SECONDS * 1000); throw new Error('平台频率限制已冷却，尚未投递的记录已保留'); }
+          else if (result.quotaExceeded) { this.stopForPlatformQuota(); this.isStopRequested = true; }
+          else if (result.isCoolDown) { await this.handlePlatformLimit(); throw new Error('平台限频后的自动操作已停止，尚未投递记录已保留，请人工核对后重新选择'); }
           else this.log('warn', '[手动未投递] 目标岗位已变化或沟通未确认，保留记录：' + review.jobName);
         });
         this.emit();
@@ -279,16 +312,10 @@ export class DeliveryService {
   /**
    * 启动全真 DOM 拟人化自动投递主流程
    */
-  public async startDelivery(params: {
-    targetRole: string;
-    positionCode?: string;
-    targetPositions?: BossPositionSelection[];
-    keywords: string[];
-    resumeText: string;
-    defaultGreeting?: string;
-    candidateSource?: 'resume' | 'requirements';
-    rulesOnly?: boolean;
-  }): Promise<void> {
+  public async startDelivery(params: DeliveryRequest): Promise<void> {
+    return this.withOperations(() => this.runDelivery(params));
+  }
+  private async runDelivery(params: DeliveryRequest): Promise<void> {
     if (this.isTaskActive) {
       throw new Error('投递任务已经在运行中');
     }
@@ -635,25 +662,16 @@ export class DeliveryService {
           }
 
           if (chatResult.quotaExceeded) {
-            this.log('warn', `平台提示沟通次数已达上限，停止今日投递`);
-            this.stats.status = 'finished';
-            this.emit();
+            this.stopForPlatformQuota();
             return;
           }
 
           if (chatResult.isCoolDown) {
-            this.log('warn', `⚠️ 平台提示操作过于频繁，进入防封冷却模式，休眠 ${Math.round(COOL_DOWN_SECONDS / 60)} 分钟...`);
-            this.stats.status = 'cool_down';
-            this.stats.coolDownUntil = new Date(Date.now() + COOL_DOWN_SECONDS * 1000).toISOString();
-            this.emit();
-            const cooled = await this.sleepInterruptible(COOL_DOWN_SECONDS * 1000);
-            this.stats.coolDownUntil = undefined;
-            if (!cooled) {
+            await this.handlePlatformLimit();
+            if (this.isStopRequested) {
               stoppedByUser = true;
               return;
             }
-            this.stats.status = 'running';
-            this.emit();
             if (!(await bossPageService.isJobListPage())) {
               await openList(keyword);
               return;
@@ -702,6 +720,7 @@ export class DeliveryService {
               rulesOnly: params.rulesOnly, signal: this.evaluationAbort?.signal,
               onWait: seconds => this.log('info', '[AI 间隔] 等待 ' + seconds + ' 秒后再请求，可随时停止'),
               beforeRequest: async () => {
+                bossAutomationSafety.assertAllowed();
                 while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
                 this.evaluationAbort?.signal.throwIfAborted();
                 if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新启动任务');
@@ -973,26 +992,31 @@ export class DeliveryService {
    * 遭遇滑块验证码时的挂起与人机协作处理
    */
   private async handleCaptcha(): Promise<void> {
+    bossAutomationSafety.halt('verification', 'BOSS 需要人工安全验证，自动操作已停止；验证完成后仍需主动确认恢复');
     this.stats.needsCaptchaVerification = true;
     this.stats.isPaused = true;
     this.stats.status = 'paused';
-    this.log('error', `🚨 触发风控滑块验证码！已自动置顶唤醒 Chrome 窗口。请顺手在浏览器中完成滑块验证，完成后点击【我已完成验证】或等待系统自动恢复（也可直接点【停止任务】放弃）。`);
-
-    try {
-      const page = await browserService.getWorkerPage();
-      await page.bringToFront();
-    } catch {}
-
-    // 阻塞等待用户解决滑块 —— 每轮都检查停止标志，避免用户放弃后任务永久空转
+    this.log('error', 'BOSS 需要人工安全验证。已保留当前页面；完成后请主动确认恢复，页面变化不会自动重启投递。');
+    this.emit();
+    // Wait for an explicit user resume/stop. Do not poll the website or treat a disappearing prompt as recovery.
     while (this.stats.needsCaptchaVerification && !this.isStopRequested) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const stillHasCaptcha = await browserService.checkCaptcha();
-      if (!stillHasCaptcha && this.stats.needsCaptchaVerification) {
-        this.log('success', `检测到滑块验证已完成，自动恢复投递流程！`);
-        this.resume();
-        break;
-      }
+      await new Promise((r) => setTimeout(r, 250));
     }
+  }
+  private async handlePlatformLimit(): Promise<void> {
+    const until = Date.now() + COOL_DOWN_SECONDS * 1000;
+    bossAutomationSafety.halt('rate_limit', 'BOSS 已明确限频，自动操作已停止；等待结束后仍需人工确认恢复', until);
+    this.stats.status = 'paused'; this.stats.isPaused = true;
+    this.stats.coolDownUntil = bossAutomationSafety.status().hold?.retryAfter;
+    this.log('warn', 'BOSS 提示操作频繁，已停止全部自动操作；冷却结束也不会自动继续。'); this.emit();
+    while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
+    this.stats.coolDownUntil = undefined;
+  }
+  private stopForPlatformQuota(): void {
+    const next = new Date(); next.setUTCHours(16, 0, 0, 0);
+    if (next.getTime() <= Date.now()) next.setUTCDate(next.getUTCDate() + 1);
+    bossAutomationSafety.halt('rate_limit', 'BOSS 已提示今日沟通额度用完，自动操作已停止；明日仍需人工确认恢复', next.getTime());
+    this.stats.status = 'finished'; this.log('warn', 'BOSS 提示沟通次数已达上限，剩余记录已保留，不能重启任务绕过平台额度'); this.emit();
   }
 }
 

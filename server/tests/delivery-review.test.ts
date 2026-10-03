@@ -10,6 +10,7 @@ import { workConditionReviews } from '../src/services/work-condition-reviews.js'
 import { llmService } from '../src/services/llm.service.js';
 import type { BossJobItem, WorkConditionReview } from '../src/types.js';
 import { jobCommuteService } from '../src/services/job-commute.service.js';
+import { isolateBossSafety } from './fixtures/safety.js';
 
 const restores: Array<() => void> = [];
 function stub(object: any, key: string, replacement: any) { const previous = object[key]; object[key] = replacement; restores.push(() => { object[key] = previous; }); }
@@ -17,6 +18,7 @@ const original = configManager.getConfig();
 let config = { ...original, filter: { ...original.filter, cityName: '', candidateLanguages: '', salaryMin: 0, salaryMax: 0,
   degree: [], experience: [], hrActiveDaysLimit: 0, companyBlacklist: ['金融'], requiredKeywords: [],
   skipMissingCompanyIntro: false, skipVagueJobDescription: false,
+  commute: {},
   workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true }] },
   delivery: { ...original.delivery, dailyMaxQuota: 2, minDelaySeconds: 0, maxDelaySeconds: 0 } };
 const make = (n: number): WorkConditionReview => ({ id: n.toString(16).padStart(20, '0'), jobHref: 'https://www.zhipin.com/job_detail/review' + n + '.html',
@@ -31,6 +33,7 @@ let records: WorkConditionReview[] = []; const sends: string[] = []; const opene
 let active = false; let loggedIn = true; let sendResult: any = { success: true, verified: true, platformGreeting: true, continued: true };
 let detailFor: (review: WorkConditionReview) => any = review => ({ job: job(review), jobDetailText: review.screening!.jobDetail, alreadyChatted: false, chatButtonLocator: {} });
 async function main() {
+  restores.push(isolateBossSafety());
   stub(configManager, 'getConfig', () => config);
   stub(stateManager, 'loadQuota', () => ({ date: todayStr(), count: 0 })); stub(stateManager, 'saveQuota', () => {});
   stub(llmService, 'chatJson', async () => { throw new Error('手动选择的已评估岗位不应重复问AI'); });

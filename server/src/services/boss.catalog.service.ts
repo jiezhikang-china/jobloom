@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { BossPositionCatalog, BossPositionNode, BossPositionSelection } from '../types.js';
+import { bossAutomationSafety } from './boss-automation-safety.js';
 
 // 来自 BOSS 首页加载的 main.js 中 Search.loadPositionData，非猜测的接口。
 export const BOSS_POSITION_SOURCE = 'https://www.zhipin.com/wapi/zpCommon/data/getCityShowPosition?cityCode=100010000';
@@ -59,6 +60,10 @@ export class BossCatalogService {
   }
 
   async getPositions(forceRefresh = false): Promise<BossPositionCatalog> {
+    if (bossAutomationSafety.status().blocked) {
+      if (!this.cached) throw new Error('BOSS 自动操作已停止，目前没有可用的本地岗位分类');
+      return { ...this.cached, stale: true, warning: 'BOSS 自动操作已停止，岗位分类使用本地快照' };
+    }
     if (!forceRefresh && this.cached && Date.now() - Date.parse(this.cached.fetchedAt) < CACHE_TTL_MS) {
       return { ...this.cached, stale: false };
     }

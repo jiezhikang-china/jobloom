@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     const tabs = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as any[];
     const target = tabs.find((tab) => tab.type === 'page');
     assert.ok(target?.webSocketDebuggerUrl);
-    cdpPage = await new CdpPage(target.id, await CdpConnection.connect(target.webSocketDebuggerUrl), target.url).initialize();
+    cdpPage = await new CdpPage(target.id, await CdpConnection.connect(target.webSocketDebuggerUrl), target.url, false).initialize();
     (browserService as any).getWorkerPage = async () => cdpPage;
     (browserService as any).checkLoginStatus = async () => ({ isLoggedIn: true, isBrowserActive: true });
     const service = new BossPageService({ pageReadyTimeoutMs: 2500, pagePollIntervalMs: 40 });
