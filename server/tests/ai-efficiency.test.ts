@@ -138,14 +138,17 @@ async function main() {
   const strict = new FilterService();
   const pair = candidates.slice(2, 4);
   const broken = await strict.evaluateBatch(pair, '测试简历', '行政助理');
-  assert.ok(broken.every((item) => item.llmError && !item.passed), '漏评、重复项均不能盲目投递');
+  assert.ok(broken.every((item) => item.responseIssue && item.needsReview && !item.llmError && !item.passed), '漏评、重复项进入待确认，不当作网络失败重发');
   const recovered = await strict.evaluateBatch(pair, '测试简历', '行政助理');
   assert.equal(attempt, 2, '坏结果不能写入缓存');
   assert.equal(recovered[0].passed, true); assert.equal(recovered[1].passed, false, '返回顺序与岗位顺序不同也必须对应正确');
   (llmService as any).chatJson = async () => ({ jobs: [{ jobKey: 'job-0', score: 99 }] });
-  assert.equal((await new FilterService().evaluateBatch([pair[0]], '测试简历', '行政助理'))[0].llmError, true);
+  assert.equal((await new FilterService().evaluateBatch([pair[0]], '测试简历', '行政助理'))[0].responseIssue, true);
   (llmService as any).chatJson = async () => ({ score: 99, passed: true });
-  assert.equal((await new FilterService().evaluateBatch([pair[0]], '测试简历', '行政助理'))[0].llmError, true, '没有岗位ID的总评分不能套给某个岗位');
+  assert.equal((await new FilterService().evaluateBatch([pair[0]], '测试简历', '行政助理'))[0].passed, true, '请求只有一个岗位时可识别单个评估对象');
+  assert.ok((await new FilterService().evaluateBatch(pair, '测试简历', '行政助理')).every(item => item.responseIssue && !item.passed), '多个岗位不能猜测没有标识的总评分属于谁');
+  (llmService as any).chatJson = async () => ({ results: [{ job_key: 'job-0', score: 99, passed: 'true' }] });
+  assert.equal((await new FilterService().evaluateBatch([pair[0]], '测试简历', '行政助理'))[0].passed, true, '兼容明确字段别名和布尔字符串');
 
   config.filter.workRequirements = [{ id: 'metro', text: '离地铁步行不超过十分钟', enabled: true }];
   (llmService as any).chatJson = async () => ({ jobs: [

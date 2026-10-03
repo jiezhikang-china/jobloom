@@ -4,6 +4,7 @@ import { AiRequestQueue, abortableSleep } from './ai-request-queue.js';
 import { sanitizeApiKey, isApiKeyFormatValid } from '../config/credentials.js';
 import { deepseekProxyService } from './deepseek.proxy.service.js';
 import { createHash, randomUUID } from 'node:crypto';
+import { finalMessageText, ModelOutputError, parseModelJson } from './model-json.js';
 
 export { sanitizeApiKey, isApiKeyFormatValid };
 
@@ -97,7 +98,7 @@ export class LLMService {
       if (!this.pendingWebRequests.has(fingerprint)) this.pendingWebRequests.set(fingerprint, randomUUID());
       payload.request_id = this.pendingWebRequests.get(fingerprint);
     }
-    const requestTimeoutMs = isWeb ? Math.max(timeoutMs, 210000) + boundedInteger(config.minRequestIntervalSeconds, 30, 10, 300) * 1000
+    const requestTimeoutMs = isWeb ? Math.max(timeoutMs, payload.thinking ? 630000 : 330000) + boundedInteger(config.minRequestIntervalSeconds, 30, 10, 300) * 1000
       : payload.thinking?.type === 'enabled' ? Math.max(timeoutMs, 180000) : timeoutMs;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -176,8 +177,9 @@ export class LLMService {
         let providerMessage = rawText;
         try {
           const errorData = JSON.parse(rawText);
+          if (['final_answer_missing', 'output_format'].includes(errorData?.error?.code)) throw new ModelOutputError(errorData.error.message);
           providerMessage = errorData?.error?.message || errorData?.message || rawText;
-        } catch {}
+        } catch (error) { if (error instanceof ModelOutputError) throw error; }
         throw new Error(`大模型请求失败 [HTTP ${response.status}]${hint}: ${String(providerMessage).slice(0, 300)}`);
       }
 
@@ -190,17 +192,18 @@ export class LLMService {
 
       // 部分 provider 把错误塞在 200 响应体里
       if (data?.error) {
+        if (['final_answer_missing', 'output_format'].includes(data.error.code)) throw new ModelOutputError(data.error.message);
         throw new Error(`大模型返回错误: ${JSON.stringify(data.error).slice(0, 300)}`);
       }
 
       const message = data.choices?.[0]?.message;
       if (data.choices?.[0]?.finish_reason === 'length') {
-        throw new Error(`模型输出达到 ${maxTokens} token 上限，结果被截断；请增加最大输出长度或关闭深度思考`);
+        throw new ModelOutputError(`模型输出达到 ${maxTokens} token 上限，评估结果被截断`);
       }
       // reasoning_content 是思考过程，不能作为最终 JSON 结果。
-      const content = message?.content;
-      if (!content) {
-        throw new Error(message?.reasoning_content ? '模型只返回了思考过程，没有最终答案；请关闭深度思考或增加最大输出长度' : '大模型未返回有效内容');
+      const content = finalMessageText(message);
+      if (!content.trim()) {
+        throw new ModelOutputError(message?.reasoning_content ? '已收到思考过程，但没有最终评估答案' : '模型已返回，但最终答案为空');
       }
       if (isWeb) this.pendingWebRequests.delete(fingerprint);
       return content;
@@ -227,29 +230,7 @@ export class LLMService {
       content: [...messages.filter((item) => item.role === 'system').map((item) => item.content), systemPromptExtra.content].join('\n\n'),
     };
     const raw = await this.chat([system, ...messages.filter((item) => item.role !== 'system')], true, maxRetries, options);
-    const cleaned = this.stripCodeFence(raw);
-
-    try {
-      return JSON.parse(cleaned) as T;
-    } catch (err) {
-      console.error('[LLM] JSON 解析失败，未记录模型正文');
-      throw new Error(`大模型返回内容无法被解析为 JSON: ${(err as Error).message}`);
-    }
-  }
-
-  private stripCodeFence(raw: string): string {
-    let text = (raw || '').trim();
-    if (text.startsWith('```')) {
-      text = text.replace(/^```[a-zA-Z]*\s*/, '');
-      text = text.replace(/```\s*$/, '');
-    }
-    // 兼容模型在 JSON 前后夹带说明文字的情况：截取第一个 { 到最后一个 }
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-    if (start !== -1 && end > start) {
-      text = text.slice(start, end + 1);
-    }
-    return text.trim();
+    return parseModelJson<T>(raw);
   }
 }
 

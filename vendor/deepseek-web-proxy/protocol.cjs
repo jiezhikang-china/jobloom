@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Chat2API Team. GPL-3.0-or-later; see LICENSE and UPSTREAM.md.
 const { Worker } = require('node:worker_threads');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, createHash } = require('node:crypto');
 const { WebRequests, retryAfterSeconds } = require('./requests.cjs');
 
 const API_BASE = 'https://chat.deepseek.com/api/v0';
@@ -58,8 +58,18 @@ function messagesToPrompt(messages) {
   return prompt;
 }
 
-// DeepSeek sends JSON patches. Keep complete fragments so SET snapshots do not duplicate
-// earlier tokens, and classify empty THINK / RESPONSE fragments before their content arrives.
+function generationFingerprint(prompt, options) {
+  return createHash('sha256').update(JSON.stringify({ prompt, model_type: options.model_type,
+    search_enabled: options.search_enabled, thinking_enabled: options.thinking_enabled })).digest('hex');
+}
+function completionFromResult(sessionId, result, model = 'deepseek-v4-flash') {
+  return { id: `${sessionId}@${result.messageId}`, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model,
+    choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: result.content,
+      ...(result.reasoning ? { reasoning_content: result.reasoning } : {}) } }] };
+}
+
+// Keep complete fragments so SET snapshots do not duplicate earlier tokens.
+// Classify empty THINK / RESPONSE fragments before their content arrives.
 class DeepSeekAccumulator {
   constructor() {
     this.fragments = [];
@@ -69,43 +79,57 @@ class DeepSeekAccumulator {
     this.totalTokens = 0;
     this.legacyContent = '';
     this.legacyReasoning = '';
+    this.channel = 'RESPONSE';
   }
   add(event) {
     if (event?.error || (typeof event?.code === 'number' && event.code !== 0)) {
       throw new ProxyError('DeepSeek 返回错误，请打开登录窗口查看账号状态', 502, 'upstream_error');
     }
     if (event.response_message_id) this.messageId = String(event.response_message_id);
-    if (event.v?.response && !Array.isArray(event.v.response)) this.snapshot(event.v.response);
+    if (event?.v?.response && !Array.isArray(event.v.response)) this.snapshot(event.v.response);
     else {
-      if (event.p) this.lastPath = event.p;
-      if (this.lastPath) this.patch(this.lastPath, event.v, event.o);
+      const explicitPath = typeof event.p === 'string';
+      if (explicitPath) this.lastPath = event.p.replace(/^\//, '');
+      if (!explicitPath && typeof event.v === 'string' && !/\/(?:content|type|status)$/.test(this.lastPath)) {
+        const fragment = this.fragments.at(-1);
+        if (fragment) fragment.content = (fragment.content || '') + event.v;
+        else if (this.channel === 'THINK') this.legacyReasoning += event.v;
+        else this.legacyContent += event.v;
+      } else this.patch(this.lastPath, event.v, event.o);
     }
   }
   snapshot(response) {
     if (Array.isArray(response.fragments)) this.fragments = response.fragments.map((fragment) => ({ ...fragment }));
-    if (response.status === 'FINISHED') this.finished = true;
+    if (this.fragments.at(-1)?.type) this.channel = this.fragments.at(-1).type;
+    else if (response.thinking_enabled === true) this.channel = 'THINK';
+    if (['FINISHED', 'DONE', 'CLOSED'].includes(response.status)) this.finished = true;
     if (typeof response.accumulated_token_usage === 'number') this.totalTokens = response.accumulated_token_usage;
   }
   patch(p, value, operation) {
     if (operation === 'BATCH' && Array.isArray(value)) {
       for (const item of value) {
-        if (typeof item?.p === 'string') this.patch(item.p.startsWith('response/') ? item.p : `${p}/${item.p}`.replace(/\/+/g, '/'), item.v, item.o);
+        if (typeof item?.p === 'string') this.patch(this.joinPath(p, item.p), item.v, item.o);
       }
+      return;
+    }
+    if (p === '' && value && typeof value === 'object' && !Array.isArray(value)) {
+      if (value.response) this.snapshot(value.response);
       return;
     }
     if (p === 'response') {
       if (Array.isArray(value)) {
         for (const item of value) {
-          if (typeof item?.p === 'string') this.patch(item.p.startsWith('response/') ? item.p : `response/${item.p}`, item.v, item.o);
+          if (typeof item?.p === 'string') this.patch(this.joinPath(p, item.p), item.v, item.o);
         }
       } else if (value && typeof value === 'object') this.snapshot(value);
       return;
     }
-    if (p === 'response/status' && value === 'FINISHED') { this.finished = true; return; }
+    if (p === 'response/status' && ['FINISHED', 'DONE', 'CLOSED'].includes(value)) { this.finished = true; return; }
     if (p === 'response/accumulated_token_usage' && typeof value === 'number') { this.totalTokens = value; return; }
     if (p === 'response/fragments' && Array.isArray(value)) {
       const incoming = value.map((fragment) => ({ ...fragment }));
       this.fragments = operation === 'APPEND' ? [...this.fragments, ...incoming] : incoming;
+      if (this.fragments.at(-1)?.type) this.channel = this.fragments.at(-1).type;
       return;
     }
     const fragmentPath = p.match(/^response\/fragments\/(-?\d+)(?:\/(content|type))?$/);
@@ -114,12 +138,13 @@ class DeepSeekAccumulator {
       if (index < 0) index = this.fragments.length + index;
       if (index < 0 || index > 1000) return;
       const field = fragmentPath[2];
-      const previous = this.fragments[index] || { type: 'RESPONSE', content: '' };
+      const previous = this.fragments[index] || { type: this.channel, content: '' };
       if (!field && value && typeof value === 'object') this.fragments[index] = { ...previous, ...value };
       else if (field && typeof value === 'string') this.fragments[index] = {
         ...previous,
         [field]: field === 'content' && operation !== 'SET' ? `${previous.content || ''}${value}` : value,
       };
+      if (this.fragments[index]?.type) this.channel = this.fragments[index].type;
       return;
     }
     if (p === 'response/content' && typeof value === 'string') {
@@ -128,6 +153,10 @@ class DeepSeekAccumulator {
     if (p === 'response/thinking_content' && typeof value === 'string') {
       this.legacyReasoning = operation === 'SET' ? value : this.legacyReasoning + value;
     }
+  }
+  joinPath(parent, child) {
+    child = child.replace(/^\//, '');
+    return child === 'response' || child.startsWith('response/') ? child : `${parent}/${child}`.replace(/^\/|\/+$/g, '').replace(/\/+/g, '/');
   }
   result() {
     return {
@@ -139,26 +168,33 @@ class DeepSeekAccumulator {
   }
 }
 
-async function collectCompletion(body, { webSearch = false } = {}) {
+async function collectCompletion(body, { webSearch = false, jsonExpected = false } = {}) {
   if (!body) throw new ProxyError('DeepSeek 未返回聊天流');
   const state = new DeepSeekAccumulator();
   const decoder = new TextDecoder();
   let buffer = '';
   let bytes = 0;
   let eventName = '';
+  let dataLines = [];
+  const dispatch = () => {
+    const data = dataLines.join('\n').trim();
+    const name = eventName.toLowerCase();
+    eventName = ''; dataLines = [];
+    if (name === 'error') throw new ProxyError('DeepSeek 网页返回错误，请检查账号或稍后重试');
+    if (data === '[DONE]') { state.finished = true; return; }
+    if (data) {
+      let parsed;
+      try { parsed = JSON.parse(data); }
+      catch { throw new ProxyError('DeepSeek 网页协议已变化：聊天流不是合法 JSON', 502, 'stream_format'); }
+      state.add(parsed);
+    }
+    if (['finish', 'done', 'close'].includes(name)) state.finished = true;
+  };
   const line = (value) => {
     if (value.startsWith('event:')) { eventName = value.slice(6).trim(); return; }
-    if (!value.trim()) { eventName = ''; return; }
+    if (!value.trim()) { dispatch(); return; }
     if (!value.startsWith('data:')) return;
-    const data = value.slice(5).trim();
-    if (data === '[DONE]') { state.finished = true; return; }
-    if (!data) return;
-    if (eventName === 'error') throw new ProxyError('DeepSeek 网页返回错误，请检查账号或稍后重试');
-    let parsed;
-    try { parsed = JSON.parse(data); }
-    catch { throw new ProxyError('DeepSeek 网页协议已变化：聊天流不是合法 JSON'); }
-    state.add(parsed);
-    if (eventName === 'finish' || eventName === 'done') state.finished = true;
+    dataLines.push(value.slice(5).replace(/^ /, ''));
   };
   for await (const chunk of body) {
     bytes += chunk.byteLength ?? Buffer.byteLength(chunk);
@@ -168,16 +204,33 @@ async function collectCompletion(body, { webSearch = false } = {}) {
     while ((newline = buffer.indexOf('\n')) >= 0) {
       line(buffer.slice(0, newline).replace(/\r$/, ''));
       buffer = buffer.slice(newline + 1);
+      if (state.finished) break;
     }
+    // Do not wait for TCP EOF after a completed response: upstream may send keepalives.
+    if (state.finished) break;
   }
   buffer += decoder.decode();
-  if (buffer.trim()) line(buffer.replace(/\r$/, ''));
-  if (!state.finished) throw new ProxyError('DeepSeek 返回中断，未收到完成标记，请稍后重试', 502, 'incomplete_response');
+  if (!state.finished) {
+    if (buffer.trim()) line(buffer.replace(/\r$/, ''));
+    dispatch();
+  }
   const result = state.result();
   // Search responses may prefix the answer with a control marker. Keep search
   // metadata separate from the final JSON and preserve ordinary answer text.
   if (webSearch) result.content = result.content.replace(/^(SEARCH|WEB_SEARCH|SEARCHING)(?:\s+|$)/i, '');
-  if (!result.content.trim()) throw new ProxyError('DeepSeek 没有返回最终答案，请关闭深度思考后重试');
+  // The pinned upstream also uses ordinary stream end. Accept it for a complete
+  // JSON final answer only; a cut-off/THINK-only stream remains unconfirmed.
+  if (!state.finished && jsonExpected && result.content.trim()) {
+    try {
+      const final = JSON.parse(result.content.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''));
+      state.finished = final !== null && typeof final === 'object';
+    } catch { /* Keep a truncated response unconfirmed. */ }
+  }
+  if (!state.finished) throw new ProxyError('DeepSeek 返回中断，未收到完成标记，请稍后重试', 502, 'incomplete_response');
+  if (!result.content.trim()) {
+    const error = new ProxyError('DeepSeek 已结束，但只返回思考过程或空答案；结果需要确认', 422, 'final_answer_missing');
+    error.completed = true; throw error;
+  }
   return result;
 }
 
@@ -211,6 +264,7 @@ class DeepSeekWebAdapter {
     this.onAuthState = onAuthState;
     this.access = null;
     this.requests = requests;
+    this.nextRecoveryAt = new Map();
   }
   clearTokenCache() { this.access = null; }
   async headers(token) {
@@ -282,9 +336,18 @@ class DeepSeekWebAdapter {
       ? request.request_id : randomUUID();
     const previous = this.requests.result(requestId);
     if (previous) return previous;
-    if (this.requests.list().length) throw new ProxyError('上次 DeepSeek 聊天结果尚未确认，岗位已保留。请在设置中查看未完成的聊天；等待期间不会重复提交', 503, 'completion_uncertain', 60);
     let prompt = messagesToPrompt(request.messages);
     if (request.response_format?.type === 'json_object') prompt += '\n\n仅输出一个合法 JSON 对象，不要输出代码围栏或解释。';
+    const fingerprint = generationFingerprint(prompt, options);
+    let cached = this.requests.resultForFingerprint(fingerprint);
+    if (cached) return cached;
+    const pending = this.requests.list()[0];
+    if (pending) {
+      await this.recoverPending(pending, signal);
+      cached = this.requests.resultForFingerprint(fingerprint);
+      if (cached) return cached;
+    }
+    if (this.requests.list().length) throw new ProxyError('原聊天尚未完成，岗位已保留。等待后会读取同一聊天的结果，不重复提交生成', 503, 'completion_uncertain', 60);
     const token = await this.acquireToken(signal);
     let sessionId;
     let dispatched = false;
@@ -299,7 +362,7 @@ class DeepSeekWebAdapter {
       const headers = { ...await this.headers(token), 'X-Ds-Pow-Response': answer, Referer: `https://chat.deepseek.com/a/chat/s/${sessionId}` };
       signal?.throwIfAborted();
       // Record before the non-idempotent POST. A lost connection cannot prove it was rejected.
-      this.requests.begin(requestId, sessionId);
+      this.requests.begin(requestId, sessionId, fingerprint);
       dispatched = true;
       const response = await this.fetchImpl(`${API_BASE}/chat/completion`, {
         method: 'POST', signal,
@@ -314,16 +377,17 @@ class DeepSeekWebAdapter {
         await this.readJson(response);
         throw new ProxyError('DeepSeek 没有返回聊天流，请更新代理');
       }
-      const result = await collectCompletion(response.body, { webSearch: options.search_enabled });
-      const completion = {
-        id: `${sessionId}@${result.messageId}`, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: request.model,
-        choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: result.content,
-          ...(result.reasoning ? { reasoning_content: result.reasoning } : {}) } }],
-      };
-      this.requests.finish(requestId, completion);
+      const result = await collectCompletion(response.body, { webSearch: options.search_enabled, jsonExpected: request.response_format?.type === 'json_object' });
+      const completion = completionFromResult(sessionId, result, request.model);
+      this.requests.finish(requestId, completion, fingerprint);
       confirmed = true;
       return completion;
     } catch (error) {
+      if (dispatched && error.completed) {
+        // Generation ended. Preserve this terminal result by ID; do not regenerate it.
+        this.requests.finish(requestId, { error: { message: error.message, code: error.code } }, fingerprint);
+        confirmed = true;
+      }
       if (dispatched && ['rate_limited', 'login_expired', 'verification_required'].includes(error.code)) {
         this.requests.clear(requestId); dispatched = false;
       }
@@ -337,6 +401,31 @@ class DeepSeekWebAdapter {
       }
     }
   }
+  /** Verified in this project's own chat: GET history_messages without cache deltas. */
+  async recoverPending(pending, signal, force = false) {
+    if (!this.requests.list().some(item => item.requestId === pending.requestId && item.sessionId === pending.sessionId)) return false;
+    if (!force && (this.nextRecoveryAt.get(pending.requestId) || 0) > Date.now()) return false;
+    this.nextRecoveryAt.set(pending.requestId, Date.now() + 60000);
+    const token = await this.acquireToken(signal);
+    const history = await this.request('chat/history_messages?chat_session_id=' + encodeURIComponent(pending.sessionId), token, undefined, signal);
+    if (history?.chat_session?.id !== pending.sessionId || !Array.isArray(history.chat_messages)) return false;
+    const users = history.chat_messages.filter(item => item.role === 'USER');
+    const replies = history.chat_messages.filter(item => item.role === 'ASSISTANT');
+    if (users.length !== 1 || replies.length !== 1 || replies[0].parent_id !== users[0].message_id) return false;
+    const reply = replies[0];
+    if (reply.status !== 'FINISHED' || reply.incomplete_message === true || reply.has_pending_fragment === true) return false;
+    const accumulator = new DeepSeekAccumulator(); accumulator.snapshot(reply); accumulator.messageId = String(reply.message_id);
+    const result = accumulator.result();
+    if (!result.content.trim()) return false;
+    const prompt = (users[0].fragments || []).filter(item => item.type === 'REQUEST').map(item => item.content || '').join('');
+    if (!prompt || typeof history.chat_session.model_type !== 'string') return false;
+    const fingerprint = generationFingerprint(prompt, { model_type: history.chat_session.model_type,
+      thinking_enabled: users[0].thinking_enabled === true, search_enabled: users[0].search_enabled === true });
+    if (pending.fingerprint && pending.fingerprint !== fingerprint) return false;
+    this.requests.finish(pending.requestId, completionFromResult(pending.sessionId, result), fingerprint);
+    this.nextRecoveryAt.delete(pending.requestId);
+    return true; // Keep the original chat in history; never regenerate on recovery.
+  }
 }
 
-module.exports = { MODELS, ProxyError, normalizeToken, resolveOptions, messagesToPrompt, DeepSeekAccumulator, collectCompletion, calculatePow, DeepSeekWebAdapter };
+module.exports = { MODELS, ProxyError, normalizeToken, resolveOptions, messagesToPrompt, DeepSeekAccumulator, collectCompletion, calculatePow, DeepSeekWebAdapter, generationFingerprint };

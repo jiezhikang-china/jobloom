@@ -9,6 +9,7 @@ import { jobInformationIssue } from './job-information.js';
 import { decodeBossText } from './boss-text.js';
 import { languageQualificationIssue, candidateLanguageEvidence, type CandidateLanguageContext } from './language-qualification.js';
 import { commuteDecision } from './commute.js';
+import { ModelOutputError } from './model-json.js';
 
 const EXPERIENCE_TOKENS = ['应届生', '在校/应届', '在校', '应届', '1年以内', '1-3年', '3-5年', '5-10年', '10年以上', '10年及以上'];
 
@@ -19,6 +20,7 @@ export interface Stage2Result {
   customGreeting: string;
   /** 大模型不可用（网络/超时/凭据/输出非法）导致的判定失败，供上层区分"AI 淘汰"与"AI 不可用" */
   llmError?: boolean;
+  responseIssue?: boolean;
   needsReview?: boolean;
   needsCompanyConfirmation?: boolean;
   needsCommuteConfirmation?: boolean;
@@ -269,20 +271,30 @@ export class FilterService {
       try {
         const response = await llmService.chatJson<{ jobs?: Array<ModelEvaluation & { jobKey: string }> } & ModelEvaluation>(messages, 1, options);
         options.signal?.throwIfAborted();
-        const returned = Array.isArray(response?.jobs) ? response.jobs : [];
+        const raw = response as any;
+        const envelope = raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) ? raw.data : raw;
+        let returned: any[] = Array.isArray(envelope) ? envelope : Array.isArray(envelope?.jobs) ? envelope.jobs
+          : Array.isArray(envelope?.results) ? envelope.results : Array.isArray(envelope?.evaluations) ? envelope.evaluations : [];
+        if (!returned.length && group.length === 1 && envelope && typeof envelope === 'object' && envelope.score !== undefined) {
+          returned = [{ ...envelope, jobKey: envelope.jobKey || envelope.job_key || envelope.id || 'job-' + group[0].index }];
+        }
+        returned = returned.map(entry => entry && ({ ...entry, jobKey: entry.jobKey || entry.job_key || entry.id,
+          passed: entry.passed === 'true' ? true : entry.passed === 'false' ? false : entry.passed }));
         for (const { index, key } of group) {
           const matches = returned.filter((entry) => entry?.jobKey === 'job-' + index);
           results[index] = matches.length === 1
             ? this.finalizeEvaluation(candidates[index].job, candidates[index].jobDetail, matches[0], config.filter)
-            : this.modelFailure('批量评估漏掉或重复返回该岗位，已跳过');
-          if (!results[index].llmError) {
+            : this.outputReview(candidates[index].job, candidates[index].jobDetail, config.filter, '模型已返回，但该岗位的编号缺失、重复或无法对应');
+          if (!results[index].llmError && !results[index].responseIssue) {
             this.cache.set(key, { expiresAt: Date.now() + 30 * 60 * 1000, result: structuredClone(results[index]) });
             while (this.cache.size > 300) this.cache.delete(this.cache.keys().next().value!);
           }
         }
       } catch (error) {
         if (options.signal?.aborted) throw options.signal.reason;
-        for (const { index } of group) results[index] = this.modelFailure((error as Error).message);
+        for (const { index } of group) results[index] = error instanceof ModelOutputError
+          ? this.outputReview(candidates[index].job, candidates[index].jobDetail, config.filter, error.message)
+          : this.modelFailure((error as Error).message);
       }
     }
     return results;
@@ -293,9 +305,15 @@ export class FilterService {
       customGreeting: '', llmError: true, evaluationSource: 'ai' };
   }
 
+  private outputReview(job: BossJobItem, detail: string, filter: AppConfig['filter'], message: string): Stage2Result {
+    return { passed: false, score: 0, reason: 'AI 回答已收到，结果待确认：' + message, customGreeting: '',
+      responseIssue: true, needsReview: true, evaluationSource: 'ai',
+      requirementAssessment: assessWorkRequirements(job, detail, configuredWorkRequirements(filter), undefined, filter.experienceMatchMode) };
+  }
+
   private finalizeEvaluation(job: BossJobItem, jobDetail: string, result: ModelEvaluation, filterCfg: AppConfig['filter']): Stage2Result {
     const score = this.normalizeScore(result?.score);
-    if (!Number.isFinite(score) || typeof result.passed !== 'boolean') return this.modelFailure('大模型返回的评分或通过结论无效');
+    if (!Number.isFinite(score) || typeof result.passed !== 'boolean') return this.outputReview(job, jobDetail, filterCfg, '模型返回的评分或通过结论无效');
     const requirements = configuredWorkRequirements(filterCfg);
     const assessment = requirements.length ? assessWorkRequirements(job, jobDetail, requirements, result.workRequirements, filterCfg.experienceMatchMode) : undefined;
     const base = { score, customGreeting: '', evaluationSource: 'ai' as const, ...(assessment ? { requirementAssessment: assessment } : {}) };

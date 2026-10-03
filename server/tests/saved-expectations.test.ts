@@ -13,6 +13,7 @@ const fixture = `<!doctype html><html><head><meta charset="utf-8"></head><body>
   <div class="zp-feedback-dialog" style="display:none"><h3 class="zp-title">隐藏弹窗</h3></div>
   <script>
     window.submissions = []; window.showFeedback = true; window.recommendClicks = 0;
+    window.neutralOption = true; window.requiresReason = false;
     function list(index) {
       document.querySelector('.rec-job-list').innerHTML = '<li class="job-card-box"><a class="job-name" href="/job_detail/' + index + '.html">岗位' + index + '</a>' +
         '<span class="job-salary">6-8K</span><ul class="tag-list"><li>1-3年</li><li>大专</li></ul>' +
@@ -26,14 +27,14 @@ const fixture = `<!doctype html><html><head><meta charset="utf-8"></head><body>
         document.querySelector('.not-suitable').onclick = function() {
           var d = document.createElement('div'); d.className = 'zp-feedback-dialog';
           d.innerHTML = '<h3 class="zp-title">选择原因，减少不合适职位推荐</h3><ul><li class="zp-type-item">“公司' + index + '”公司</li>' +
-            '<li class="zp-type-item">薪资低</li></ul><textarea class="zp-type-textarea" maxlength="50"></textarea>' +
+            (window.neutralOption ? '<li class="zp-type-item">职位不匹配</li>' : '<li class="zp-type-item">其他</li>') + '</ul><textarea class="zp-type-textarea" maxlength="50"></textarea>' +
             '<span class="zp-btn-sure" ka="dialog_sure">确定</span><span ka="dialog_cancel">取消</span>';
           document.body.appendChild(d);
-          d.querySelector('.zp-type-item').onclick = function() { this.classList.add('active'); };
+          d.querySelectorAll('.zp-type-item').forEach(function(item) { item.onclick = function() { this.classList.add('active'); }; });
           d.querySelector('[ka="dialog_cancel"]').onclick = function() { d.remove(); };
           d.querySelector('[ka="dialog_sure"]').onclick = function() {
-            var reason = d.querySelector('textarea').value; if (!reason) return;
-            window.submissions.push({ index: index, reason: reason, company: !!d.querySelector('.active') }); d.remove();
+            var reason = d.querySelector('textarea').value; if (window.requiresReason && !reason) return;
+            window.submissions.push({ index: index, reason: reason, company: d.querySelector('.zp-type-item').classList.contains('active') }); d.remove();
             if (window.showFeedback) { var t = document.createElement('div'); t.className = 'zp-toast'; t.textContent = '已进行反馈';
               document.body.appendChild(t); setTimeout(function() { t.remove(); }, 600); }
           };
@@ -68,7 +69,8 @@ async function main() {
     page = await new CdpPage(target.id, await CdpConnection.connect(target.webSocketDebuggerUrl), target.url).initialize();
     browserService.getWorkerPage = async () => page!;
     browserService.checkLoginStatus = async () => ({ isLoggedIn: true, isBrowserActive: true });
-    const service = new BossPageService({ pageReadyTimeoutMs: 2500, pagePollIntervalMs: 30 });
+    const remembered: string[] = [];
+    const service = new BossPageService({ pageReadyTimeoutMs: 2500, pagePollIntervalMs: 30, rememberNotSuitable: target => { remembered.push(target.companyName); } });
     await page.goto('https://www.zhipin.com/web/geek/jobs?jobType=1903');
     assert.deepEqual(await service.getSavedExpectationNames(), names, '读取全部可见自选期望，不写死数量');
     for (const [index, name] of names.entries()) {
@@ -82,11 +84,16 @@ async function main() {
     assert.equal(await service.markJobNotSuit(card.cardLocator, { ...card, jobHref: '/job_detail/wrong.html' }), false);
     assert.equal(await service.markJobNotSuit(card.cardLocator, card, '公司页没有公司介绍'), true,
       '短或模糊描述也能打开目标详情，操作可见反馈弹窗并确认成功');
-    assert.deepEqual(await page.evaluate(() => (window as any).submissions), [{ index: 3, reason: '公司页没有公司介绍', company: true }]);
+    assert.deepEqual(await page.evaluate(() => (window as any).submissions), [{ index: 3, reason: '', company: true }], '优先选公司内置选项，内部淘汰理由不上传');
+    assert.deepEqual(remembered, ['公司3'], '过期目标不记错公司，正确淘汰目标保存本地');
     await page.evaluate(() => { (window as any).showFeedback = false; document.querySelectorAll('.zp-toast').forEach((item) => item.remove()); });
     assert.equal(await service.markJobNotSuit(card.cardLocator, card, '职责不清晰'), false, '没有确认信号不计入成功');
     assert.equal(await page.evaluate(() => (window as any).submissions.length), 2, '不反复点击确定');
-    console.log('PASS | 真实 CDP：动态自选期望、原页切换、跳过推荐、保留设置、隐藏弹窗、填写原因、平台成功反馈、过期目标与未确认结果');
+    await page.evaluate(() => { (window as any).neutralOption = false; (window as any).requiresReason = true; });
+    assert.equal(await service.markJobNotSuit(card.cardLocator, card, '涉及助贷，我的个人信息不得发给平台'), false);
+    assert.equal(await page.evaluate(() => (window as any).submissions.length), 2, '平台必须填写文字时取消，无本地理由提交');
+    assert.equal(await page.locator('.zp-feedback-dialog').filter({ visible: true }).evaluateAll(items => items.length), 0);
+    console.log('PASS | 真实 CDP：动态自选期望、原页切换、优先屏蔽公司、零内部理由上传、本地记录、必填文字取消、平台成功信号');
   } finally { browserService.getWorkerPage = getWorker; browserService.checkLoginStatus = login; page?.closeConnection(); await browser.close(); }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -19,7 +19,7 @@ const config = { ...original, llm: { ...original.llm, jobBatchSize: 3 },
     workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true },
       { id: 'metro', text: '离地铁步行不超过十分钟', enabled: true }] },
   delivery: { dailyMaxQuota: 2, minDelaySeconds: 0, maxDelaySeconds: 0 } };
-const card = (key: string, salary = '4-6K'): DOMJobCardInfo => ({ index: 0, jobHref: '/job_detail/' + key + '.html',
+const card = (key: string, salary = '4-6K'): DOMJobCardInfo => ({ index: 0, jobHref: '/job_detail/' + Buffer.from(key).toString('hex') + '.html',
   jobName: '行政助理', companyName: key, cityName: '上海', salary, activeTimeDesc: '今日活跃', experience: '经验不限',
   degree: '大专', skills: [], cardLocator: { key } as any });
 let cards = [card('薪资不符', '1-2K'), card('工时不符'), card('作息未注明'), card('甲'), card('乙'), card('丙')];
@@ -94,7 +94,7 @@ async function main() {
   await stale.startDelivery({ ...params, resumeText: params.resumeText + '新批次' });
   assert.deepEqual(batches, [['甲', '乙']], '列表最后不足三条，也只发一个批量请求');
   assert.deepEqual(sent, ['乙'], '暂存岗位的JD改变后不能使用旧评估投递');
-  assert.ok(stale.getLogs().some((item) => item.message.includes('暂存已过期')));
+  assert.ok(reviewed.includes('甲'), '最新详情变化也应保存待確認而非永久跳过');
 
   changed = false; changedLocation = true; loaded.length = 0; sent.length = 0;
   config.filter.commute = { origin, maxDistanceKm: 15 };
@@ -147,6 +147,42 @@ async function main() {
   assert.equal(stopping.getStats().status, 'idle'); assert.equal(stopping.getStats().pendingEvaluationCount, 0);
   assert.deepEqual(sent, [], 'AI请求中点击停止，暂存的岗位均不得发送');
   assert.equal(stopping.isActive(), false);
+
+  changed = false; config.filter.workRequirements = []; config.filter.hrActiveDaysLimit = 3;
+  config.delivery.dailyMaxQuota = 1; config.filter.skipMissingCompanyIntro = false; config.filter.skipVagueJobDescription = false;
+  loaded.length = 0; sent.length = 0; reviewed.length = 0; batches.length = 0;
+  cards = [{ ...card('缺卡片字段'), salary: '', degree: '', experience: '', cityName: '', activeTimeDesc: '' }];
+  stub(bossPageService, 'loadJobDetail', async (_locator: any, _name: string, company: string) => {
+    loaded.push(company); currentDetail = company;
+    return { jobDetailText: '负责行政文书和资料整理，每周双休。', activeTimeDesc: '', brandIndustry: '企业服务',
+      alreadyChatted: false, chatButtonLocator: { key: company }, cardData: { salary: '4-6K', degree: '大专', experience: '经验不限', cityName: '上海' } };
+  });
+  stub(llmService, 'chatJson', async (messages: any[]) => {
+    const jobs = JSON.parse(messages[1].content.split('【待评估岗位列表（逐个评估）】：\n')[1]);
+    batches.push(jobs.map((item: any) => item.companyName));
+    return { jobs: jobs.map((item: any) => ({ jobKey: item.jobKey, score: 90, passed: true, customGreeting: '您好，' + item.companyName })) };
+  });
+  await new DeliveryService().startDelivery({ ...params, resumeText: params.resumeText + '详情补字段测试' });
+  assert.deepEqual(sent, ['缺卡片字段'], '卡片缺字段先读其已核对详情补齐；招聘者活跃时间未知不无端跳过');
+
+  config.filter.hrActiveDaysLimit = 0; cards = [card('临时详情失败')]; sent.length = 0; reviewed.length = 0;
+  let detailAttempts = 0;
+  stub(bossPageService, 'loadJobDetail', async () => { detailAttempts++; throw new Error('详情还没有绑定到所选职位'); });
+  const deferred = new DeliveryService();
+  (deferred as any).sleepInterruptible = async () => true;
+  await deferred.startDelivery({ ...params, resumeText: params.resumeText + '读详情失败保留测试' });
+  assert.equal(detailAttempts, 3); assert.deepEqual(reviewed, ['临时详情失败']); assert.deepEqual(sent, []);
+
+  cards = [card('格式待确认')]; reviewed.length = 0; detailAttempts = 0;
+  stub(bossPageService, 'loadJobDetail', async (_locator: any, _name: string, company: string) => {
+    currentDetail = company; return { jobDetailText: '负责行政文书和资料整理。', activeTimeDesc: '', brandIndustry: '企业服务', alreadyChatted: false, chatButtonLocator: { key: company } };
+  });
+  let outputCalls = 0;
+  stub(llmService, 'chatJson', async () => { outputCalls++; return { jobs: [{ jobKey: 'job-0', score: 80 }] }; });
+  const outputReview = new DeliveryService();
+  (outputReview as any).sleepInterruptible = async () => true;
+  await outputReview.startDelivery({ ...params, resumeText: params.resumeText + '已返回格式待确认测试' });
+  assert.equal(outputCalls, 1); assert.deepEqual(reviewed, ['格式待确认']); assert.deepEqual(sent, [], '响应结论缺失保留待确认，不当网络失败重新生成');
   console.log('PASS | 先脚本初筛再暂存、3岗位1请求、尾批处理、乱序对应、同批配额、旧JD不发送、AI请求可停止');
 }
 

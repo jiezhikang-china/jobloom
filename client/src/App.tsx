@@ -4,6 +4,7 @@ import DeepSeekAccountPanel from './DeepSeekAccountPanel.js';
 import WorkConditionOptions, { withWorkConditionPresets } from './WorkConditionOptions.js';
 import WorkConditionReviewPanel from './WorkConditionReviewPanel.js';
 import LocationFilterOptions from './LocationFilterOptions.js';
+import NotSuitablePanel from './NotSuitablePanel.js';
 import {
   FileText,
   Compass,
@@ -746,7 +747,7 @@ export default function App() {
                   <option value="saved_expectations">按目标设置 BOSS 自选岗位</option>
                   <option value="search">按官方分类和关键词搜索</option>
                 </select>
-                <p>{usesSavedExpectations ? '启动时将目标岗位和城市保存到 BOSS 推荐旁的自选位置，再逐个筛选。明确不符合的职位会点“不合适”。' : '按下方分类和搜索词查找职位；平台未提供“不合适”时只记录淘汰。'}</p>
+                <p>{usesSavedExpectations ? '启动时将目标岗位和城市保存到 BOSS 推荐旁的自选位置，再逐个筛选。' : '按下方分类和搜索词查找职位。'} 淘汰理由保留在本地；标记“不合适”时优先选公司，减少这家公司的重复推荐。</p>
               </div>
 
               {deliveryMode === 'manual' && (
@@ -1234,6 +1235,8 @@ export default function App() {
 
               <LocationFilterOptions value={config.filter.commute} cityName={config.filter.cityName} disabled={isTaskRunning}
                 onChange={commute => setConfig({ ...config, filter: { ...config.filter, commute } })} />
+
+              <NotSuitablePanel disabled={isTaskRunning} />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 {/* 城市 */}

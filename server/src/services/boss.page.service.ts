@@ -7,6 +7,8 @@ import { decodeBossText, readableBossSalary } from './boss-text.js';
 import { languageQualificationIssue, type CandidateLanguageContext } from './language-qualification.js';
 import { readBossWorkAddress, bossMapService } from './boss-map.service.js';
 import { commuteDecision } from './commute.js';
+import { bossJobId, sameJobLink, normalizedJobName } from './job-identity.js';
+import { notSuitableStore } from './not-suitable-store.js';
 
 const ORIGIN = 'https://www.zhipin.com';
 const CARD = 'ul.rec-job-list li.job-card-box';
@@ -67,7 +69,7 @@ function pathOf(href: string, base: string): string {
   try { return new URL(href, base).pathname; } catch { return ''; }
 }
 
-const normalizedName = (text: string) => decodeBossText(text).normalize('NFKC').replace(/\s+/g, '');
+const normalizedName = normalizedJobName;
 function sameCompany(actual: string, expected: string): boolean {
   const prefix = normalizedName(expected).replace(/(?:\.{3}|…+)$/, '');
   return normalizedName(actual) === normalizedName(expected)
@@ -78,10 +80,14 @@ export class BossPageService {
   private readonly pageReadyTimeoutMs: number;
   private readonly pagePollIntervalMs: number;
   private companyCache = new Map<string, { expiresAt: number; info: BossCompanyInfo }>();
+  private feedbackUnavailableUntil = new Map<string, number>();
+  private rememberNotSuitable: (target: { jobHref: string; jobName: string; companyName: string }) => void;
 
-  constructor(options: { pageReadyTimeoutMs?: number; pagePollIntervalMs?: number } = {}) {
+  constructor(options: { pageReadyTimeoutMs?: number; pagePollIntervalMs?: number;
+    rememberNotSuitable?: (target: { jobHref: string; jobName: string; companyName: string }) => void } = {}) {
     this.pageReadyTimeoutMs = options.pageReadyTimeoutMs ?? 20000;
     this.pagePollIntervalMs = options.pagePollIntervalMs ?? 400;
+    this.rememberNotSuitable = options.rememberNotSuitable || (target => notSuitableStore.remember(target));
   }
 
   /** 页面状态由实际可见 DOM 决定；_security_check 参数本身不代表验证码。 */
@@ -232,13 +238,15 @@ export class BossPageService {
     const rows = await page.locator(CARD).evaluateAll((elements) => elements.map((element, index) => {
       const card = element as HTMLElement;
       if (!card.getClientRects().length) return null;
-      const tags = [...card.querySelectorAll('.tag-list li')].map((item) => item.textContent?.trim() || '').filter(Boolean);
+      const visibleText = (selector: string) => (card.querySelector(selector) as HTMLElement | null)?.innerText?.trim() || '';
+      const tags = [...card.querySelectorAll('.tag-list li')].filter(item => (item as HTMLElement).getClientRects().length)
+        .map(item => (item as HTMLElement).innerText.trim()).filter(Boolean);
       return {
         index, href: card.querySelector('a.job-name')?.getAttribute('href') || '',
-        name: card.querySelector('a.job-name')?.textContent?.trim() || '',
-        company: card.querySelector('.job-card-footer .boss-name')?.textContent?.trim() || '',
-        location: card.querySelector('.company-location')?.textContent?.trim() || '',
-        salary: card.querySelector('.job-salary')?.textContent?.trim() || '',
+        name: visibleText('a.job-name'),
+        company: visibleText('.job-card-footer .boss-name'),
+        location: visibleText('.company-location'),
+        salary: visibleText('.job-salary'),
         tags,
       };
     }).filter((item) => item !== null));
@@ -264,16 +272,17 @@ export class BossPageService {
   }
 
   private cardByHref(page: CdpPage, href: string): CdpLocator {
-    return page.locator(CARD).filter({ has: page.locator(`a.job-name[href=${JSON.stringify(href)}]`) }).first();
+    const id = bossJobId(href);
+    return page.locator(CARD).filter({ has: page.locator(`a.job-name[href*=${JSON.stringify('/job_detail/' + id + '.html')}]`) }).first();
   }
 
   public async isCardStillTarget(card: CdpLocator, jobName: string, companyName: string, href: string): Promise<boolean> {
     const data = await card.evaluate((element) => ({
       href: element.querySelector('a.job-name')?.getAttribute('href') || '',
-      name: element.querySelector('a.job-name')?.textContent?.trim() || '',
-      company: element.querySelector('.job-card-footer .boss-name')?.textContent?.trim() || '',
+      name: (element.querySelector('a.job-name') as HTMLElement | null)?.innerText?.trim() || '',
+      company: (element.querySelector('.job-card-footer .boss-name') as HTMLElement | null)?.innerText?.trim() || '',
     })).catch(() => null);
-    return !!data && data.href === href && decodeBossText(data.name) === jobName && decodeBossText(data.company) === companyName;
+    return !!data && sameJobLink(data.href, href) && normalizedName(data.name) === normalizedName(jobName) && sameCompany(data.company, companyName);
   }
 
   public async relocateCard(href: string, jobName: string, companyName: string): Promise<CdpLocator | null> {
@@ -295,13 +304,23 @@ export class BossPageService {
     }
     if (state.kind !== 'jobs') return false;
     const detail = await page.locator(DETAIL).first().evaluate((element) => ({
-      name: element.querySelector('.job-detail-info .job-name')?.textContent?.trim() || '',
+      name: (element.querySelector('.job-detail-info .job-name') as HTMLElement | null)?.innerText?.trim() || '',
       href: element.querySelector('a.more-job-btn')?.getAttribute('href') || '',
+      id: (element as any).__vue__?.$props?.data?.jobInfo?.encryptId || '',
+      boundName: (element as any).__vue__?.$props?.data?.jobInfo?.jobName || '',
+      company: (element as any).__vue__?.$props?.data?.brandComInfo?.brandName || '',
+      loading: (element as any).__vue__?.$props?.loading === true,
       text: (element as HTMLElement).innerText,
       description: (element.querySelector('.job-detail-body p.desc') as HTMLElement | null)?.innerText?.trim() || '',
     })).catch(() => null);
-    if (!detail || decodeBossText(detail.name) !== jobName) return false;
-    if (href) return !!detail.href && pathOf(detail.href, page.url()) === pathOf(href, page.url());
+    if (!detail || detail.loading || normalizedName(detail.name || detail.boundName) !== normalizedName(jobName)) return false;
+    if (href) {
+      const expected = bossJobId(href);
+      if (detail.id && detail.id !== expected) return false;
+      if (detail.href && !sameJobLink(detail.href, href)) return false;
+      if (detail.company && !sameCompany(detail.company, companyName)) return false;
+      return Boolean(expected && (detail.id === expected || sameJobLink(detail.href, href)));
+    }
     return !!companyName && detail.text.includes(companyName);
   }
 
@@ -397,22 +416,43 @@ export class BossPageService {
     workAddress?: BossWorkAddress;
     alreadyChatted: boolean;
     chatButtonLocator: CdpLocator | null;
+    cardData?: { salary: string; degree: string; experience: string; cityName: string };
   }> {
     const page = card.page();
     if (href && !(await this.isCardStillTarget(card, jobName, companyName, href))) throw new Error('职位卡片在点击前发生变化');
     await card.click();
     const deadline = Date.now() + 9000;
-    while (Date.now() < deadline && !(await this.isDetailStillTarget(jobName, companyName, href))) {
+    let retried = false;
+    while (Date.now() < deadline && !(await this.isDetailStillTarget(jobName, companyName, href, page))) {
       const state = await this.inspectPage(page);
       this.throwIfUnavailable(state);
+      // A rendered card can precede the SPA click handler. Retry that same ID once.
+      if (!retried && Date.now() > deadline - 7000 && href && await this.isCardStillTarget(card, jobName, companyName, href)) {
+        retried = true; await card.click();
+      }
       await pause(250);
     }
-    if (!(await this.isDetailStillTarget(jobName, companyName, href))) throw new Error('右侧详情与所选职位链接不一致');
+    if (!(await this.isDetailStillTarget(jobName, companyName, href, page))) {
+      const observed = await page.locator(DETAIL).first().evaluate(element => ({
+        href: element.querySelector('a.more-job-btn')?.getAttribute('href') || '',
+        name: (element.querySelector('.job-detail-info .job-name') as HTMLElement | null)?.innerText?.trim() || '',
+      })).catch(() => ({ href: '', name: '' }));
+      throw new Error('详情尚未核对：期望岗位编号 ' + bossJobId(href || '') + '，实际 '
+        + (bossJobId(observed.href) || '未加载') + '，标题「' + decodeBossText(observed.name).slice(0, 100) + '」');
+    }
     const detail = page.locator(DETAIL).first();
     let jobDetailText = decodeBossText((await detail.locator(DESCRIPTION).innerText()).trim());
+    const bound = await detail.evaluate(element => {
+      const data = (element as any).__vue__?.$props?.data;
+      return { id: data?.jobInfo?.encryptId || '', active: data?.bossInfo?.activeTimeDesc || '',
+        industry: data?.brandComInfo?.industryName || '', salary: data?.jobInfo?.salaryDesc || '',
+        degree: data?.jobInfo?.degreeName || '', experience: data?.jobInfo?.experienceName || '', city: data?.jobInfo?.locationName || '' };
+    }).catch(() => ({ id: '', active: '', industry: '', salary: '', degree: '', experience: '', city: '' }));
     const recruiterText = decodeBossText(await detail.locator('.job-boss-info').first().innerText({ timeout: 500 }).catch(() => ''));
-    const activeTimeDesc = recruiterText.match(/刚刚活跃|今日活跃|今天活跃|在线|\d+\s*日内活跃|\d+\s*周内活跃|本周活跃|本月活跃/)?.[0] || '';
-    let brandIndustry = (await detail.locator('a[ka="job-detail-brandindustry"]').first().innerText({ timeout: 200 }).catch(() => '')).trim();
+    const activeTimeDesc = bound.id === bossJobId(href || '') && typeof bound.active === 'string' ? decodeBossText(bound.active)
+      : recruiterText.match(/刚刚活跃|今日活跃|今天活跃|在线|\d+\s*(?:日内|天前|周内)活跃|本周活跃|本月活跃/)?.[0] || '';
+    let brandIndustry = decodeBossText((await detail.locator('a[ka="job-detail-brandindustry"]').first().innerText({ timeout: 200 }).catch(() => '')).trim()
+      || (bound.id === bossJobId(href || '') && typeof bound.industry === 'string' ? bound.industry : ''));
     let companyInfo: BossCompanyInfo | undefined;
     let workAddress = await readBossWorkAddress(page);
     const rejectEarly = options.filter && (findJobExclusion({ jobName, brandName: companyName, brandIndustry,
@@ -439,6 +479,8 @@ export class BossPageService {
     const visible = await button.isVisible({ timeout: 800 }).catch(() => false);
     const label = visible ? (await button.innerText()).trim() : '';
     return { jobDetailText, activeTimeDesc, brandIndustry, workAddress, ...(companyInfo ? { companyInfo } : {}),
+      ...(href && bound.id === bossJobId(href) ? { cardData: { salary: readableBossSalary(bound.salary), degree: decodeBossText(bound.degree),
+        experience: decodeBossText(bound.experience), cityName: decodeBossText(bound.city).split('·')[0].trim() } } : {}),
       alreadyChatted: /继续沟通|已在沟通/.test(label), chatButtonLocator: visible ? button : null };
   }
 
@@ -521,11 +563,15 @@ export class BossPageService {
 
   /** BOSS 自选期望中的“不合适”位于右侧详情；点击前再次核对岗位链接。 */
   public async markJobNotSuit(card: CdpLocator, target: { jobName: string; companyName: string; jobHref: string },
-    reason = '该职位不符合当前求职条件'): Promise<boolean> {
+    _localReason = ''): Promise<boolean> {
     const page = card.page();
+    const selected = await page.locator('.expect-item.active').first().innerText({ timeout: 200 }).catch(() => '');
+    const feedbackScope = (page.id || page.url()) + '|' + selected;
     const dialog = page.locator('.zp-feedback-dialog').filter({ visible: true }).first();
     if (await dialog.isVisible()) return false;
     if (!(await this.isCardStillTarget(card, target.jobName, target.companyName, target.jobHref))) return false;
+    this.rememberNotSuitable(target);
+    if ((this.feedbackUnavailableUntil.get(feedbackScope) || 0) > Date.now()) return false;
     if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) {
       await card.click();
       const deadline = Date.now() + 6000;
@@ -547,7 +593,6 @@ export class BossPageService {
     }
     const before = await page.evaluate(() => [...document.querySelectorAll('.toast-content, .toast, .message-content, .zp-toast')]
       .filter((item) => (item as HTMLElement).getClientRects().length).map((item) => item.textContent?.trim()).join('|'));
-    const selected = await page.locator('.expect-item.active').first().innerText({ timeout: 200 }).catch(() => '');
     await button.click();
     const deadline = Date.now() + 4500;
     let confirmed = false;
@@ -556,8 +601,9 @@ export class BossPageService {
         const visible = (item: Element) => (item as HTMLElement).getClientRects().length > 0;
         const messages = [...document.querySelectorAll('.toast-content, .toast, .message-content, .zp-toast')]
           .filter(visible).map((item) => item.textContent?.trim()).join('|');
+        const jobPath = new URL(href, location.href).pathname;
         const targetRemains = [...document.querySelectorAll('li.job-card-box a.job-name')]
-          .some((item) => item.getAttribute('href') === href);
+          .some((item) => new URL(item.getAttribute('href') || '', location.href).pathname === jobPath);
         const sameList = location.pathname === '/web/geek/jobs'
           && ((document.querySelector('.expect-item.active') as HTMLElement | null)?.innerText || '') === selectedName;
         const dialog = [...document.querySelectorAll('.zp-feedback-dialog')].find(visible);
@@ -577,15 +623,30 @@ export class BossPageService {
         if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))
           || !(await this.isCardStillTarget(card, target.jobName, target.companyName, target.jobHref))
           || !(await confirm.isVisible())) return false;
-        if (/公司页|公司介绍|公司经营|公司行业|公司名称/.test(reason)) {
-          const options = await dialog.locator('.zp-type-item').evaluateAll((items) => items.map((item) => item.textContent?.trim() || ''));
-          const companyIndex = options.findIndex((label) => label.includes(target.companyName) && /公司$/.test(label));
-          if (companyIndex >= 0) await dialog.locator('.zp-type-item').nth(companyIndex).click();
+        // Internal screening, company analysis and candidate information stay local.
+        // Prefer the site's company option so its other jobs stop being recommended.
+        const choices = await dialog.locator('.zp-type-item').evaluateAll(items => items.map(item => ({
+          text: (item as HTMLElement).innerText.trim(), visible: (item as HTMLElement).getClientRects().length > 0,
+        })));
+        if (!choices.some(item => item.visible)) { await pause(250); continue; }
+        const companyChoice = choices.findIndex(item => item.visible && sameCompany(
+          item.text.match(/^[“"「](.+)[”"」]公司$/)?.[1] || '', target.companyName));
+        const index = companyChoice >= 0 ? companyChoice : choices.findIndex(item => item.visible);
+        if (index < 0) {
+          // Avoid reopening a known unsupported feedback menu on every rejected job.
+          this.feedbackUnavailableUntil.set(feedbackScope, Date.now() + 60000);
+          while (this.feedbackUnavailableUntil.size > 50) this.feedbackUnavailableUntil.delete(this.feedbackUnavailableUntil.keys().next().value!);
+          await dialog.locator('[ka="dialog_cancel"]').first().click().catch(() => {});
+          return false;
         }
+        await dialog.locator('.zp-type-item').nth(index).click();
         const comment = dialog.locator('textarea.zp-type-textarea').first();
-        if (!(await comment.isVisible())) return false;
-        await comment.fill(reason.trim().slice(0, 50) || '该职位不符合当前求职条件');
+        if (await comment.isVisible() && await comment.inputValue()) await comment.fill('');
         if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) return false;
+        if (await confirm.evaluate(element => element.hasAttribute('disabled') || element.getAttribute('aria-disabled') === 'true'
+          || /(?:^|\s)(?:disabled|is-disabled)(?:\s|$)/.test(element.className))) {
+          await dialog.locator('[ka="dialog_cancel"]').first().click().catch(() => {}); return false;
+        }
         await confirm.click();
         confirmed = true;
       }

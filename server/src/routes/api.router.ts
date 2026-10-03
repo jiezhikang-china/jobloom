@@ -12,8 +12,10 @@ import { bossCatalogService } from '../services/boss.catalog.service.js';
 import type { BossPositionSelection } from '../types.js';
 import { deepseekProxyService } from '../services/deepseek.proxy.service.js';
 import { workConditionReviews } from '../services/work-condition-reviews.js';
+import { notSuitableStore } from '../services/not-suitable-store.js';
 import { configuredWorkRequirements, validateWorkRequirements } from '../services/work-requirements.js';
-import { hasCommuteLimits, validateCommuteFilter, validCommuteOrigin } from '../services/commute.js';
+import { hasCommuteLimits, validateCommuteFilter, validCommuteOrigin, validLocationApi } from '../services/commute.js';
+import { locationApiService } from '../services/location-api.service.js';
 
 const uploadDir = path.resolve(process.cwd(), '../data/resumes');
 if (!fs.existsSync(uploadDir)) {
@@ -99,6 +101,8 @@ apiRouter.post('/location/search', async (req: Request, res: Response) => {
     return res.status(409).json({ success: false, message: '请先结束投递任务或等待当前位置查询完成，再选择出发位置。' });
   }
   const query = req.body?.query, cityName = req.body?.cityName || configManager.getConfig().filter.cityName;
+  const api = req.body?.locationApi || configManager.getConfig().filter.commute?.locationApi || { provider: 'boss' };
+  if (!validLocationApi(api)) return res.status(400).json({ success: false, message: '地图 API 设置无效' });
   if (typeof query !== 'string' || query.trim().length < 2 || query.length > 100
     || typeof cityName !== 'string' || cityName.trim().length < 2 || cityName.length > 30) {
     return res.status(400).json({ success: false, message: '请填写城市及2至100字的地址、楼宇或地铁站名称。' });
@@ -106,10 +110,18 @@ apiRouter.post('/location/search', async (req: Request, res: Response) => {
   locationSearchActive = true;
   try {
     const filter = configManager.getConfig().filter;
-    const data = await bossPageService.searchCommuteOrigins(query.trim(), cityName.trim(), filter.cityCode);
+    const data = api.provider === 'boss' ? await bossPageService.searchCommuteOrigins(query.trim(), cityName.trim(), filter.cityCode)
+      : await locationApiService.searchOrigins(query.trim(), cityName.trim(), api);
     res.json({ success: true, data });
   } catch (cause) { res.status(502).json({ success: false, message: (cause as Error).message }); }
   finally { locationSearchActive = false; }
+});
+apiRouter.post('/location/manual', async (req: Request, res: Response) => {
+  if (deliveryService.isActive()) return res.status(409).json({ success: false, message: '请先结束投递任务再修改位置' });
+  const api = req.body?.locationApi || configManager.getConfig().filter.commute?.locationApi || { provider: 'boss' };
+  if (!validLocationApi(api)) return res.status(400).json({ success: false, message: '地图 API 设置无效' });
+  try { res.json({ success: true, data: await locationApiService.manualOrigin(req.body?.position, api) }); }
+  catch (cause) { res.status(400).json({ success: false, message: (cause as Error).message }); }
 });
 
 apiRouter.get('/boss/positions', async (req: Request, res: Response) => {
@@ -157,7 +169,7 @@ apiRouter.post('/llm/web/login', async (_req: Request, res: Response) => {
   catch (error) { res.status(503).json({ success: false, message: (error as Error).message }); }
 });
 apiRouter.post('/llm/web/requests/:action', async (req: Request, res: Response) => {
-  if (!['view', 'retry'].includes(String(req.params.action)) || typeof req.body?.requestId !== 'string'
+  if (!['view', 'retry', 'recover'].includes(String(req.params.action)) || typeof req.body?.requestId !== 'string'
     || !/^[a-zA-Z0-9_-]{8,100}$/.test(req.body.requestId)) return res.status(400).json({ success: false, message: '请选择未完成的聊天' });
   try { res.json({ success: true, data: await deepseekProxyService.request('/requests/' + req.params.action, 'POST', { requestId: req.body.requestId }) }); }
   catch (error) { res.status(409).json({ success: false, message: (error as Error).message }); }
@@ -383,6 +395,15 @@ apiRouter.get('/delivery/status', (_req: Request, res: Response) => {
 });
 
 // 7. SSE 实时事件流
+apiRouter.get('/delivery/not-suitable', (_req: Request, res: Response) => {
+  try { res.json({ success: true, data: notSuitableStore.list() }); }
+  catch (error) { res.status(500).json({ success: false, message: (error as Error).message }); }
+});
+apiRouter.delete('/delivery/not-suitable/:id', (req: Request, res: Response) => {
+  if (deliveryService.isActive()) return res.status(409).json({ success: false, message: '请先停止投递，再撤销本地屏蔽' });
+  try { res.json({ success: true, removed: notSuitableStore.remove(req.params.id) }); }
+  catch (error) { res.status(500).json({ success: false, message: (error as Error).message }); }
+});
 apiRouter.get('/delivery/work-condition-reviews', (_req: Request, res: Response) => {
   try { res.json({ success: true, data: workConditionReviews.listEligible() }); }
   catch { res.status(500).json({ success: false, message: '读取待确认岗位失败，原文件已保留。' }); }

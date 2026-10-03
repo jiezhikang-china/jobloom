@@ -18,7 +18,7 @@ const fixture = `<!doctype html><meta charset="utf-8"><body>
       const search = dialog.querySelector('.path-plan-search'), panel = dialog.querySelector('.path-plan-panel');
       const places = [{ name: '无效旧位置', desc: '缺少坐标' },
         { name: '人民广场', desc: '上海市黄浦区人民大道185号', longitude: 121.481492, latitude: 31.234736 }];
-      search.__vue__ = { $data: { addressList: [], endAddress: { address: '上海徐汇区模速空间B区202', longitude: 121.460828, latitude: 31.158110 } } };
+      search.__vue__ = { getMapper: () => ({ type: 1 }), $data: { addressList: [], endAddress: { address: '上海徐汇区模速空间B区202', longitude: 121.460828, latitude: 31.158110 } } };
       panel.__vue__ = { $data: { isLoading: true } };
       dialog.querySelector('input').oninput = () => {
         search.__vue__.$data.addressList = places;

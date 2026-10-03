@@ -11,6 +11,8 @@ import { workConditionReviews } from '../src/services/work-condition-reviews.js'
 import type { WorkConditionReview } from '../src/types.js';
 import { bossCatalogService, positionSelections } from '../src/services/boss.catalog.service.js';
 import catalog from '../resources/boss-positions.json';
+import { locationApiService } from '../src/services/location-api.service.js';
+import { notSuitableStore } from '../src/services/not-suitable-store.js';
 
 const restores: Array<() => void> = [];
 function stub(object: any, key: string, replacement: any) {
@@ -62,6 +64,14 @@ async function main() {
     locationsQueried++; assert.equal(query, '人民广场'); assert.equal(city, '上海'); return [origin];
   });
   const app = express();
+  let blocked = [{ id: 'f'.repeat(20), companyName: '界面测试屏蔽公司', jobs: [{ jobId: 'blocked', jobName: '旧岗位' }], updatedAt: new Date().toISOString() }];
+  stub(notSuitableStore, 'list', () => blocked);
+  stub(notSuitableStore, 'remove', (id: string) => { blocked = blocked.filter(row => row.id !== id); return true; });
+  let externalLocations = 0;
+  stub(locationApiService, 'searchOrigins', async (query: string, city: string, api: any) => {
+    externalLocations++; assert.equal(api.provider, 'amap'); assert.equal(api.apiKey, 'fake-ui-key');
+    assert.equal(query, '人民广场'); assert.equal(city, '上海'); return [{ ...origin, coordinateSystem: 'gcj02', source: 'amap' }];
+  });
   app.use(express.json()); app.use('/api', apiRouter);
   app.use(express.static(path.resolve(process.cwd(), '../client/dist')));
   const server = app.listen(0, '127.0.0.1');
@@ -149,6 +159,27 @@ async function main() {
     assert.equal(await location.getByLabel('最大直线距离', { exact: true }).inputValue(), '12.5');
     assert.equal(await location.getByLabel('最大公交地铁通勤时间', { exact: true }).inputValue(), '55');
     await location.screenshot({ path: path.resolve(process.cwd(), '../data/location-filter-preview.png') });
+    await location.getByLabel('定位接口来源').selectOption('amap');
+    await location.getByLabel('地图 API Key').fill('fake-ui-key');
+    await location.getByLabel('出发位置搜索', { exact: true }).fill('人民广场');
+    await location.getByRole('button', { name: '搜索位置', exact: true }).click();
+    await location.getByRole('button', { name: /人民广场.*人民大道185号/ }).click();
+    assert.equal(externalLocations, 1); assert.equal(locationsQueried, 1, '自有API搜索不触碰BOSS');
+    await location.getByText('手动填写经纬度', { exact: true }).click();
+    await location.getByLabel('手动位置名称').fill('住处');
+    await location.getByLabel('手动经度').fill('121.47'); await location.getByLabel('手动纬度').fill('31.23');
+    await location.getByRole('button', { name: '使用这组坐标', exact: true }).click();
+    await location.getByRole('status').filter({ hasText: '出发位置：上海 · 住处' }).waitFor();
+    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'), page.getByRole('button', { name: '保存配置', exact: true }).click()]);
+    assert.equal(config.filter.commute.origin.source, 'manual'); assert.equal(config.filter.commute.locationApi.apiKey, 'fake-ui-key');
+    await page.reload(); await page.getByRole('button', { name: '筛选规则', exact: true }).click();
+    assert.equal(await location.getByLabel('定位接口来源').inputValue(), 'amap');
+    assert.equal(await location.getByLabel('地图 API Key').inputValue(), 'fake-ui-key');
+    assert.match(await location.innerText(), /出发位置：上海 · 住处/);
+    await page.getByText('本地不感兴趣清单 · 1 家公司', { exact: true }).click();
+    await page.getByRole('button', { name: '撤销本地屏蔽：界面测试屏蔽公司', exact: true }).click();
+    await page.getByText('尚无本地屏蔽记录。', { exact: true }).waitFor();
+    assert.equal(blocked.length, 0);
     for (const commute of [{ maxDistanceKm: -1 }, { maxTransitMinutes: 241 }, { origin: { ...origin, coordinateSystem: 'wgs84' } }]) {
       const invalid = await fetch(base + '/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filter: { commute } }) });
       assert.equal(invalid.status, 400);

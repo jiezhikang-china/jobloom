@@ -138,7 +138,10 @@ test('lost transport or incomplete stream retains its session and blocks new sub
     const previousCount = calls.length;
     await assert.rejects(adapter.complete(request), error => error.code === 'completion_uncertain');
     await assert.rejects(adapter.complete({ ...request, request_id: 'different-request-id' }), error => error.code === 'completion_uncertain');
-    assert.equal(calls.length, previousCount, '不确定时只读本地状态，不能创建另一个上游会话');
+    assert.equal(calls.length, previousCount + 1, '不确定时只多一次读取原聊天，不能另开会话');
+    assert.equal(calls.at(-1).init.method, 'GET');
+    assert.ok(calls.at(-1).url.includes('/chat/history_messages?chat_session_id=owned-temporary-session'));
+    assert.equal(calls.filter(call => call.url.endsWith('/chat/completion')).length, 1);
     adapter.requests.clear(pending[0].requestId); shouldFail = false;
     await adapter.complete(request);
     assert.equal(calls.filter(call => call.url.endsWith('/chat/completion')).length, 2);

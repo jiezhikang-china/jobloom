@@ -12,8 +12,8 @@ import type { AppConfig, BossJobItem, BossWorkAddress, CommuteOrigin, JobCommute
 
 const original = configManager.getConfig(), get = configManager.getConfig, chat = llmService.chatJson;
 const origin: CommuteOrigin = { name: '人民广场', address: '上海市黄浦区人民大道185号', cityName: '上海', query: '上海人民广场',
-  longitude: 121.481492, latitude: 31.234736, coordinateSystem: 'boss' };
-const destination: BossWorkAddress = { address: '上海徐汇区模速空间(SMC)-B区202', point: { longitude: 121.46082827601207, latitude: 31.158109721277892, coordinateSystem: 'boss' } };
+  longitude: 121.481492, latitude: 31.234736, coordinateSystem: 'bd09' };
+const destination: BossWorkAddress = { address: '上海徐汇区模速空间(SMC)-B区202', point: { longitude: 121.46082827601207, latitude: 31.158109721277892, coordinateSystem: 'gcj02' } };
 const filter: AppConfig['filter'] = { ...original.filter, salaryMin: 0, salaryMax: 0, hrActiveDaysLimit: 0, degree: [], experience: [],
   skipMissingCompanyIntro: false, skipVagueJobDescription: false, companyBlacklist: [], requiredKeywords: [], workRequirements: [],
   commute: { origin, maxDistanceKm: 15, maxTransitMinutes: 60 } };
@@ -25,7 +25,7 @@ const route = (): JobCommute => ({ ...currentCommute(origin, destination), trans
 async function main() {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'boss-commute-test-'));
   try {
-    assert.ok(Math.abs(straightDistanceKm(origin, destination.point!) - 8.7442) < 0.001, '实测 BOSS 起终点直线约8.7公里');
+    assert.ok(Math.abs(straightDistanceKm(origin, destination.point!) - 7.9771) < 0.001, 'BOSS 起点BD09、终点GCJ02统一后直线约8.0公里');
     assert.equal(straightDistanceKm(origin, origin), 0);
     assert.throws(() => straightDistanceKm(origin, { ...origin, coordinateSystem: 'wgs84' } as any), /坐标/);
     assert.equal(isBossPoint({ ...origin, longitude: NaN }), false);
@@ -45,7 +45,7 @@ async function main() {
     assert.equal(commuteDecision(job, filter).status, 'unknown', '直线近不能证明公交通勤合格');
     const good = { ...job, commute: route() };
     assert.equal(commuteDecision(good, filter).status, 'passed');
-    assert.equal(commuteDecision(good, { ...filter, commute: { origin, maxDistanceKm: 8 } }).status, 'failed');
+    assert.equal(commuteDecision(good, { ...filter, commute: { origin, maxDistanceKm: 7 } }).status, 'failed');
     assert.equal(commuteDecision(good, { ...filter, commute: { origin, maxTransitMinutes: 48 } }).status, 'failed');
     assert.equal(commuteDecision(good, { ...filter, commute: { origin, maxTransitMinutes: 49 } }).status, 'passed');
     const exact = straightDistanceKm(origin, destination.point!);
@@ -60,7 +60,7 @@ async function main() {
     const prepared = { ...job };
     await service.enrich(prepared, filter, read); await service.enrich({ ...job }, filter, read);
     assert.equal(requests, 1, '相同出发点和工作地址复用路线，不重复查询');
-    await service.enrich({ ...job }, { ...filter, commute: { origin, maxDistanceKm: 8, maxTransitMinutes: 60 } }, read);
+    await service.enrich({ ...job }, { ...filter, commute: { origin, maxDistanceKm: 7, maxTransitMinutes: 60 } }, read);
     assert.equal(requests, 1, '直线过远时不再请求公共交通');
     await service.enrich({ ...job }, { ...filter, commute: { origin, maxDistanceKm: 15 } }, read);
     assert.equal(requests, 1, '未启用通勤上限时只本地计算直线');
@@ -91,7 +91,7 @@ async function main() {
       screening: { industry: job.brandIndustry, jobDetail: '负责应用测试、缺陷记录与回归验证。', skills: [], needsCommuteConfirmation: true } });
     assert.equal(store.listEligible().length, 1, '未知地点可独立进入待确认，没有其他工作条件也能保存');
     assert.equal(store.list()[0].id, saved.id);
-    console.log('PASS | BOSS原生坐标、8.7公里实测、距离边界、路线时间、缺失/过期/起终点变化、路线缓存、先距离后公交、零AI地点硬筛与独立待确认');
+    console.log('PASS | BOSS起終点不同坐标系统一、距离边界、路线时间、缺失/过期/起终点变化、路线缓存、零AI地点硬筛与独立待确认');
   } finally {
     configManager.getConfig = get; llmService.chatJson = chat;
     for (const name of fs.readdirSync(folder)) fs.unlinkSync(path.join(folder, name));

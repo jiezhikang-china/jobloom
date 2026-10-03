@@ -1,5 +1,6 @@
 import type { AppConfig, BossJobItem, JobCommute } from '../types.js';
 import { commuteDecision, currentCommute, validCommuteOrigin, TRANSIT_CACHE_MS } from './commute.js';
+import { locationApiService } from './location-api.service.js';
 
 export class JobCommuteService {
   private cache = new Map<string, { result: JobCommute; expires: number }>();
@@ -10,12 +11,13 @@ export class JobCommuteService {
     job.commute = result;
     // Straight distance and an exceeded distance limit require no route request.
     if (!cfg.maxTransitMinutes || !job.workAddress?.point || commuteDecision(job, filter).status === 'failed') return;
-    const key = JSON.stringify({ from: cfg.origin, to: job.workAddress });
+    const key = JSON.stringify({ from: result.origin, to: result.destination, provider: cfg.locationApi?.provider || 'boss' });
     const saved = this.cache.get(key);
     if (saved && saved.expires > Date.now()) { job.commute = structuredClone(saved.result); return; }
     this.cache.delete(key);
     try {
-      const route = await readTransit();
+      const route = cfg.locationApi && cfg.locationApi.provider !== 'boss'
+        ? await locationApiService.readTransit(result.origin, result.destination, cfg.locationApi, job.cityName) : await readTransit();
       if (!Number.isFinite(route.minutes) || route.minutes < 0 || route.minutes > 1440) throw new Error('地图时间无效');
       result.transitStatus = 'ok'; result.transitMinutes = route.minutes; result.transitSummary = route.summary;
     } catch (cause) {

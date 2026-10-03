@@ -30,7 +30,7 @@ export class DeepSeekProxyService {
       const runtime = JSON.parse(fs.readFileSync(runtimeFile, 'utf8'));
       if (!Number.isInteger(runtime.port) || runtime.port < 1 || runtime.port > 65535 ||
         typeof runtime.secret !== 'string' || runtime.secret.length < 32 ||
-        (runtime.integrationVersion !== 4 && !(allowPreviousVersion && [1, 2, 3].includes(runtime.integrationVersion)))) return null;
+        (runtime.integrationVersion !== 5 && !(allowPreviousVersion && [1, 2, 3, 4].includes(runtime.integrationVersion)))) return null;
       const response = await fetch(`http://127.0.0.1:${runtime.port}/health`, { signal: AbortSignal.timeout(1000) });
       const health: any = await response.json();
       if (health.app !== 'boss-deepseek-web-proxy' || health.integrationVersion !== runtime.integrationVersion || health.status !== 'ok') return null;
@@ -52,7 +52,7 @@ export class DeepSeekProxyService {
     const existing = await this.existing();
     if (existing) return existing;
     const previous = await this.existing(true);
-    if (previous?.integrationVersion === 4) return previous;
+    if (previous?.integrationVersion === 5) return previous;
     if (previous) {
       const stopped = await fetch(`http://127.0.0.1:${previous.port}/shutdown`, {
         method: 'POST', headers: { Authorization: `Bearer ${previous.secret}` }, signal: AbortSignal.timeout(2000),
@@ -97,7 +97,7 @@ export class DeepSeekProxyService {
     const connection = await this.ensure();
     const response = await fetch(`http://127.0.0.1:${connection.port}${route}`, {
       method, headers: { Authorization: `Bearer ${connection.secret}`, 'Content-Type': 'application/json' },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(25000),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(route === '/requests/recover' ? 45000 : 25000),
     });
     const result: any = await response.json();
     if (!response.ok) throw new Error(result?.error?.message || 'DeepSeek 本机服务请求失败');

@@ -301,3 +301,17 @@ button:disabled { cursor: not-allowed; }
   .position-picker-head { align-items: flex-start; }
   .position-picker-head strong span { display: block; margin: 5px 0 0; }
 }
+.location-api-config, .location-manual-fields { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; align-items: end; }
+.location-api-config label, .location-manual-fields label { display: flex; flex-direction: column; gap: 7px; flex: 1 1 190px; }
+.location-api-config input, .location-api-config select, .location-manual-fields input, .location-manual-fields select { width: 100%; padding: 9px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; }
+.location-manual { padding: 14px; border: 1px solid #334155; border-radius: 10px; margin: 14px 0; }
+.location-manual summary { cursor: pointer; color: #b7e9de; }
+.location-manual button { padding: 10px 16px; color: #b7e9de; background: #1e3e3a; border: 1px solid #386459; border-radius: 8px; }
+.not-suitable-panel { margin: 18px 0; padding: 16px; border: 1px solid #334155; border-radius: 12px; background: #152731; }
+.not-suitable-panel summary { cursor: pointer; color: #e2e8f0; font-weight: 600; }
+.not-suitable-panel p { color: #94a3b8; font-size: 13px; }
+.not-suitable-panel input { padding: 9px; background: #0f172a; color: #e2e8f0; border: 1px solid #475569; border-radius: 6px; }
+.not-suitable-list { max-height: 300px; overflow-y: auto; }
+.not-suitable-list > div { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #334155; gap: 12px; }
+.not-suitable-list small { display: block; color: #94a3b8; margin-top: 5px; }
+.not-suitable-list button { color: #a5f3e3; background: #1c403c; border: 1px solid #335c53; border-radius: 6px; padding: 8px 12px; cursor: pointer; }

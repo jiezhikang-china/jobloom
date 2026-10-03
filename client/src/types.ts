@@ -63,6 +63,8 @@ export interface WorkConditionReview {
     skills: string[];
     companyInfo?: { url: string; name: string; industry: string; introduction: string; businessScope: string; checkedAt: string };
     needsCompanyConfirmation?: boolean;
+    needsDetailConfirmation?: boolean;
+    needsEvaluationConfirmation?: boolean;
     taskExclusions?: Array<{ term: string; literal: boolean }>;
     languageEvidence?: string;
     workAddress?: BossWorkAddress;
@@ -76,9 +78,10 @@ export interface WorkConditionReview {
 }
 
 /** Coordinates from the same BOSS map; never mix with raw GPS/another provider. */
-export interface BossMapPoint { longitude: number; latitude: number; coordinateSystem: 'boss'; }
-export interface CommuteOrigin extends BossMapPoint { name: string; address: string; cityName: string; query: string; }
-export interface CommuteFilter { origin?: CommuteOrigin; maxDistanceKm?: number; maxTransitMinutes?: number; }
+export interface BossMapPoint { longitude: number; latitude: number; coordinateSystem: 'boss' | 'gcj02' | 'bd09'; }
+export interface CommuteOrigin extends BossMapPoint { name: string; address: string; cityName: string; query: string; source?: 'boss' | 'amap' | 'baidu' | 'manual'; }
+export interface LocationApiConfig { provider: 'boss' | 'amap' | 'baidu'; apiKey?: string; }
+export interface CommuteFilter { origin?: CommuteOrigin; maxDistanceKm?: number; maxTransitMinutes?: number; locationApi?: LocationApiConfig; }
 export interface BossWorkAddress { address: string; point?: BossMapPoint; }
 export interface JobCommute {
   origin: CommuteOrigin;

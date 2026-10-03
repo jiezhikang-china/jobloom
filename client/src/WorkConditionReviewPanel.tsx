@@ -93,7 +93,8 @@ export default function WorkConditionReviewPanel({ taskRunning = false, onStarte
                 {item.screening.needsCommuteConfirmation && <p>地点尚未通过当前限制。点击投递时会重新查询，确认符合后才发起沟通。</p>}
               </>}
             </div>}
-            {item.evaluationSource && <p>{item.evaluationSource === 'rules' ? '脚本筛选' : item.evaluationSource === 'cache' ? '复用 AI 评估' : 'AI 已评估'}
+            {item.screening?.needsDetailConfirmation && <p>岗位详情需重新读取。点击投递时，会打开该岗位自己的完整页面并重新筛选。</p>}
+            {item.evaluationSource && <p>{item.screening?.needsEvaluationConfirmation ? 'AI 已返回，评估格式待确认' : item.evaluationSource === 'rules' ? '脚本筛选' : item.evaluationSource === 'cache' ? '复用 AI 评估' : 'AI 已评估'}
               {item.score !== undefined ? ' · 匹配度 ' + item.score + ' 分' : ''}</p>}
             {item.screening?.companyInfo && <details className="work-review-company">
               <summary>已核查公司页 · {item.screening.companyInfo.industry}</summary>

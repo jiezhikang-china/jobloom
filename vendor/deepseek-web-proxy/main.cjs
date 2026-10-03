@@ -144,7 +144,7 @@ async function openLogin(chatUrl) {
 async function handle(req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
   if (url.pathname === '/health' && req.method === 'GET') {
-    return reply(res, 200, { app: 'boss-deepseek-web-proxy', integrationVersion: 4, status: 'ok' });
+    return reply(res, 200, { app: 'boss-deepseek-web-proxy', integrationVersion: 5, status: 'ok' });
   }
   if (!authenticated(req)) return reply(res, 401, { error: { message: '本机代理认证失败', code: 'proxy_unauthorized' } });
   try {
@@ -156,12 +156,20 @@ async function handle(req, res) {
       return reply(res, 200, status());
     }
     if (url.pathname === '/login' && req.method === 'POST') { await openLogin(); return reply(res, 200, status()); }
-    if (['/requests/view', '/requests/retry'].includes(url.pathname) && req.method === 'POST') {
+    if (['/requests/view', '/requests/retry', '/requests/recover'].includes(url.pathname) && req.method === 'POST') {
       if (busy) throw new ProxyError('模型正在处理请求，请等待完成后操作', 409, 'busy');
       const body = await readBody(req);
       const pending = adapter.requests.list().find(item => item.requestId === body.requestId);
       if (!pending) throw new ProxyError('该未完成请求已经处理，请刷新', 404, 'not_found');
       if (url.pathname === '/requests/view') await openLogin(`https://chat.deepseek.com/a/chat/s/${encodeURIComponent(pending.sessionId)}`);
+      else if (url.pathname === '/requests/recover') {
+        busy = true;
+        try {
+          const recovered = await adapter.recoverPending(pending, AbortSignal.timeout(40000), true);
+          if (!recovered) throw new ProxyError('原聊天还没有完整答案或状态尚未确认，记录已保留；稍后再读取', 409, 'not_finished');
+          setState('ready'); stateMessage = '已读回原聊天的最终答案，可复用相同批次的结果，无需重新生成';
+        } finally { busy = false; }
+      }
       else adapter.requests.clear(pending.requestId);
       return reply(res, 200, status());
     }
@@ -197,7 +205,7 @@ async function handle(req, res) {
         if (body.stream) throw new ProxyError('本项目使用非流式模型调用，请设置 stream: false', 400, 'invalid_request');
         await pacing.wait(body.min_request_interval_seconds, controller.signal);
         delete body.min_request_interval_seconds;
-        timeout = setTimeout(() => controller.abort(), 180000);
+        timeout = setTimeout(() => controller.abort(), body.thinking ? 600000 : 300000);
         const completion = await adapter.complete(body, controller.signal);
         setState('ready'); reply(res, 200, completion);
       } finally {
@@ -244,7 +252,7 @@ if (hasLock && secret.length >= 32) app.whenReady().then(async () => {
   server.requestTimeout = 210000;
   server.on('error', () => { state = 'error'; stateMessage = '本机 DeepSeek 代理无法启动'; void close(); });
   server.listen(0, '127.0.0.1', () => {
-    fs.writeFileSync(runtimeFile, JSON.stringify({ port: server.address().port, secret, pid: process.pid, integrationVersion: 4 }), { mode: 0o600 });
+    fs.writeFileSync(runtimeFile, JSON.stringify({ port: server.address().port, secret, pid: process.pid, integrationVersion: 5 }), { mode: 0o600 });
   });
 }).catch(() => void close());
 app.on('window-all-closed', () => {}); // Login window lifetime does not control the proxy.

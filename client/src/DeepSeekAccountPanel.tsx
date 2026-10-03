@@ -56,7 +56,7 @@ export default function DeepSeekAccountPanel() {
   };
   const ready = status?.state === 'ready';
   const saved = status?.state === 'saved';
-  const handlePending = async (requestId: string, action: 'view' | 'retry') => {
+  const handlePending = async (requestId: string, action: 'view' | 'retry' | 'recover') => {
     if (working) return;
     setWorking(true); setError('');
     try {
@@ -99,10 +99,11 @@ export default function DeepSeekAccountPanel() {
       </p>
       {!!status?.pendingRequests?.length && <div style={{ marginTop: 12, padding: 12, background: '#1e293b', borderRadius: 8 }}>
         <h4 style={{ margin: 0, color: '#fbbf24' }}>上次聊天结果待确认</h4>
-        <p style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.7 }}>连接中断后，原聊天可能仍在生成。投递岗位已保留，正在等待；查看该聊天后，确认未完成再允许重试。</p>
+        <p style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.7 }}>等待期间会读取原聊天的完成状态。也可以手动读取已完成答案；已有答案会复用，不重复生成。</p>
         {status.pendingRequests.map(item => <div key={item.requestId} style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: '#94a3b8' }}>{new Date(item.createdAt).toLocaleString('zh-CN')}</span>
           <button type="button" style={buttonStyle} disabled={working || status.busy} onClick={() => void handlePending(item.requestId, 'view')}>查看该聊天</button>
+          <button type="button" style={buttonStyle} disabled={working || status.busy} onClick={() => void handlePending(item.requestId, 'recover')}>读取已有结果</button>
           <button type="button" style={buttonStyle} disabled={working || status.busy} onClick={() => void handlePending(item.requestId, 'retry')}>确认未完成，允许重试</button>
         </div>)}
       </div>}

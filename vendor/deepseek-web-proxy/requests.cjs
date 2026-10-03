@@ -13,7 +13,8 @@ class WebRequests {
       if (!Array.isArray(records) || records.some(item => !item || typeof item.requestId !== 'string'
         || !/^[a-zA-Z0-9_-]{8,100}$/.test(item.requestId) || typeof item.sessionId !== 'string' || !item.sessionId
         || item.sessionId.length > 200 || !Number.isFinite(Date.parse(item.createdAt)))) throw new Error('未完成请求记录无法读取');
-      records.forEach(({ requestId, sessionId, createdAt }) => this.pending.set(requestId, { requestId, sessionId, createdAt }));
+      records.forEach(({ requestId, sessionId, createdAt, fingerprint }) => this.pending.set(requestId, { requestId, sessionId, createdAt,
+        ...(/^[a-f0-9]{64}$/.test(fingerprint || '') ? { fingerprint } : {}) }));
     }
   }
   save() {
@@ -24,9 +25,10 @@ class WebRequests {
     fs.renameSync(temporary, this.file);
   }
   list() { return [...this.pending.values()].map(item => ({ ...item })); }
-  begin(requestId, sessionId) {
+  begin(requestId, sessionId, fingerprint) {
     const previous = this.pending.get(requestId);
-    this.pending.set(requestId, { requestId, sessionId, createdAt: new Date().toISOString() });
+    this.pending.set(requestId, { requestId, sessionId, createdAt: new Date().toISOString(),
+      ...(/^[a-f0-9]{64}$/.test(fingerprint || '') ? { fingerprint } : {}) });
     try { this.save(); }
     catch (error) { previous ? this.pending.set(requestId, previous) : this.pending.delete(requestId); throw error; }
   }
@@ -36,8 +38,8 @@ class WebRequests {
     try { this.save(); }
     catch (error) { if (previous) this.pending.set(requestId, previous); throw error; }
   }
-  finish(requestId, completion) {
-    this.completed.set(requestId, { expiresAt: Date.now() + 30 * 60 * 1000, completion });
+  finish(requestId, completion, fingerprint) {
+    this.completed.set(requestId, { expiresAt: Date.now() + 30 * 60 * 1000, completion, fingerprint });
     while (this.completed.size > 100) this.completed.delete(this.completed.keys().next().value);
     this.clear(requestId);
   }
@@ -45,6 +47,13 @@ class WebRequests {
     const result = this.completed.get(requestId);
     if (!result || result.expiresAt <= Date.now()) { this.completed.delete(requestId); return undefined; }
     return result.completion;
+  }
+  resultForFingerprint(fingerprint) {
+    if (!fingerprint) return undefined;
+    for (const [id, result] of this.completed) {
+      if (result.expiresAt <= Date.now()) { this.completed.delete(id); continue; }
+      if (result.fingerprint === fingerprint) return result.completion;
+    }
   }
 }
 

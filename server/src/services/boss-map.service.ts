@@ -27,7 +27,8 @@ export async function readBossWorkAddress(page: CdpPage): Promise<BossWorkAddres
   const unique = [...new Map(addresses.map(item => [item.address.replace(/\s/g, ''), item])).values()];
   if (!unique.length) return undefined;
   if (unique.length > 1) return { address: unique.map(item => decodeBossText(item.address)).join(' / ').slice(0, 1000) };
-  const value = unique[0], point = { longitude: value.longitude!, latitude: value.latitude!, coordinateSystem: 'boss' as const };
+  // BOSS sends the job endpoint to planRoute with endOriginMapName: 'gaode'.
+  const value = unique[0], point = { longitude: value.longitude!, latitude: value.latitude!, coordinateSystem: 'gcj02' as const };
   return { address: decodeBossText(value.address).slice(0, 1000), ...(isBossPoint(point) ? { point } : {}) };
 }
 
@@ -73,14 +74,18 @@ export class BossMapService {
         const dom = [...box.querySelectorAll('.search-address-list li')] as HTMLElement[];
         const list = vm.$data?.addressList;
         if (!Array.isArray(list) || list.length !== dom.length) return [];
+        const mapperType = vm.getMapper?.()?.type;
+        // Native suggestions use the active provider; never infer it from a URL/name.
+        const coordinateSystem = mapperType === 1 ? 'bd09' : mapperType === 0 ? 'gcj02' : undefined;
+        if (!coordinateSystem) return [];
         return list.map((item: any, index: number) => {
           const name = dom[index].querySelector('.address-title')?.textContent?.trim() || '';
           const address = dom[index].querySelector('.address-desc')?.textContent?.trim() || '';
           return name === item.name && address === String(item.desc || '').trim()
-            ? { name, address, longitude: item.longitude, latitude: item.latitude, domIndex: index } : null;
+            ? { name, address, longitude: item.longitude, latitude: item.latitude, domIndex: index, coordinateSystem } : null;
         }).filter(Boolean);
       }, search);
-      const valid = rows.map((row: any) => ({ ...row, cityName, query: search, coordinateSystem: 'boss' as const }))
+      const valid = rows.map((row: any) => ({ ...row, cityName, query: search, source: 'boss' as const }))
         .filter((row: any): boolean => validCommuteOrigin(row));
       if (valid.length) return valid.slice(0, 20);
       await pause(250);
@@ -111,6 +116,7 @@ export class BossMapService {
           const panel = (document.querySelector('.boss-map-commuting-dialog .path-plan-panel') as any)?.__vue__;
           const from = search?.$data?.startAddress, to = search?.$data?.endAddress;
           return { loading: panel?.$data?.isLoading !== false, mode: panel?.$data?.planType,
+            mapperType: search?.getMapper?.()?.type,
             start: from ? { longitude: from.longitude, latitude: from.latitude, name: from.name } : undefined,
             end: to ? { longitude: to.longitude, latitude: to.latitude, address: to.address } : undefined,
             rows: [...document.querySelectorAll('.boss-map-commuting-dialog .path-plan-item')].map(row => ({
@@ -121,8 +127,9 @@ export class BossMapService {
             security: /请完成安全验证|请进行安全验证/.test(document.body?.innerText || '') };
         });
         if (data.security) throw new Error('CAPTCHA_REQUIRED: BOSS 地图要求安全验证');
-        const start = data.start ? { ...data.start, coordinateSystem: 'boss' as const } : undefined;
-        const end = data.end ? { ...data.end, coordinateSystem: 'boss' as const } : undefined;
+        const system: 'bd09' | 'gcj02' | undefined = data.mapperType === 1 ? 'bd09' : data.mapperType === 0 ? 'gcj02' : undefined;
+        const start = data.start && system ? { ...data.start, coordinateSystem: system } : undefined;
+        const end = data.end ? { ...data.end, coordinateSystem: 'gcj02' as const } : undefined;
         if (!data.loading && data.activeBus && data.start?.name === origin.name && sameBossPoint(start, origin)
           && data.end?.address.replace(/\s/g, '') === expected.address.replace(/\s/g, '') && sameBossPoint(end, expected.point)) {
           const plans = data.rows.map(row => ({ ...row, minutes: parseTransitMinutes(row.time) }))

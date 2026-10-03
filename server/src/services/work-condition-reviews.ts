@@ -9,6 +9,7 @@ import { jobInformationIssue } from './job-information.js';
 import { decodeBossText, readableBossSalary } from './boss-text.js';
 import { languageQualificationIssue } from './language-qualification.js';
 import { commuteDecision, currentCommute, validCommuteOrigin, validWorkAddress, validJobCommute } from './commute.js';
+import { notSuitableStore } from './not-suitable-store.js';
 
 function canonicalJobUrl(value: string): string {
   const url = new URL(value, 'https://www.zhipin.com');
@@ -55,7 +56,8 @@ export class WorkConditionReviews {
     const requirements = normalizeWorkRequirements(input.requirements);
     if (!validateWorkRequirements(requirements) || (!requirements.some((item) => item.enabled)
       && !(input.screening?.needsCompanyConfirmation === true && input.screening.companyInfo)
-      && input.screening?.needsCommuteConfirmation !== true)) throw new Error('工作条件无效');
+      && input.screening?.needsCommuteConfirmation !== true && input.screening?.needsDetailConfirmation !== true
+      && input.screening?.needsEvaluationConfirmation !== true)) throw new Error('工作条件无效');
     const labels = requirements.filter((item) => item.enabled).map((item) => item.text);
     const item: WorkConditionReview = {
       id: reviewId(jobHref), jobHref,
@@ -109,9 +111,11 @@ export class WorkConditionReviews {
   }
 
   private exclusionFor(item: WorkConditionReview, filter: AppConfig['filter']) {
-    return languageQualificationIssue({ jobName: item.jobName, skills: item.screening?.skills }, item.screening?.jobDetail || '', filter,
+    return (notSuitableStore.matches(item.jobHref, item.companyName) ? '已在本地不感兴趣清单中' : undefined)
+      || languageQualificationIssue({ jobName: item.jobName, skills: item.screening?.skills }, item.screening?.jobDetail || '', filter,
       { text: item.screening?.languageEvidence || '', source: 'resume' })
-      || (item.screening && jobInformationIssue({ jobDetail: item.screening.jobDetail, companyInfo: item.screening.companyInfo }, filter))
+      || (item.screening && jobInformationIssue({ jobDetail: item.screening.needsDetailConfirmation && !item.screening.jobDetail ? undefined : item.screening.jobDetail,
+        companyInfo: item.screening.companyInfo }, filter))
       || (commuteDecision(item.screening || {}, filter).status === 'failed' ? commuteDecision(item.screening || {}, filter).reason : undefined)
       || findJobExclusion({ jobName: item.jobName, brandName: item.companyName,
       brandIndustry: item.screening?.industry, skills: item.screening?.skills,
@@ -124,6 +128,8 @@ export class WorkConditionReviews {
     if (typeof value.industry !== 'string' || typeof value.jobDetail !== 'string' || value.jobDetail.length > 100000
       || !Array.isArray(value.skills) || value.skills.some((item) => typeof item !== 'string')
       || (value.needsCompanyConfirmation !== undefined && typeof value.needsCompanyConfirmation !== 'boolean')
+      || (value.needsDetailConfirmation !== undefined && typeof value.needsDetailConfirmation !== 'boolean')
+      || (value.needsEvaluationConfirmation !== undefined && typeof value.needsEvaluationConfirmation !== 'boolean')
       || (value.needsCommuteConfirmation !== undefined && typeof value.needsCommuteConfirmation !== 'boolean')
       || (value.workAddress !== undefined && !validWorkAddress(value.workAddress))
       || (value.commute !== undefined && !validJobCommute(value.commute))
@@ -149,6 +155,8 @@ export class WorkConditionReviews {
     return { industry: clipped(value.industry, 200), jobDetail: value.jobDetail, ...(companyInfo ? { companyInfo } : {}),
       ...(value.languageEvidence ? { languageEvidence: value.languageEvidence } : {}),
       ...(value.needsCompanyConfirmation ? { needsCompanyConfirmation: true } : {}),
+      ...(value.needsDetailConfirmation ? { needsDetailConfirmation: true } : {}),
+      ...(value.needsEvaluationConfirmation ? { needsEvaluationConfirmation: true } : {}),
       ...(value.needsCommuteConfirmation ? { needsCommuteConfirmation: true } : {}),
       ...(value.workAddress ? { workAddress: structuredClone(value.workAddress) } : {}),
       ...(value.commute ? { commute: structuredClone(value.commute) } : {}),
