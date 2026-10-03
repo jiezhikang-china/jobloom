@@ -14,8 +14,11 @@ import { deepseekProxyService } from '../services/deepseek.proxy.service.js';
 import { workConditionReviews } from '../services/work-condition-reviews.js';
 import { notSuitableStore } from '../services/not-suitable-store.js';
 import { configuredWorkRequirements, validateWorkRequirements } from '../services/work-requirements.js';
-import { hasCommuteLimits, validateCommuteFilter, validCommuteOrigin, validLocationApi } from '../services/commute.js';
+import { hasCommuteLimits, isBossPoint, validateCommuteFilter, validCommuteOrigin, validLocationApi } from '../services/commute.js';
 import { locationApiService } from '../services/location-api.service.js';
+import { publicLocationService, publicMapConfig } from '../services/public-location.service.js';
+import { deviceLocationService } from '../services/device-location.service.js';
+import { mapPointToGps } from '../services/coordinates.js';
 
 const uploadDir = path.resolve(process.cwd(), '../data/resumes');
 if (!fs.existsSync(uploadDir)) {
@@ -96,12 +99,32 @@ apiRouter.get('/presets', (_req: Request, res: Response) => {
 });
 
 let locationSearchActive = false;
+apiRouter.get('/location/map', (_req: Request, res: Response) => {
+  try { res.json({ success: true, data: publicMapConfig() }); }
+  catch (cause) { res.status(400).json({ success: false, message: (cause as Error).message }); }
+});
+apiRouter.post('/location/map-point', (req: Request, res: Response) => {
+  if (!isBossPoint(req.body?.point) || req.body.point.coordinateSystem === 'boss') return res.status(400).json({ success: false, message: '请重新选择来源明确的地图位置' });
+  res.json({ success: true, data: mapPointToGps(req.body.point) });
+});
+apiRouter.post('/location/device', async (req: Request, res: Response) => {
+  if (req.body?.userInitiated !== true) return res.status(400).json({ success: false, message: '请点击“获取当前位置”主动定位' });
+  const origin = req.get('origin');
+  if (origin && origin !== req.protocol + '://' + req.get('host') && !/^http:\/\/(?:localhost|127\.0\.0\.1):5173$/.test(origin)) {
+    return res.status(403).json({ success: false, message: '只允许从本机界面发起定位' });
+  }
+  if (deliveryService.isActive() || locationSearchActive) return res.status(409).json({ success: false, message: '请先结束投递任务或等待当前查询完成' });
+  locationSearchActive = true;
+  try { res.json({ success: true, data: await deviceLocationService.getPosition() }); }
+  catch (cause) { res.status(502).json({ success: false, message: (cause as Error).message }); }
+  finally { locationSearchActive = false; }
+});
 apiRouter.post('/location/search', async (req: Request, res: Response) => {
   if (deliveryService.isActive() || locationSearchActive) {
     return res.status(409).json({ success: false, message: '请先结束投递任务或等待当前位置查询完成，再选择出发位置。' });
   }
   const query = req.body?.query, cityName = req.body?.cityName || configManager.getConfig().filter.cityName;
-  const api = req.body?.locationApi || configManager.getConfig().filter.commute?.locationApi || { provider: 'boss' };
+  const api = req.body?.locationApi || configManager.getConfig().filter.commute?.locationApi || { provider: 'open' };
   if (!validLocationApi(api)) return res.status(400).json({ success: false, message: '地图 API 设置无效' });
   if (typeof query !== 'string' || query.trim().length < 2 || query.length > 100
     || typeof cityName !== 'string' || cityName.trim().length < 2 || cityName.length > 30) {
@@ -110,7 +133,8 @@ apiRouter.post('/location/search', async (req: Request, res: Response) => {
   locationSearchActive = true;
   try {
     const filter = configManager.getConfig().filter;
-    const data = api.provider === 'boss' ? await bossPageService.searchCommuteOrigins(query.trim(), cityName.trim(), filter.cityCode)
+    const data = api.provider === 'open' ? await publicLocationService.searchOrigins(query.trim(), cityName.trim())
+      : api.provider === 'boss' ? await bossPageService.searchCommuteOrigins(query.trim(), cityName.trim(), filter.cityCode)
       : await locationApiService.searchOrigins(query.trim(), cityName.trim(), api);
     res.json({ success: true, data });
   } catch (cause) { res.status(502).json({ success: false, message: (cause as Error).message }); }

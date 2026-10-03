@@ -29,7 +29,7 @@ async function main() {
       <div class="job-detail-box"><div class="job-detail-info"><span class="job-name">客户经理</span></div>
       <a class="more-job-btn" href="/job_detail/example.html?from=list">查看更多信息</a>
       <div class="job-detail-body"><p class="desc">负责客户资料审核与驻点服务，具体工作作息面议。</p>
-      <div class="job-boss-info">深圳信银 今日活跃</div></div><a class="op-btn-chat">立即沟通</a></div></body>` }));
+      <div class="company-name">深圳信银</div><div class="job-boss-info">深圳信银 今日活跃</div></div><a class="op-btn-chat">立即沟通</a></div></body>` }));
     await inspect.route('**/job_detail/**', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body: `
       <body><style>.noise{display:none}</style><div class="job-banner"><div class="name"><h1>${fullTitle}<span class="noise">boss</span></h1></div></div>
       <div class="sider-company"><div class="company-info"><a href="/gongsi/example-company.html" title="${fullCompany}">${fullCompany}</a></div>
@@ -69,9 +69,11 @@ async function main() {
     assert.doesNotMatch(detail.jobDetailText, /推荐金融岗位/, '不把推荐岗位内容混入当前职位');
     assert.equal(new URL(page.url()).pathname, '/web/geek/jobs', '核对公司行业不能改变投递页');
     fullCompany = '其他公司';
-    await assert.rejects(service.readJobCompanyInfo(href, '客户经理', '深圳信银'), /与所选岗位不一致/);
+    assert.equal((await service.readJobCompanyInfo(href, '客户经理', '深圳信银')).detailData.companyName, '其他公司',
+      '公司名称以当前详情为准，不能按卡片旧名称拒绝');
     fullCompany = '深圳信银'; fullTitle = '其他职位';
-    await assert.rejects(service.readJobCompanyInfo(href, '客户经理', '深圳信银'), /与所选岗位不一致/);
+    assert.equal((await service.readJobCompanyInfo(href, '客户经理', '深圳信银')).detailData.jobName, '其他职位',
+      '当前详情标题变化应返回真实标题');
     fullTitle = '客户经理'; industry = '';
     await assert.rejects(service.readJobCompanyInfo(href, '客户经理', '深圳信银'), /无法.*读取行业/,
       '当前公司没有行业时，不能借用推荐岗位的行业');
@@ -83,15 +85,16 @@ async function main() {
     assert.equal(findJobExclusion({ jobName: '客服', brandName: fullCompany, brandIndustry: '商务服务',
       companyInfo: companyDetail.companyInfo }, exclusions)?.field, '公司介绍', '助贷公司行业写商务服务，也须按公司页实际业务排除');
     profileName = '不相关公司';
-    await assert.rejects(new BossPageService().readCompanyInfo('/gongsi/example-company.html', fullCompany), /公司页身份/);
+    assert.equal((await new BossPageService().readCompanyInfo('/gongsi/example-company.html', fullCompany)).name, '不相关公司',
+      '按详情链接打开的公司页应采用页面名称，避免品牌简称与公司全称造成误拒绝');
     profileName = '深圳信银'; companyIntroduction = ''; companyIndustry = '企业服务';
     await page.evaluate(() => {
       const link = document.createElement('a'); link.className = 'boss-info'; link.href = '/gongsi/direct-company.html';
-      document.querySelector('.job-card-box')!.appendChild(link);
+      document.querySelector('.job-detail-box')!.appendChild(link);
     });
     const directService = new BossPageService();
     const oldInspection = browserService.withJobInspection;
-    (browserService as any).withJobInspection = async () => { throw new Error('卡片已有公司链接，不应再打开完整职位页'); };
+    (browserService as any).withJobInspection = async () => { throw new Error('详情已有公司链接，不应再打开完整职位页'); };
     const direct = await directService.loadJobDetail(card as any, '客户经理', '深圳信银', href,
       { readIndustry: true, filter: { ...exclusions, companyBlacklist: [], skipMissingCompanyIntro: true } });
     assert.equal(direct.companyInfo?.introduction, '', '已加载但没有介绍的公司页应返回明确的空简介');

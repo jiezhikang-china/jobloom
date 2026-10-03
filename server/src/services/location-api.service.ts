@@ -1,11 +1,11 @@
 import type { BossMapPoint, BossWorkAddress, CommuteOrigin, LocationApiConfig } from '../types.js';
 import { isBossPoint, validCommuteOrigin, validLocationApi } from './commute.js';
-import { convertMapPoint } from './coordinates.js';
+import { convertMapPoint, wgs84ToGcj02 } from './coordinates.js';
 
 export class LocationApiService {
   constructor(private request: typeof fetch = fetch) {}
   private async get(endpoint: string, params: Record<string, string>, config: LocationApiConfig): Promise<any> {
-    if (!validLocationApi(config) || config.provider === 'boss' || !config.apiKey?.trim()) throw new Error('请填写所选地图的 Web 服务 API Key / AK');
+    if (!validLocationApi(config) || !['amap', 'baidu'].includes(config.provider) || !config.apiKey?.trim()) throw new Error('请填写所选地图的 Web 服务 API Key / AK');
     const url = new URL(endpoint);
     url.search = new URLSearchParams({ ...params, [config.provider === 'amap' ? 'key' : 'ak']: config.apiKey.trim() }).toString();
     let response: globalThis.Response;
@@ -62,7 +62,10 @@ export class LocationApiService {
         const data = await this.get('https://api.map.baidu.com/geoconv/v2/',
           { coords: longitude + ',' + latitude, model: '2', output: 'json' }, config);
         point = { longitude: data.result?.[0]?.x, latitude: data.result?.[0]?.y, coordinateSystem: 'bd09' };
-      } else throw new Error('GPS 坐标请先选择高德或百度 API，并填写自己的 Key 用于转换');
+      } else {
+        const pair = wgs84ToGcj02(longitude, latitude);
+        point = { longitude: pair[0], latitude: pair[1], coordinateSystem: 'gcj02' };
+      }
     } else point = { longitude, latitude, coordinateSystem };
     const place = { ...point, name: input.name, address: input.address || '', cityName: input.cityName,
       query: input.name, source: 'manual' as const };

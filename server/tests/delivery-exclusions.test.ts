@@ -15,7 +15,7 @@ const filter = { ...original.filter, cityName: '上海', salaryMin: 0, salaryMax
   degree: ['本科'], experience: [], companyBlacklist: ['金融', '房地产', '销售'], requiredKeywords: [],
   workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true }] };
 const config = { ...original, filter, delivery: { dailyMaxQuota: 1, minDelaySeconds: 0, maxDelaySeconds: 0 } };
-const card = (key: string, name = '行政助理'): DOMJobCardInfo => ({ index: 0, jobHref: '/job_detail/' + key + '.html',
+const card = (key: string, name = '行政助理'): DOMJobCardInfo => ({ index: 0, jobHref: '/job_detail/' + Buffer.from(key).toString('hex') + '.html',
   jobName: name, companyName: key, cityName: '上海', salary: '6-8K', experience: '1-3年', degree: '大专', skills: [],
   activeTimeDesc: '今日活跃', cardLocator: { key } as any });
 let cards = [card('销售标题', '纯网销客服'), card('银行岗位'), card('助贷公司', '纯客服'), card('信贷中介'),
@@ -68,7 +68,7 @@ async function main() {
   assert.deepEqual(sent, ['明确符合']);
   assert.deepEqual(reviewed.map((item) => item.companyName), ['作息待定'], '明确排除的岗位不能进入待确认');
   assert.equal(reviewed[0].screening.companyInfo.industry, '商务服务', '待确认记录保留公司页业务依据');
-  assert.equal(loads.has('销售标题'), false, '标题已明确的销售岗位不额外读取页面');
+  assert.equal(loads.has('销售标题'), true, '先打开详情，按详情进行脚本排除');
   assert.equal(requests, 0, '脚本能决定的岗位全程无需 AI');
   assert.equal(marked, 5);
   assert.equal(service.getStats().todayAppliedCount, 1);

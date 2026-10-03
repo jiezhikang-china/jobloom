@@ -60,6 +60,7 @@ export class BrowserService {
   private workerPage: CdpPage | null = null;
   private verificationPage: CdpPage | null = null;
   private loginPromise: Promise<void> | null = null;
+  private workerPromise: Promise<CdpPage> | null = null;
   private lastSessionRecordAt = 0;
 
   private async browserIdentity(port: number): Promise<string> {
@@ -127,7 +128,7 @@ export class BrowserService {
         '--no-default-browser-check',
         ...(this.options.headless ? ['--headless=new'] : []),
         '--new-window',
-        openLogin ? LOGIN_URL : 'about:blank',
+        openLogin ? LOGIN_URL : JOBS_URL,
       ], { stdio: 'ignore', windowsHide: !!this.options.headless, detached: true });
       this.chrome = child;
       this.port = port;
@@ -207,9 +208,14 @@ export class BrowserService {
     if (this.verificationPage && !this.verificationPage.isClosed() && await this.checkCaptcha()) {
       throw new Error('CAPTCHA_REQUIRED: 公司行业核对页需要安全验证');
     }
-    const page = await this.createPage('about:blank', true);
+    const page = await this.createPage(url.href, true);
     try {
-      await page.goto(url.href, { timeout: 15000 });
+      await page.waitForFunction((target) => {
+        const expected = new URL(target), current = new URL(location.href);
+        return document.readyState !== 'loading' && current.hostname === expected.hostname
+          && (current.pathname === expected.pathname || current.pathname.startsWith('/web/user/')
+            || /\/security-check\.html|\/web\/passport\/zp\/security\.html/.test(current.pathname));
+      }, url.href, { timeout: 15000 });
       return await read(page);
     } finally {
       const currentUrl = await page.refreshUrl();
@@ -236,12 +242,24 @@ export class BrowserService {
   }
 
   public async getWorkerPage(): Promise<CdpPage> {
+    if (this.workerPromise) return this.workerPromise;
+    this.workerPromise = this.openWorkerPage();
+    try { return await this.workerPromise; } finally { this.workerPromise = null; }
+  }
+
+  private async openWorkerPage(): Promise<CdpPage> {
     await this.ensureChrome(false);
     if (this.workerPage && !this.workerPage.isClosed()) return this.workerPage;
-    const tabs = await this.listTabs();
+    let tabs = await this.listTabs();
+    if (!tabs.length && this.chrome) {
+      for (let attempt = 0; attempt < 10 && !tabs.length; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 150)); tabs = await this.listTabs();
+      }
+    }
     const jobs = tabs.find((tab) => tab.url.startsWith(JOBS_URL) && tab.id !== this.loginPage?.id)
       || tabs.find((tab) => tab.url === 'about:blank' && tab.id !== this.loginPage?.id);
-    this.workerPage = jobs ? await this.pageFor(jobs) : await this.createPage('about:blank');
+    this.workerPage = jobs ? await this.pageFor(jobs) : await this.createPage(JOBS_URL);
+    if (await this.workerPage.refreshUrl() === 'about:blank') await this.workerPage.goto(JOBS_URL, { timeout: 30000 });
     return this.workerPage;
   }
 

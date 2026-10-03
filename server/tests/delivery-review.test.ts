@@ -99,8 +99,8 @@ async function main() {
         point: { longitude: review.id === make(11).id ? 121.9 : 121.49, latitude: 31.23, coordinateSystem: 'boss' } } },
       jobDetailText: review.screening!.jobDetail, alreadyChatted: false, chatButtonLocator: {} });
     let routeCalls = 0;
-    stub(bossPageService, 'readJobTransit', async (target: WorkConditionReview) => {
-      routeCalls++; if (target.id === make(13).id) throw new Error('暂无公交路线');
+    stub(bossPageService, 'readJobTransit', async (target: { jobHref: string }) => {
+      routeCalls++; if (target.jobHref === make(13).jobHref) throw new Error('暂无公交路线');
       return { minutes: 45, summary: '地铁1号线' };
     });
     // Do not reuse a preceding failed route for this independent last job.

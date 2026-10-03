@@ -28,7 +28,7 @@ const fixture = `<!doctype html><html><head><meta charset="utf-8"></head><body>
         box.innerHTML = '<div class="job-detail-header"><div class="job-detail-info"><span class="job-name">前端开发</span></div>' +
           '<a class="more-job-btn" href="' + href + '?from=list">查看更多信息</a><a href="javascript:;" class="op-btn-chat">立即沟通</a></div>' +
           '<div class="job-detail-body"><p class="desc">负责前端架构、复杂业务开发、性能优化及团队协作，要求 TypeScript 和 React 实战经验。</p>' +
-          '<div class="job-boss-info">' + company + ' · 今日活跃</div></div>';
+          '<div class="company-name">' + company + '</div><div class="job-boss-info">' + company + ' · 今日活跃</div></div>';
         box.querySelector('.op-btn-chat').addEventListener('click', function (clickEvent) {
           clickEvent.preventDefault();
           var dialog = document.createElement('div');
@@ -79,6 +79,15 @@ async function main(): Promise<void> {
     assert.equal(cards[1].companyName, '乙公司');
     assert.equal(cards[0].cityName, '上海');
     assert.equal(cards[1].cityName, '上海');
+    await page.evaluate(() => {
+      document.querySelector('[data-key="b"] .job-name')!.textContent = '';
+      document.querySelector('[data-key="b"] .boss-name')!.textContent = '';
+    });
+    assert.equal((await bossPageService.getVisibleJobCards()).length, 2, '卡片标题或公司暂未显示时仍可按链接打开详情');
+    await page.evaluate(() => {
+      document.querySelector('[data-key="b"] .job-name')!.textContent = '前端开发';
+      document.querySelector('[data-key="b"] .boss-name')!.textContent = '乙公司';
+    });
 
     await page.evaluate(() => {
       const list = document.querySelector('.rec-job-list')!;
@@ -89,8 +98,27 @@ async function main(): Promise<void> {
 
     const detail = await bossPageService.loadJobDetail(target.cardLocator, target.jobName, target.companyName, target.jobHref);
     assert.match(detail.jobDetailText, /TypeScript/);
+    assert.ok(detail.detailData.jobHref.endsWith('/job_detail/b.html?from=list'), '保留实际详情链接的导航参数');
     assert.equal(detail.activeTimeDesc, '今日活跃');
     assert.equal(await bossPageService.isDetailStillTarget(target.jobName, target.companyName, target.jobHref), true);
+    await page.evaluate(() => {
+      document.querySelector('.job-detail-info .job-name')!.textContent = '前端开发（急招）';
+      (document.querySelector('.job-detail-box') as any).__vue__ = { $props: { loading: false,
+        data: { jobInfo: { encryptId: 'b', jobName: '前端开发' }, brandComInfo: { brandName: '乙公司' } } } };
+      const props = (document.querySelector('.job-detail-box') as any).__vue__.$props;
+      props.data.brandComInfo.brandName = '乙公司官方全称';
+    });
+    assert.equal(await bossPageService.isDetailStillTarget(target.jobName, target.companyName, target.jobHref), true,
+      '编号已一致时，标题附加词和公司的展示全称不应否定岗位身份');
+    await page.evaluate(() => {
+      document.querySelector('.job-detail-info .job-name')!.textContent = '前端开发';
+      (document.querySelector('.job-detail-box') as any).__vue__.$props.data.brandComInfo.brandName = '乙公司';
+      const hidden = document.querySelector('.job-detail-box')!.cloneNode(true) as HTMLElement;
+      hidden.style.display = 'none'; hidden.querySelector('.more-job-btn')!.setAttribute('href', '/job_detail/hidden.html');
+      document.body.insertBefore(hidden, document.querySelector('.job-detail-box'));
+    });
+    assert.equal(await bossPageService.isDetailStillTarget(target.jobName, target.companyName, target.jobHref), true, '不读取排在前面的隐藏详情');
+    await page.evaluate(() => document.querySelector('.job-detail-box[style]')!.remove());
     assert.ok(detail.chatButtonLocator);
 
     await page.evaluate(() => {
@@ -119,8 +147,31 @@ async function main(): Promise<void> {
     assert.equal(await bossPageService.isDetailStillTarget(target.jobName, target.companyName, target.jobHref), true, 'DOM链接暂缺时可用已核对的Vue绑定编号');
     await page.evaluate(() => document.querySelector('.job-detail-box')!.insertAdjacentHTML('beforeend', '<a class="more-job-btn" href="/job_detail/b.html?from=new">更多</a>'));
 
+    await page.evaluate(() => {
+      const override = () => {
+        const box = document.querySelector('.job-detail-box') as any;
+        box.querySelector('.job-name').textContent = '实际打开的运营岗位';
+        box.querySelector('.more-job-btn').setAttribute('href', '/job_detail/detail-authority.html');
+        box.__vue__.$props.data = { jobInfo: { encryptId: 'detail-authority', jobName: '实际打开的运营岗位',
+          salaryDesc: '6-8K', degreeName: '大专', experienceName: '经验不限', locationName: '上海', showSkills: ['内容运营'] },
+          brandComInfo: { brandName: '详情公司' } };
+      };
+      (window as any).detailOverride = override;
+      document.querySelector('[data-key="b"]')!.addEventListener('click', override);
+    });
+    const actual = await bossPageService.loadJobDetail(target.cardLocator, '卡片原名称', '卡片原公司', target.jobHref);
+    assert.deepEqual(actual.detailData, { jobHref: 'https://www.zhipin.com/job_detail/detail-authority.html',
+      jobName: '实际打开的运营岗位', companyName: '详情公司', salary: '6-8K', degree: '大专',
+      experience: '经验不限', cityName: '上海', skills: ['内容运营'] }, '以已加载详情为准，不因卡片的名称、公司或编号不同直接跳过');
+    await page.evaluate(() => {
+      document.querySelector('[data-key="b"]')!.removeEventListener('click', (window as any).detailOverride);
+      (document.querySelector('.job-detail-box') as any).__vue__.$props.data = {
+        jobInfo: { encryptId: 'b', jobName: '前端开发' }, brandComInfo: { brandName: '乙公司' } };
+    });
+    await bossPageService.loadJobDetail(target.cardLocator, target.jobName, target.companyName, target.jobHref);
+
     const staleTarget = await bossPageService.executeChatClick(detail.chatButtonLocator!, '你好', {
-      jobName: '其他职位', companyName: target.companyName, jobHref: target.jobHref,
+      jobName: '其他职位', companyName: target.companyName, jobHref: 'https://www.zhipin.com/job_detail/other.html',
     });
     assert.equal(staleTarget.targetChanged, true, '目标变化时不能点击沟通');
 
@@ -180,7 +231,7 @@ async function main(): Promise<void> {
     assert.equal(reviewDetail.job.salaryDesc, '6-8K'); assert.equal(reviewDetail.job.jobDegree, '大专');
     assert.equal(reviewDetail.job.cityName, '上海'); assert.match(reviewDetail.jobDetailText, /游戏内容/);
     assert.ok(reviewDetail.chatButtonLocator, '独立岗位页的真实沟通入口可用于待确认投递');
-    assert.equal(await bossPageService.isDetailStillTarget('内容运营', '不相关公司', review.jobHref, page as any), false);
+    assert.equal(await bossPageService.isDetailStillTarget('内容运营', '不相关公司', review.jobHref, page as any), true, '独立页同编号不因公司展示名不同而误判');
 
     pageBody = `<html><body><script>setTimeout(() => {
       document.body.innerHTML = ${JSON.stringify(fixture.match(/<body>([\s\S]*?)<script>/)![1])};

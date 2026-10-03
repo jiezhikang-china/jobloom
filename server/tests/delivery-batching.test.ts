@@ -80,7 +80,7 @@ async function main() {
   await service.startDelivery(params);
   assert.deepEqual(batches, [['作息未注明', '甲', '乙']], '未知作息与两个合格岗位一起评估；硬拒绝仍不请求，达到配额停止下一批');
   assert.deepEqual(sent, ['甲', '乙'], '同批返回乱序时依旧正确对应，达到配额不发第三个岗位');
-  assert.equal(loaded.includes('薪资不符'), false, '薪资初筛失败甚至不需要打开完整JD');
+  assert.equal(loaded.includes('薪资不符'), true, '先读详情后脚本初筛，不能仅凭卡片薪资淘汰');
   assert.deepEqual(reviewed, ['作息未注明']); assert.equal(marked, 2);
   assert.equal(service.getStats().aiRequestCount, 1);
   assert.equal(service.getStats().todayAppliedCount, 2);

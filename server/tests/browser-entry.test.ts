@@ -7,9 +7,13 @@ async function main(): Promise<void> {
   assert.equal(isSecurityUrl('https://www.zhipin.com/web/geek/jobs?_security_check=1_123'), false);
   assert.equal(isSecurityUrl('https://www.zhipin.com/web/geek/jobs'), false);
 
-  const service = new BrowserService(path.resolve(process.cwd(), '../data/test-chrome-profile'));
+  const service = new BrowserService(path.resolve(process.cwd(), '../data/test-chrome-profile'), { headless: true });
   try {
     const page = await service.getWorkerPage();
+    assert.equal((await (service as any).listTabs()).some((tab: any) => tab.url === 'about:blank'), false,
+      '专用 Chrome 应直接打开 BOSS 职位页，不额外保留空白标签');
+    assert.equal((await Promise.all([service.getWorkerPage(), service.getWorkerPage()]))[0], page,
+      '并发获取工作页应复用同一标签');
     const fixture = '<html><head><meta charset="utf-8"></head><body><input id="name"><button onclick="document.body.dataset.clicked=1">发送</button><ul class="rec-job-list"><li class="job-card-box"><a class="job-name" href="/job_detail/demo.html">前端开发</a></li></ul><div class="dialog-wrap"><textarea></textarea><button>确定</button></div></body></html>';
     await page.goto(`data:text/html;charset=utf-8,${encodeURIComponent(fixture)}`);
     assert.equal((await service.checkLoginStatus()).isLoggedIn, false);

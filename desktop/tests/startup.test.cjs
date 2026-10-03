@@ -8,7 +8,7 @@ const { profileDirectory } = require('../user-profile.cjs');
 
 const entry = path.resolve(__dirname, '..', 'electron-main.cjs');
 const source = fs.readFileSync(entry, 'utf8');
-const health = { app: 'boss-job-agent', integrationVersion: 22, status: 'ok' };
+const health = { app: 'boss-job-agent', integrationVersion: 23, status: 'ok' };
 
 function desktop(options = {}) {
   const windows = [];
@@ -171,6 +171,20 @@ test('再次启动恢复隐藏或最小化的窗口，并复用同一后台', as
   assert.ok(window.focusCount > previousFocus);
   assert.equal(run.windows.length, 1);
   assert.equal(run.children.length, 1);
+});
+
+test('升级时复用仍在投递的上一版后台，不创建第二个投递服务', async () => {
+  const run = desktop({ deliveryStatus: 'running', healthRequest: async () => ({ ok: true, json: async () => ({ ...health, integrationVersion: 22 }) }) });
+  await settled();
+  assert.equal(run.windows[0].url, 'http://127.0.0.1:1878/');
+  assert.equal(run.children.length, 0); assert.equal(run.errors.length, 0);
+});
+
+test('上一版空闲后台不会阻止新版本启动', async () => {
+  const run = desktop({ healthRequest: async url => ({ ok: true, json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 23 : 22 }) }) });
+  await settled();
+  assert.equal(run.windows[0].url, 'http://127.0.0.1:4567/');
+  assert.equal(run.children.length, 1); assert.equal(run.errors.length, 0);
 });
 
 test('已有窗口失效时，再次启动会重新创建可用窗口', async () => {

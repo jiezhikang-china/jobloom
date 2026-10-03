@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { LocationApiService } from '../src/services/location-api.service.js';
-import { bd09ToGcj02, gcj02ToBd09 } from '../src/services/coordinates.js';
+import { bd09ToGcj02, gcj02ToBd09, wgs84ToGcj02, mapPointToGps } from '../src/services/coordinates.js';
 import { currentCommute, normalizeCommuteFilter, straightDistanceKm, validateCommuteFilter } from '../src/services/commute.js';
 import type { CommuteOrigin } from '../src/types.js';
 
@@ -55,7 +55,13 @@ async function main() {
   const beforeManual = seen.length;
   assert.equal((await service.manualOrigin(origin, { provider: 'boss' })).source, 'manual');
   assert.equal(seen.length, beforeManual, '已知GCJ02/BD09手动坐标无API请求');
-  await assert.rejects(service.manualOrigin({ ...origin, coordinateSystem: 'wgs84' }, { provider: 'boss' }), /Key/);
+  const gps = { ...origin, coordinateSystem: 'wgs84' };
+  const local = await service.manualOrigin(gps, { provider: 'open' });
+  assert.equal(seen.length, beforeManual, 'GPS 在本机转换，不需要地图Key');
+  assert.equal(local.coordinateSystem, 'gcj02');
+  assert.ok(Math.abs(local.longitude - wgs84ToGcj02(origin.longitude, origin.latitude)[0]) < 1e-10);
+  const gpsBack = mapPointToGps(local);
+  assert.ok(Math.abs(gpsBack.longitude - gps.longitude) < 1e-8 && Math.abs(gpsBack.latitude - gps.latitude) < 1e-8);
   payload = { status: '1', locations: '121.47,31.23' };
   assert.equal((await service.manualOrigin({ ...origin, coordinateSystem: 'wgs84' }, amapConfig)).coordinateSystem, 'gcj02');
   assert.equal(seen.at(-1)?.searchParams.get('coordsys'), 'gps');

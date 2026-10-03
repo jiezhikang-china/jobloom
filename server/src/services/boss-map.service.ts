@@ -2,6 +2,7 @@ import type { BossWorkAddress, CommuteOrigin } from '../types.js';
 import type { CdpPage } from './cdp.page.js';
 import { isBossPoint, parseTransitMinutes, sameBossPoint, sameWorkAddress, validCommuteOrigin } from './commute.js';
 import { decodeBossText } from './boss-text.js';
+import { convertMapPoint } from './coordinates.js';
 
 const DIALOG = '.boss-map-commuting-dialog';
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -9,7 +10,8 @@ const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 /** Actual workplace DOM, not the company's registered office or district/city centre. */
 export async function readBossWorkAddress(page: CdpPage): Promise<BossWorkAddress | undefined> {
   const addresses = await page.evaluate(() => {
-    const scopes = [...document.querySelectorAll('.job-detail-box .job-address, .job-location')];
+    const scopes = [...document.querySelectorAll('.job-detail-box .job-address, .job-location')]
+      .filter(item => (item as HTMLElement).getClientRects().length > 0);
     return scopes.map(scope => {
       const address = (scope.querySelector('.job-address-desc, .location-address') as HTMLElement | null)?.innerText?.trim() || '';
       const map = scope.querySelector('.map-box-wrapper, .job-location-map') as any;
@@ -105,10 +107,32 @@ export class BossMapService {
     let opened = false;
     try {
       await this.open(page); opened = true;
-      const options = await this.suggestions(page, origin.query, origin.cityName);
-      const selected = options.find(item => item.name === origin.name && sameBossPoint(item, origin));
-      if (!selected) throw new Error('地图未找到原先选择的出发点，请重新选择位置');
-      await page.locator(DIALOG + ' .search-address-list li').nth(selected.domIndex).click();
+      await page.waitForFunction(() => {
+        const vm = (document.querySelector('.boss-map-commuting-dialog .path-plan-search') as any)?.__vue__;
+        return (vm?.mapLoaded ?? vm?.$props?.mapLoaded) === true && vm?.$data?.isFinish === true
+          && Boolean(vm.$data.endAddress?.address) && typeof vm.selectStartPointAction === 'function'
+          && [0, 1].includes(vm.getMapper?.()?.type);
+      }, null, { timeout: 10000 });
+      const native = await page.evaluate(() => {
+        const vm = (document.querySelector('.boss-map-commuting-dialog .path-plan-search') as any)?.__vue__;
+        const end = vm?.$data?.endAddress;
+        return { mapperType: vm?.getMapper?.()?.type,
+          end: end ? { longitude: end.longitude, latitude: end.latitude, address: end.address } : undefined };
+      });
+      if (!native.end || !sameWorkAddress({ address: native.end.address,
+        point: { ...native.end, coordinateSystem: 'gcj02' } }, expected)) throw new Error('地图终点与岗位工作地址不同');
+      const point = convertMapPoint(origin, native.mapperType === 1 ? 'bd09' : 'gcj02');
+      // This is the site's own selected-POI handler. It also accepts a map/GPS point;
+      // the source name need not be an exact search suggestion. It starts one route request.
+      const selected = await page.evaluate(({ place, cityName }) => {
+        const vm = (document.querySelector('.boss-map-commuting-dialog .path-plan-search') as any)?.__vue__;
+        if (!(vm?.mapLoaded ?? vm?.$props?.mapLoaded) || !vm?.$data?.isFinish || typeof vm.selectStartPointAction !== 'function') return false;
+        vm.currentPlanType = 'bus';
+        vm.startCity = cityName;
+        vm.selectStartPointAction(place);
+        return true;
+      }, { place: { name: origin.name, desc: origin.address, longitude: point.longitude, latitude: point.latitude }, cityName: origin.cityName });
+      if (!selected) throw new Error('BOSS 地图的起点选择尚未就绪');
       const deadline = Date.now() + 10000;
       while (Date.now() < deadline) {
         const data = await page.evaluate(() => {

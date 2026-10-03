@@ -16,7 +16,7 @@ export class JobCommuteService {
     if (saved && saved.expires > Date.now()) { job.commute = structuredClone(saved.result); return; }
     this.cache.delete(key);
     try {
-      const route = cfg.locationApi && cfg.locationApi.provider !== 'boss'
+      const route = cfg.locationApi && ['amap', 'baidu'].includes(cfg.locationApi.provider)
         ? await locationApiService.readTransit(result.origin, result.destination, cfg.locationApi, job.cityName) : await readTransit();
       if (!Number.isFinite(route.minutes) || route.minutes < 0 || route.minutes > 1440) throw new Error('地图时间无效');
       result.transitStatus = 'ok'; result.transitMinutes = route.minutes; result.transitSummary = route.summary;

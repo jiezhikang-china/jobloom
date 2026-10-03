@@ -13,6 +13,8 @@ import { bossCatalogService, positionSelections } from '../src/services/boss.cat
 import catalog from '../resources/boss-positions.json';
 import { locationApiService } from '../src/services/location-api.service.js';
 import { notSuitableStore } from '../src/services/not-suitable-store.js';
+import { publicLocationService } from '../src/services/public-location.service.js';
+import { deviceLocationService } from '../src/services/device-location.service.js';
 
 const restores: Array<() => void> = [];
 function stub(object: any, key: string, replacement: any) {
@@ -68,6 +70,15 @@ async function main() {
   stub(notSuitableStore, 'list', () => blocked);
   stub(notSuitableStore, 'remove', (id: string) => { blocked = blocked.filter(row => row.id !== id); return true; });
   let externalLocations = 0;
+  let publicLocations = 0, deviceLocations = 0, deviceAvailable = true;
+  stub(publicLocationService, 'searchOrigins', async () => {
+    publicLocations++; return [{ ...origin, coordinateSystem: 'gcj02', source: 'openstreetmap' }];
+  });
+  stub(deviceLocationService, 'getPosition', async () => {
+    deviceLocations++;
+    if (!deviceAvailable) throw Error('Windows 暂未提供当前位置，请直接搜索地址／地图选点');
+    return { longitude: 121.4702, latitude: 31.2283, coordinateSystem: 'wgs84', accuracyMeters: 150, timestamp: new Date().toISOString() };
+  });
   stub(locationApiService, 'searchOrigins', async (query: string, city: string, api: any) => {
     externalLocations++; assert.equal(api.provider, 'amap'); assert.equal(api.apiKey, 'fake-ui-key');
     assert.equal(query, '人民广场'); assert.equal(city, '上海'); return [{ ...origin, coordinateSystem: 'gcj02', source: 'amap' }];
@@ -82,6 +93,8 @@ async function main() {
     browser = await chromium.launch({ executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', headless: true });
     const context = await browser.newContext({ viewport: { width: 1340, height: 1000 }, permissions: ['clipboard-read', 'clipboard-write'] });
     const page = await context.newPage();
+    await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/svg+xml', body:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e6ece6"/><path d="M0 105H256M130 0V256" stroke="#fff" stroke-width="18"/><path d="M0 105H256M130 0V256" stroke="#c2d3cf" stroke-width="2"/></svg>' }));
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('dialog', (dialog) => void dialog.accept());
@@ -142,6 +155,8 @@ async function main() {
     assert.equal(await page.getByLabel('期望月薪下限').inputValue(), '');
     assert.equal(await page.getByLabel('期望月薪上限').inputValue(), '');
     const location = page.getByRole('region', { name: '位置与通勤筛选', exact: true });
+    await location.getByText('选择地址搜索与通勤来源', { exact: true }).click();
+    await location.getByLabel('定位接口来源').selectOption('boss');
     await location.getByLabel('出发城市', { exact: true }).fill('上海');
     await location.getByLabel('出发位置搜索', { exact: true }).fill('人民广场');
     await location.getByRole('button', { name: '搜索位置', exact: true }).click();
@@ -159,6 +174,7 @@ async function main() {
     assert.equal(await location.getByLabel('最大直线距离', { exact: true }).inputValue(), '12.5');
     assert.equal(await location.getByLabel('最大公交地铁通勤时间', { exact: true }).inputValue(), '55');
     await location.screenshot({ path: path.resolve(process.cwd(), '../data/location-filter-preview.png') });
+    await location.getByText('选择地址搜索与通勤来源', { exact: true }).click();
     await location.getByLabel('定位接口来源').selectOption('amap');
     await location.getByLabel('地图 API Key').fill('fake-ui-key');
     await location.getByLabel('出发位置搜索', { exact: true }).fill('人民广场');
@@ -191,6 +207,49 @@ async function main() {
     await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'),
       page.getByRole('button', { name: '保存配置', exact: true }).click()]);
     assert.equal(config.filter.commute.origin, undefined); assert.equal(config.filter.commute.maxDistanceKm, 0);
+    await location.getByText('选择地址搜索与通勤来源', { exact: true }).click();
+    await location.getByLabel('定位接口来源').selectOption('open');
+    assert.equal(await location.getByLabel('地图 API Key').count(), 0, '免费地图不要求Key');
+    const withoutClick = await fetch(base + '/api/location/device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(withoutClick.status, 400);
+    const foreignPage = await fetch(base + '/api/location/device', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://unrelated.example' }, body: JSON.stringify({ userInitiated: true }) });
+    assert.equal(foreignPage.status, 403);
+    assert.equal(deviceLocations, 0, '打开界面与配置不自动获取用户位置');
+    await location.getByRole('button', { name: '获取当前位置', exact: true }).click();
+    await location.getByLabel('确认地图出发点').waitFor();
+    await location.getByText('系统返回的精度范围约 150 米，请核对地图标记。', { exact: true }).waitFor();
+    assert.equal(deviceLocations, 1); assert.equal(config.filter.commute.origin, undefined, '定位只给候选，未确认不能覆盖原点');
+    const map = location.getByLabel('出发位置地图', { exact: true });
+    await map.locator('.leaflet-control-zoom-in').waitFor();
+    await map.locator('.leaflet-overlay-pane .leaflet-interactive').first().waitFor();
+    await map.click({ position: { x: 450, y: 130 } });
+    await location.getByText('请核对地图标记；在地图点击可以调整位置。', { exact: true }).waitFor();
+    await location.getByLabel('地图位置名称').fill('地图住处');
+    await location.getByRole('button', { name: '使用此出发点', exact: true }).click();
+    await location.getByRole('status').filter({ hasText: '出发位置：上海 · 地图住处' }).waitFor();
+    assert.equal(config.filter.commute.origin, undefined, '选点仍需保存筛选规则');
+    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'), page.getByRole('button', { name: '保存配置', exact: true }).click()]);
+    assert.equal(config.filter.commute.origin.coordinateSystem, 'gcj02');
+    assert.equal(config.filter.commute.origin.name, '地图住处');
+    await page.reload(); await page.getByRole('button', { name: '筛选规则', exact: true }).click();
+    assert.equal(deviceLocations, 1, '重载不会后台跟踪位置');
+    await location.getByRole('button', { name: '地图选点', exact: true }).click();
+    const convertedResponse = await page.waitForResponse(r => r.url().endsWith('/api/location/map-point'));
+    assert.equal(convertedResponse.status(), 200, '已保存位置显示回OSM时转换坐标系');
+    await map.locator('.leaflet-overlay-pane .leaflet-interactive').first().waitFor();
+    await location.screenshot({ path: path.resolve(process.cwd(), '../data/public-location-ui-preview.png') });
+    await location.getByRole('button', { name: '收起地图', exact: true }).click();
+    deviceAvailable = false;
+    await location.getByRole('button', { name: '获取当前位置', exact: true }).click();
+    await location.getByRole('alert').filter({ hasText: 'Windows 暂未提供当前位置' }).waitFor();
+    assert.equal(config.filter.commute.origin.name, '地图住处', '定位失败不覆盖已有位置');
+    await location.getByLabel('出发位置搜索', { exact: true }).fill('人民广场');
+    await location.getByRole('button', { name: '搜索位置', exact: true }).click();
+    await location.getByRole('button', { name: /人民广场.*人民大道185号/ }).click();
+    assert.equal(publicLocations, 1);
+    assert.equal(locationsQueried, 1, '公共位置查询无需打开BOSS');
+    await location.getByRole('button', { name: '清除出发位置', exact: true }).click();
+    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'), page.getByRole('button', { name: '保存配置', exact: true }).click()]);
     await page.getByLabel('我的语言能力', { exact: true }).fill('英语 CET4；西班牙语 C1');
     assert.equal(await page.getByLabel('经验筛选方式', { exact: true }).inputValue(), 'flexible');
     await page.getByLabel('经验筛选方式', { exact: true }).selectOption('strict');

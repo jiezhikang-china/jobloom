@@ -64,10 +64,20 @@ async function readJson(url, timeout = 1500) {
 async function isOurService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
-    return health.app === 'boss-job-agent' && health.integrationVersion === 22 && health.status === 'ok';
+    return health.app === 'boss-job-agent' && health.integrationVersion === 23 && health.status === 'ok';
   } catch {
     return false;
   }
+}
+
+async function isActivePreviousService(port) {
+  try {
+    const health = await readJson(`${address(port)}/health`);
+    if (health.app !== 'boss-job-agent' || health.status !== 'ok' || !Number.isInteger(health.integrationVersion)
+      || health.integrationVersion < 22 || health.integrationVersion >= 23) return false;
+    const result = await readJson(`${address(port)}/api/delivery/status`, 2500);
+    return activeStatuses.has(result?.data?.stats?.status);
+  } catch { return false; }
 }
 
 function rememberedPort() {
@@ -98,7 +108,7 @@ async function startServer() {
   fs.mkdirSync(dataDir, { recursive: true });
 
   for (const port of new Set([rememberedPort(), 3001])) {
-    if (port && await isOurService(port)) {
+    if (port && (await isOurService(port) || await isActivePreviousService(port))) {
       serverPort = port;
       serverUrl = address(port);
       log(`using local service on ${port}`);
@@ -204,6 +214,10 @@ function createWindow() {
     },
   });
   window = target;
+  // Identify this map viewer to public tile services while retaining the browser's normal user agent.
+  if (target.webContents.setUserAgent && target.webContents.getUserAgent) {
+    target.webContents.setUserAgent(target.webContents.getUserAgent() + ' BossJobAgent/1.0');
+  }
 
   target.once('ready-to-show', () => { log('ready to show'); presentWindow(target); });
   target.webContents.on('did-finish-load', () => presentWindow(target));

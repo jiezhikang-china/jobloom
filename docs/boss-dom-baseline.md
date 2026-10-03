@@ -15,11 +15,11 @@
 | --- | --- | --- |
 | 职位卡片 | `ul.rec-job-list li.job-card-box`，一次显示 15 张 | 只读可见卡片，一次性提取 |
 | 职位链接 | 卡片内 `a.job-name[href^="/job_detail/"]` | 用岗位链接路径作为去重和身份键 |
-| 公司与位置 | `.job-card-footer .boss-name`、`.company-location` | 字段缺失时跳过该岗位 |
-| 薪资与标签 | `.job-salary`、`.tag-list li` | 读取可见文本；筛选要求的字段缺失时跳过 |
+| 公司与位置 | `.job-card-footer .boss-name`、`.company-location` | 用于浏览预览，筛选从实际详情重新读取 |
+| 薪资与标签 | `.job-salary`、`.tag-list li` | 卡片缺失或过时也可打开详情；使用详情的字段 |
 | 搜索框 | `input[placeholder="搜索职位、公司"]` | 用输入框当前值验证 `query` 参数是否生效 |
-| 右侧职位名 | `.job-detail-info .job-name` | 必须与点击的卡片职位名一致 |
-| 右侧岗位链接 | `.job-detail-box a.more-job-btn[href]` | 查询参数会不同，但与卡片链接的路径相同；发送前再核对 |
+| 右侧职位名 | `.job-detail-info .job-name` | 使用实际详情的标题，不要求与卡片完全匹配 |
+| 右侧岗位链接 | `.job-detail-box a.more-job-btn[href]` | 采用详情的岗位链接，用于去重、待确认和发送前读取 |
 | 完整描述 | `.job-detail-body p.desc` | 使用可见 `innerText`，避免把隐藏混淆文本送入筛选 |
 | 沟通按钮 | `.job-detail-box .op-btn-chat`，当前为“立即沟通” | 发送前检查目标；只有明确反馈才计成功 |
 
@@ -63,3 +63,11 @@ BOSS 接入层现由 `server/src/services/browser.service.ts`（会话）、`ser
 - 保存使用 `[ka="resume_form_expectation_ok"]`。保存前检查岗位与城市代码，保存后等表单关闭、对应行出现，再刷新个人页确认全部目标已持久保存。真实验证已保存当前目标“新媒体运营（上海）”并刷新确认，其他两个位置保留。此流程没有删除期望。
 - CDP 初始化恢复 `Input.setIgnoreInputEvents(ignore=false)` 并开启焦点模拟。此次故障中悬停有效、原生点击被忽略，恢复后实际自选切换产生可信点击事件。原生按下和释放分别发送 `buttons=1` 和 `buttons=0`。
 - 实际 `kanzhun-mix` / `kanzhun-Regular` 字体以 U+E031 至 U+E03A 对应0至9。已对照实际字体绘制结果核对十个数字并读取真实卡片薪资；页面读取、历史待确认显示和薪资解析共用还原规则，未知私用字符显示“薪资待确认”。
+
+## 以实际详情为准（2026-10-03）
+
+- 卡片只用于定位和打开详情，不再按卡片标题、公司、薪资、学历或城市直接淘汰。详情加载后，使用详情的岗位链接和字段进行脚本初筛、AI 批量评估、待确认及投递。
+- Vue 详情数据中，jobInfo 提供 encryptId、jobName、salaryDesc、degreeName、experienceName、locationName、showSkills；brandComInfo 提供 brandName。只读取可见详情，避免隐藏面板的旧内容。
+- 真实页面验证“小红书运营”：详情薪资 10-15K、学历本科、经验 1-3年、城市上海，完整描述可读。没有向招聘者发送消息或提交不合适反馈。
+- 启动与临时核查页直接导航到目标网址；真实专用浏览器检查无额外 about:blank 标签。
+- 使用公开地点人民广场测试原生公交起点函数，返回40分钟路线；没有把验证地点保存为用户出发位置。新版地图入口与坐标依据见 public-location-projects.md 第8节。

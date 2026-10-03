@@ -284,7 +284,19 @@ button:disabled { cursor: not-allowed; }
 .location-limit-input { margin-top: 12px; }
 .location-limit-input input { width: 88px; }
 .location-options .location-help { color: #87a4b9; }
+.location-options .location-help a { color: #8edbd1; margin-left: 5px; text-decoration: underline; text-underline-offset: 2px; }
 .location-options .work-review-error { color: #fca5a5; }
+.location-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+.location-actions button, .location-point-confirm button { display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; border-radius: 8px; border: 1px solid #398e91; background: #165e65; color: #dcfff5; }
+.location-actions span { color: #8baec1; font-size: 12px; }
+.location-options .location-upgrade { color: #f2d099; padding: 10px 13px; background: #423725; border: 1px solid #75603d; border-radius: 8px; }
+.location-map-wrap { margin-top: 14px; }
+.location-map { height: 340px; width: 100%; margin-top: 8px; border: 1px solid #476473; border-radius: 10px; background: #dbe3e5; z-index: 0; }
+.location-map .leaflet-control-attribution { color: #333; background: rgba(255, 255, 255, .95); font-size: 11px; }
+.location-map .leaflet-control-attribution a { color: #126b84; }
+.location-map .leaflet-control-zoom a { color: #183c46; }
+.location-point-confirm { padding: 14px; background: #17373b; border: 1px solid #347d7d; border-radius: 10px; margin-top: 12px; }
+.location-source summary { font-size: 13px; }
 .location-options :disabled { opacity: .5; }
 .work-review-location { border-left: 3px solid #428b9b; background: #162a35; margin: 12px 0; padding: 7px 13px; border-radius: 4px; }
 

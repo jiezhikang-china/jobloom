@@ -11,7 +11,7 @@ export function isBossPoint(v: any): v is BossMapPoint {
 export function validCommuteOrigin(v: any): v is CommuteOrigin {
   return text(v?.name, 150) && Boolean(v.name.trim()) && text(v.address)
     && text(v.cityName, 30) && Boolean(v.cityName.trim()) && text(v.query, 150) && Boolean(v.query.trim())
-    && (v.source === undefined || ['boss', 'amap', 'baidu', 'manual'].includes(v.source)) && isBossPoint(v);
+    && (v.source === undefined || ['boss', 'amap', 'baidu', 'manual', 'openstreetmap'].includes(v.source)) && isBossPoint(v);
 }
 /** The former 'boss' tag conflated native BD09 suggestions with GCJ02 job endpoints. */
 export function normalizedCommuteOrigin(origin: CommuteOrigin): CommuteOrigin {
@@ -31,7 +31,7 @@ export function validateCommuteFilter(v: any): boolean {
     && (v.maxTransitMinutes === undefined || typeof v.maxTransitMinutes === 'number' && Number.isInteger(v.maxTransitMinutes) && v.maxTransitMinutes >= 0 && v.maxTransitMinutes <= 240);
 }
 export function validLocationApi(v: any): boolean {
-  return v !== null && typeof v === 'object' && !Array.isArray(v) && ['boss', 'amap', 'baidu'].includes(v.provider)
+  return v !== null && typeof v === 'object' && !Array.isArray(v) && ['open', 'boss', 'amap', 'baidu'].includes(v.provider)
     && (v.apiKey === undefined || typeof v.apiKey === 'string' && v.apiKey.length <= 512 && !/[\r\n\s]/.test(v.apiKey));
 }
 export function normalizeCommuteFilter(v: unknown): CommuteFilter {
