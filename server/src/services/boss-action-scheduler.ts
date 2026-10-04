@@ -1,13 +1,13 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import fs from 'node:fs';
 import path from 'node:path';
-import { configManager } from '../config/config.manager.js';
+import { bossOperationPolicy } from './boss-operation-policy.js';
 import { bossAutomationSafety } from './boss-automation-safety.js';
 
 export type BossActionKind = 'control' | 'input' | 'navigation' | 'route' | 'feedback' | 'submit' | 'confirm';
 interface ActionScope { signal?: AbortSignal; beforeAction?: () => Promise<void>; onWait?: (seconds: number, kind: BossActionKind) => void; }
 interface Settings { intervalMs: number; burst: number; restMs: number; feedbackMs: number; maxPerMinute?: number; maxPerHour?: number; writesPerHour?: number; }
-interface ActionState { blockedUntil: number; level: number; lastLimitAt: number; actionTimes?: number[]; writeTimes?: number[]; recentActions?: Array<{ time: number; kind: BossActionKind; result: 'ok' | 'error' }>; }
+interface ActionState { blockedUntil: number; level: number; lastLimitAt: number; sequenceCount?: number; actionTimes?: number[]; writeTimes?: number[]; recentActions?: Array<{ time: number; kind: BossActionKind; result: 'ok' | 'error' }>; }
 const scopes = new AsyncLocalStorage<ActionScope>();
 const statePath = path.resolve(__dirname, '../../../data/boss-operation-state.json');
 
@@ -39,6 +39,17 @@ export class BossActionScheduler {
     this.recentActions = Array.isArray(state?.recentActions) ? state.recentActions.filter((item: any) => Number.isFinite(item?.time)
       && ['control', 'input', 'navigation', 'route', 'feedback', 'submit', 'confirm'].includes(item.kind)
       && ['ok', 'error'].includes(item.result)).slice(-1000) : [];
+    const restMs = this.settings().restMs;
+    if (this.lastAt && this.now() - this.lastAt < restMs) {
+      if (Number.isInteger(state?.sequenceCount) && state.sequenceCount >= 0) this.count = Math.min(1000, state.sequenceCount);
+      else {
+        // Migrate an old journal conservatively; do not refresh the session allowance on restart.
+        for (let i = this.recentActions.length - 1; i >= 0; i--) {
+          if (i < this.recentActions.length - 1 && this.recentActions[i + 1].time - this.recentActions[i].time >= restMs) break;
+          this.count++;
+        }
+      }
+    }
     if (Number.isFinite(state?.blockedUntil) && state.blockedUntil > this.now() && state.blockedUntil <= this.now() + 24 * 3600000) {
       this.blockedUntil = state.blockedUntil; this.level = Math.min(5, Math.max(1, Number(state.level) || 1));
       this.lastLimitAt = Math.max(0, Number(state.lastLimitAt) || 0);
@@ -52,7 +63,7 @@ export class BossActionScheduler {
     this.blockedUntil = Math.max(this.blockedUntil, now + Math.max(Math.min(900000, 60000 * 2 ** (this.level - 1)), Math.min(86400000, retryAfterMs)));
     this.save(); this.onLimit?.(this.blockedUntil, this.level);
   }
-  private save(): void { this.persist?.({ blockedUntil: this.blockedUntil, level: this.level, lastLimitAt: this.lastLimitAt, actionTimes: this.actionTimes, writeTimes: this.writeTimes, recentActions: this.recentActions }); }
+  private save(): void { this.persist?.({ blockedUntil: this.blockedUntil, level: this.level, lastLimitAt: this.lastLimitAt, sequenceCount: this.count, actionTimes: this.actionTimes, writeTimes: this.writeTimes, recentActions: this.recentActions }); }
   private budgetUntil(times: number[], limit: number | undefined, window: number, now: number): number {
     if (!limit || limit < 1) return 0;
     const recent = times.filter(time => time > now - window);
@@ -100,15 +111,18 @@ export class BossActionScheduler {
     return work;
   }
 }
-export const bossActionScheduler = new BossActionScheduler(() => {
-  const cfg = configManager.getConfig().delivery;
-  return { intervalMs: (cfg.operationIntervalSeconds ?? 2) * 1000, burst: cfg.operationBurstLimit ?? 20,
-    restMs: (cfg.operationRestSeconds ?? 20) * 1000, feedbackMs: (cfg.feedbackIntervalSeconds ?? 15) * 1000,
-    maxPerMinute: cfg.operationMaxPerMinute ?? 12, maxPerHour: cfg.operationMaxPerHour ?? 240, writesPerHour: cfg.writeMaxPerHour ?? 10 };
-}, Date.now, undefined, state => {
-  try { fs.mkdirSync(path.dirname(statePath), { recursive: true }); fs.writeFileSync(statePath, JSON.stringify(state), 'utf8'); } catch {}
+export const bossActionScheduler = new BossActionScheduler(() => bossOperationPolicy, Date.now, undefined, state => {
+  try {
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(statePath + '.tmp', JSON.stringify(state), 'utf8'); fs.renameSync(statePath + '.tmp', statePath);
+  } catch (error) {
+    bossAutomationSafety.halt('state_unreadable', 'BOSS 操作节奏记录无法保存，已停止自动操作，请先修复本机记录'); throw error;
+  }
 }, (until) => { bossAutomationSafety.halt('rate_limit', 'BOSS 已明确限频，全部自动操作已停止；等待结束后仍需人工确认账号恢复', until); });
-try { bossActionScheduler.restore(JSON.parse(fs.readFileSync(statePath, 'utf8'))); } catch {}
+try { bossActionScheduler.restore(JSON.parse(fs.readFileSync(statePath, 'utf8'))); }
+catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== 'ENOENT') bossAutomationSafety.halt('state_unreadable', 'BOSS 操作节奏记录无法读取，已停止自动操作，请先修复本机记录');
+}
 
 /** Compatibility helper also accepts the existing test/browser adapters without a scheduler. */
 export function runBossAction<T>(page: { action?: <R>(kind: BossActionKind, work: () => Promise<R>) => Promise<R> }, kind: BossActionKind, work: () => Promise<T>): Promise<T> {

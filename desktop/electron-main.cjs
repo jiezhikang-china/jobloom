@@ -1,9 +1,15 @@
-const { app, BrowserWindow, dialog, session, shell } = require('electron');
+const { app, BrowserWindow, dialog, session, shell, protocol, ipcMain } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const { profileDirectory } = require('./user-profile.cjs');
+const { APP_ORIGIN, isAppUrl, createAppProtocol } = require('./app-protocol.cjs');
+
+protocol.registerSchemesAsPrivileged([{ scheme: 'boss-app', privileges: {
+  standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
+} }]);
 
 const root = path.resolve(__dirname, '..');
 const dataDir = path.join(root, 'data');
@@ -32,6 +38,7 @@ let window = null;
 let ownServer = null;
 let serverPort = null;
 let serverUrl = null;
+let serviceToken = randomUUID();
 let stopping = false;
 let rendererFallbackStarted = false;
 let serverReadyPromise = null;
@@ -56,7 +63,7 @@ function address(port) {
 }
 
 async function readJson(url, timeout = 1500) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(timeout) });
+  const response = await fetch(url, { headers: { 'x-boss-desktop-token': serviceToken }, signal: AbortSignal.timeout(timeout) });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
@@ -64,7 +71,9 @@ async function readJson(url, timeout = 1500) {
 async function isOurService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
-    return health.app === 'boss-job-agent' && health.integrationVersion === 25 && health.status === 'ok';
+    if (health.app !== 'boss-job-agent' || health.integrationVersion !== 26 || health.status !== 'ok' || health.desktopManaged !== true) return false;
+    const safety = await readJson(`${address(port)}/api/boss/automation-safety`);
+    return safety.success === true;
   } catch {
     return false;
   }
@@ -74,7 +83,7 @@ async function isActivePreviousService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
     if (health.app !== 'boss-job-agent' || health.status !== 'ok' || !Number.isInteger(health.integrationVersion)
-      || health.integrationVersion < 22 || health.integrationVersion >= 25) return false;
+      || health.integrationVersion < 22 || health.integrationVersion >= 26) return false;
     const result = await readJson(`${address(port)}/api/delivery/status`, 2500);
     return activeStatuses.has(result?.data?.stats?.status);
   } catch { return false; }
@@ -82,15 +91,12 @@ async function isActivePreviousService(port) {
 
 function rememberedPort() {
   try {
-    const value = JSON.parse(fs.readFileSync(portFile, 'utf8')).port;
-    return Number.isInteger(value) && value > 0 && value < 65536 ? value : null;
+    const record = JSON.parse(fs.readFileSync(portFile, 'utf8'));
+    if (typeof record.token === 'string' && /^[a-f0-9-]{36}$/.test(record.token)) serviceToken = record.token;
+    return Number.isInteger(record.port) && record.port > 0 && record.port < 65536 ? record.port : null;
   } catch {
     return null;
   }
-}
-function hasAutomationHold() {
-  try { return Boolean(JSON.parse(fs.readFileSync(path.join(dataDir, 'boss-automation-safety.json'), 'utf8')).hold); }
-  catch (error) { return error.code !== 'ENOENT'; }
 }
 
 function freePort() {
@@ -115,13 +121,13 @@ async function startServer() {
     if (!port) continue;
     const current = await isOurService(port);
     const previous = !current && await isActivePreviousService(port);
-    if (previous && hasAutomationHold()) {
+    if (previous) {
       const stopped = await fetch(`${address(port)}/api/delivery/stop`, { method: 'POST', signal: AbortSignal.timeout(2500) });
       if (!stopped.ok || (await stopped.json()).success !== true) throw new Error('账号自动操作已停止，但旧版任务尚未确认停止；请关闭旧版后再启动');
-      log(`stopped previous delivery on ${port} because an account hold exists`);
+      log(`stopped previous delivery on ${port} before upgrading the desktop worker`);
       continue;
     }
-    if (current || previous) {
+    if (current) {
       serverPort = port;
       serverUrl = address(port);
       log(`using local service on ${port}`);
@@ -131,15 +137,16 @@ async function startServer() {
 
   serverPort = await freePort();
   serverUrl = address(serverPort);
+  serviceToken = randomUUID();
   const logFd = fs.openSync(path.join(dataDir, 'desktop-server.log'), 'a');
   let spawnError = null;
   try {
     ownServer = spawn(process.execPath, [serverEntry], {
       cwd: serverDir,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', HOST: '127.0.0.1', PORT: String(serverPort) },
-      detached: true,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', HOST: '127.0.0.1', PORT: String(serverPort), BOSS_DESKTOP_TOKEN: serviceToken },
+      detached: false,
       windowsHide: true,
-      stdio: ['ignore', logFd, logFd],
+      stdio: ['ignore', logFd, logFd, 'ipc'],
     });
     ownServer.on('error', (error) => { spawnError = error; });
   } finally {
@@ -149,7 +156,7 @@ async function startServer() {
   for (let attempt = 0; attempt < 100; attempt++) {
     if (spawnError) break;
     if (await isOurService(serverPort)) {
-      fs.writeFileSync(portFile, JSON.stringify({ port: serverPort }), 'utf8');
+      fs.writeFileSync(portFile, JSON.stringify({ port: serverPort, token: serviceToken }), 'utf8');
       log(`started local service on ${serverPort}`);
       return;
     }
@@ -197,8 +204,12 @@ async function recoverRenderer(target, details) {
   if (details.reason === 'launch-failed' && !process.argv.includes('--no-sandbox') && !rendererFallbackStarted) {
     rendererFallbackStarted = true;
     stopping = true;
-    // 等服务启动完成并记下端口，重启后的窗口复用它，避免留下无人管理的第二个服务。
+    // The IPC-owned worker exits with this process; do not hand its dying port to the relaunched app.
     if (serverReadyPromise) await serverReadyPromise.catch(() => {});
+    if (ownServer) {
+      ownServer.kill(); ownServer = null;
+      try { if (rememberedPort() === serverPort) fs.unlinkSync(portFile); } catch {}
+    }
     log('relaunching with compatibility mode after renderer launch failed');
     app.relaunch({ args: ['--no-sandbox', ...process.argv.slice(1)] });
     app.exit(0);
@@ -219,7 +230,9 @@ function createWindow() {
     show: true,
     backgroundColor: '#0f172a',
     autoHideMenuBar: true,
+    frame: false,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -243,7 +256,7 @@ function createWindow() {
     return { action: 'deny' };
   });
   target.webContents.on('will-navigate', (event, url) => {
-    if (serverUrl && url.startsWith(serverUrl + '/')) return;
+    if (isAppUrl(url)) return;
     if (url.startsWith('file://') && !serverUrl) return;
     event.preventDefault();
     openExternal(url);
@@ -261,8 +274,8 @@ async function showApp(target) {
     presentWindow(target);
     await ensureServer();
     if (stopping || target.isDestroyed()) return;
-    log(`loading ${serverUrl}`);
-    await target.loadURL(serverUrl + '/');
+    log('loading bundled Electron workbench');
+    await target.loadURL(APP_ORIGIN + '/');
     presentWindow(target);
     log('app page loaded');
   } catch (error) {
@@ -286,21 +299,15 @@ function openWindow() {
 async function shutDown() {
   if (stopping) return;
   stopping = true;
-  if (ownServer && serverPort) {
-    let active = true;
+  if (serverUrl) {
     try {
-      const response = await readJson(`${serverUrl}/api/delivery/status`, 2500);
-      active = activeStatuses.has(response?.data?.stats?.status);
-    } catch {}
-    if (!active) {
-      try {
-        await fetch(`${serverUrl}/api/llm/web/stop`, { method: 'POST', signal: AbortSignal.timeout(2500) });
-      } catch {}
-      ownServer.kill();
-      try {
-        if (rememberedPort() === serverPort) fs.unlinkSync(portFile);
-      } catch {}
-    }
+      const stopped = await fetch(`${serverUrl}/api/delivery/stop`, { method: 'POST', headers: { 'x-boss-desktop-token': serviceToken }, signal: AbortSignal.timeout(4000) });
+      if (!stopped.ok || (await stopped.json()).success !== true) throw new Error('stop not acknowledged');
+      await fetch(`${serverUrl}/api/llm/web/stop`, { method: 'POST', headers: { 'x-boss-desktop-token': serviceToken }, signal: AbortSignal.timeout(2500) });
+    } catch (error) { log(`shutdown stop failed: ${error.message}`); }
+    // Closing a desktop window must never leave unattended delivery running.
+    ownServer?.kill();
+    try { if (rememberedPort() === serverPort && ownServer) fs.unlinkSync(portFile); } catch {}
   }
   app.quit();
 }
@@ -308,6 +315,14 @@ async function shutDown() {
 if (hasLock) {
   app.whenReady().then(() => {
     log('app ready');
+    protocol.handle('boss-app', createAppProtocol({ clientDir: path.dirname(clientEntry), getService: () => ({ url: serverUrl, token: serviceToken }) }));
+    ipcMain.handle('desktop:window', (event, action) => {
+      if (!window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || !isAppUrl(event.senderFrame.url)) throw new Error('Invalid desktop sender');
+      if (action === 'minimize') window.minimize();
+      else if (action === 'toggle-maximize') window.isMaximized() ? window.unmaximize() : window.maximize();
+      else if (action === 'close') window.close();
+      else throw new Error('Unknown window action');
+    });
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     openWindow();
   });

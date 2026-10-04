@@ -25,7 +25,7 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
   useEffect(() => {
     let disposed = false;
     void fetch('/health').then(response => response.json()).then(data => {
-      if (!disposed && data.app === 'boss-job-agent' && data.integrationVersion < 25) setOldService(true);
+      if (!disposed && data.app === 'boss-job-agent' && data.integrationVersion < 26) setOldService(true);
     }).catch(() => {});
     return () => { disposed = true; };
   }, []);

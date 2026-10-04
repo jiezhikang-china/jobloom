@@ -37,6 +37,8 @@
     "test:resume-pdf-ui": "tsx tests/resume-pdf-ui.test.ts",
     "test:operation-pacing": "tsx tests/boss-action-scheduler.test.ts && tsx tests/cdp-actions.test.ts",
     "test:boss-safety": "npm run build && node tests/boss-safety.test.cjs",
+    "test:internal-policy": "npm run build && node tests/internal-policy.test.cjs",
+    "test:desktop-worker": "npm run build && node tests/desktop-worker.test.cjs",
     "test:entry": "tsx tests/delivery-entry.test.ts",
     "test:deepseek": "tsx tests/deepseek-web.test.ts",
     "test:deepseek-ui": "tsx tests/deepseek-ui.test.ts",

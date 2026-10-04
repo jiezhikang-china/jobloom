@@ -71,22 +71,13 @@ const DEFAULT_CONFIG: AppConfig = {
   delivery: {
     jobSource: 'saved_expectations',
     dailyMaxQuota: 80,
-    minDelaySeconds: 8,
-    maxDelaySeconds: 18,
-    operationIntervalSeconds: 2,
-    operationBurstLimit: 20,
-    operationRestSeconds: 20,
-    feedbackIntervalSeconds: 15,
-    operationMaxPerMinute: 12,
-    operationMaxPerHour: 240,
-    writeMaxPerHour: 10,
   },
 };
 
 export class ConfigManager {
   private config: AppConfig;
 
-  constructor() {
+  constructor(private readonly filePath = CONFIG_FILE_PATH) {
     this.config = this.loadConfig();
   }
 
@@ -142,14 +133,6 @@ export class ConfigManager {
         workRequirements: normalizeWorkRequirements(cfg.filter?.workRequirements, legacyWorkConditions),
       },
       delivery: {
-        ...cfg.delivery,
-        operationIntervalSeconds: boundedInteger(cfg.delivery?.operationIntervalSeconds, 2, 1, 10),
-        operationBurstLimit: boundedInteger(cfg.delivery?.operationBurstLimit, 20, 5, 100),
-        operationRestSeconds: boundedInteger(cfg.delivery?.operationRestSeconds, 20, 5, 300),
-        feedbackIntervalSeconds: boundedInteger(cfg.delivery?.feedbackIntervalSeconds, 15, 10, 120),
-        operationMaxPerMinute: boundedInteger(cfg.delivery?.operationMaxPerMinute, 12, 1, 30),
-        operationMaxPerHour: boundedInteger(cfg.delivery?.operationMaxPerHour, 240, 30, 1000),
-        writeMaxPerHour: boundedInteger(cfg.delivery?.writeMaxPerHour, 10, 1, 30),
         jobSource: cfg.delivery?.jobSource === 'search' ? 'search' : 'saved_expectations',
         dailyMaxQuota: Number.isFinite(quota) ? Math.max(0, Math.min(150, Math.trunc(quota))) : DEFAULT_CONFIG.delivery.dailyMaxQuota,
       },
@@ -166,8 +149,8 @@ export class ConfigManager {
 
   private loadConfig(): AppConfig {
     try {
-      if (fs.existsSync(CONFIG_FILE_PATH)) {
-        const data = fs.readFileSync(CONFIG_FILE_PATH, 'utf-8');
+      if (fs.existsSync(this.filePath)) {
+        const data = fs.readFileSync(this.filePath, 'utf-8');
         const parsed = JSON.parse(data);
         const normalized = this.normalize({
           ...DEFAULT_CONFIG,
@@ -194,11 +177,11 @@ export class ConfigManager {
 
   private saveConfigDirect(cfg: AppConfig): void {
     try {
-      const dir = path.dirname(CONFIG_FILE_PATH);
+      const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(cfg, null, 2), 'utf-8');
+      fs.writeFileSync(this.filePath, JSON.stringify(cfg, null, 2), 'utf-8');
     } catch (err) {
       console.error('保存配置文件失败:', err);
     }

@@ -33,15 +33,6 @@ export interface AppConfig {
   delivery: {
     jobSource?: 'saved_expectations' | 'search';
     dailyMaxQuota: number;
-    minDelaySeconds: number;
-    maxDelaySeconds: number;
-    operationIntervalSeconds?: number;
-    operationBurstLimit?: number;
-    operationRestSeconds?: number;
-    feedbackIntervalSeconds?: number;
-    operationMaxPerMinute?: number;
-    operationMaxPerHour?: number;
-    writeMaxPerHour?: number;
   };
   targetPosition?: BossPositionSelection;
   targetPositions?: BossPositionSelection[];

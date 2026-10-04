@@ -85,7 +85,7 @@ async function main() {
     return { longitude: 121.4702, latitude: 31.2283, coordinateSystem: 'wgs84', accuracyMeters: 150, timestamp: new Date().toISOString() };
   });
   app.use(express.json()); app.use('/api', apiRouter);
-  app.get('/health', (_req, res) => res.json({ app: 'boss-job-agent', integrationVersion: 25, status: 'ok' }));
+  app.get('/health', (_req, res) => res.json({ app: 'boss-job-agent', integrationVersion: 26, status: 'ok' }));
   app.use(express.static(path.resolve(process.cwd(), '../client/dist')));
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
@@ -157,10 +157,8 @@ async function main() {
     assert.equal(await page.getByLabel('期望月薪下限').inputValue(), '');
     assert.equal(await page.getByLabel('期望月薪上限').inputValue(), '');
     const pacing = page.getByRole('region', { name: '网页操作频率', exact: true });
-    await pacing.getByLabel('页面操作最少间隔（秒）', { exact: true }).fill('3');
-    await pacing.getByLabel('连续操作后休息（次数）', { exact: true }).fill('10');
-    await pacing.getByLabel('每次短休息（秒）', { exact: true }).fill('30');
-    await pacing.getByLabel('反馈与保存最少间隔（秒）', { exact: true }).fill('20');
+    assert.equal(await pacing.count(), 0, '操作策略由程序管理，不提供用户设置');
+    assert.equal(await page.getByText('选择岗位的浏览间隔（秒）', { exact: true }).count(), 0);
     const location = page.getByRole('region', { name: '位置与通勤筛选', exact: true });
     assert.equal(await location.getByLabel('定位接口来源').count(), 0);
     assert.equal(await location.getByLabel('地图 API Key').count(), 0);
@@ -176,13 +174,13 @@ async function main() {
       page.getByRole('button', { name: '保存配置', exact: true }).click()]);
     assert.equal(locationsQueried, 0); assert.equal(publicLocations, 1); assert.equal(config.filter.commute.origin.name, '人民广场');
     assert.equal(config.filter.commute.maxDistanceKm, 12.5); assert.equal(config.filter.commute.maxTransitMinutes, 55);
-    assert.equal(config.delivery.operationIntervalSeconds, 3); assert.equal(config.delivery.operationBurstLimit, 10);
-    assert.equal(config.delivery.operationRestSeconds, 30); assert.equal(config.delivery.feedbackIntervalSeconds, 20);
+    assert.equal(config.delivery.operationIntervalSeconds, undefined); assert.equal(config.delivery.operationBurstLimit, undefined);
+    assert.equal(config.delivery.operationRestSeconds, undefined); assert.equal(config.delivery.feedbackIntervalSeconds, undefined);
     await page.reload(); await page.getByRole('button', { name: '筛选规则', exact: true }).click();
     assert.match(await location.innerText(), /出发位置：上海 · 人民广场/);
     assert.equal(await location.getByLabel('最大直线距离', { exact: true }).inputValue(), '12.5');
     assert.equal(await location.getByLabel('最大公交地铁通勤时间', { exact: true }).inputValue(), '55');
-    assert.equal(await pacing.getByLabel('页面操作最少间隔（秒）', { exact: true }).inputValue(), '3');
+    assert.equal(await pacing.count(), 0);
     await location.screenshot({ path: path.resolve(process.cwd(), '../data/location-filter-preview.png') });
     await location.getByText('手动填写经纬度', { exact: true }).click();
     await location.getByLabel('手动位置名称').fill('住处');

@@ -41,15 +41,6 @@ export interface AppConfig {
   delivery: {
     jobSource?: 'saved_expectations' | 'search';
     dailyMaxQuota: number; // 每日最大投递数，0~150；0 表示停止自动投递
-    minDelaySeconds: number; // 最小等待秒数，默认 8
-    maxDelaySeconds: number; // 最大等待秒数，默认 20
-    operationIntervalSeconds?: number;
-    operationBurstLimit?: number;
-    operationRestSeconds?: number;
-    feedbackIntervalSeconds?: number;
-    operationMaxPerMinute?: number;
-    operationMaxPerHour?: number;
-    writeMaxPerHour?: number;
   };
   targetPosition?: BossPositionSelection;
   targetPositions?: BossPositionSelection[];

@@ -5,7 +5,7 @@ import WorkConditionOptions, { withWorkConditionPresets } from './WorkConditionO
 import WorkConditionReviewPanel from './WorkConditionReviewPanel.js';
 import LocationFilterOptions from './LocationFilterOptions.js';
 import ResumePdfPanel from './ResumePdfPanel.js';
-import OperationPacingOptions from './OperationPacingOptions.js';
+import DesktopTitleBar from './DesktopTitleBar.js';
 import BossAutomationSafetyPanel from './BossAutomationSafetyPanel.js';
 import NotSuitablePanel from './NotSuitablePanel.js';
 import {
@@ -557,6 +557,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <DesktopTitleBar />
       {/* 顶部导航与状态栏 */}
       <header
         className="app-header"
@@ -1477,43 +1478,9 @@ export default function App() {
                     />
                   </div>
                 </div>
-                <div>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
-                    选择岗位的浏览间隔（秒）
-                  </label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min={0}
-                      value={config.delivery.minDelaySeconds ?? 8}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          delivery: { ...config.delivery, minDelaySeconds: Number(e.target.value) },
-                        })
-                      }
-                      style={{ width: '80px' }}
-                    />
-                    <span>秒 ~</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={config.delivery.maxDelaySeconds ?? 18}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          delivery: { ...config.delivery, maxDelaySeconds: Number(e.target.value) },
-                        })
-                      }
-                      style={{ width: '80px' }}
-                    />
-                    <span>秒</span>
-                  </div>
-                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>读取详情、等待 AI 的时间计入浏览间隔。页面上的各项操作还会使用下方的统一间隔。</p>
-                </div>
+
               </div>
 
-              <OperationPacingOptions value={config.delivery} onChange={delivery => setConfig({ ...config, delivery })} />
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px', gap: '12px' }}>
                 <button
                   onClick={() => saveConfig(config)}

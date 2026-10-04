@@ -77,6 +77,13 @@ input:focus, select:focus, textarea:focus {
 }
 
 .app-header { flex-wrap: wrap; gap: 12px; }
+.desktop-titlebar { position: sticky; top: 0; z-index: 3000; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; background: #101c22; border-bottom: 1px solid #26373d; user-select: none; -webkit-app-region: drag; }
+.desktop-brand { display: flex; align-items: center; gap: 9px; padding-left: 16px; font-size: 12px; color: #b9d3cc; }
+.desktop-brand > span { margin-left: 6px; color: #6f8b85; }
+.desktop-window-controls { display: flex; height: 100%; -webkit-app-region: no-drag; }
+.desktop-window-controls button { display: grid; place-items: center; width: 46px; background: transparent; color: #afc0c6; border-radius: 0; }
+.desktop-window-controls button:hover { background: #2d3d45; color: #fff; }
+.desktop-window-controls .desktop-close:hover { background: #d63d49; }
 
 .launch-hero {
   display: flex;
@@ -352,12 +359,6 @@ button:disabled { cursor: not-allowed; }
 .resume-pdf-changes div p:last-child { color: #b0e9c5; margin-top: 6px; }
 .resume-pdf-changes pre { white-space: pre-wrap; padding: 14px; font-family: inherit; font-size: 13px; line-height: 1.6; }
 .resume-use { justify-content: flex-end; margin-top: 20px; }
-.operation-pacing { margin-top: 22px; padding: 18px; border: 1px solid #334155; border-radius: 10px; background: #111d2b; }
-.operation-pacing h3 { font-size: 15px; margin: 0 0 8px; }
-.operation-pacing p { font-size: 12px; line-height: 1.7; color: #94a3b8; }
-.operation-pacing-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 16px 0; }
-.operation-pacing-fields label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
-.operation-pacing-fields input { width: 100%; padding: 8px 12px; border: 1px solid #334155; border-radius: 8px; background: #0f172a; color: #e2e8f0; }
 .boss-safety-panel { margin: 16px 28px; padding: 14px 18px; border: 1px solid #475569; border-radius: 10px; background: #15262d; font-size: 13px; color: #cbd5e1; }
 .boss-safety-panel.blocked { border-color: #d98770; background: #342429; color: #ffd7cc; }
 .boss-safety-panel h2 { margin-bottom: 8px; font-size: 16px; }

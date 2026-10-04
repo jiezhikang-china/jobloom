@@ -5,10 +5,11 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 const { profileDirectory } = require('../user-profile.cjs');
+const { APP_ORIGIN, isAppUrl, createAppProtocol } = require('../app-protocol.cjs');
 
 const entry = path.resolve(__dirname, '..', 'electron-main.cjs');
 const source = fs.readFileSync(entry, 'utf8');
-const health = { app: 'boss-job-agent', integrationVersion: 25, status: 'ok' };
+const health = { app: 'boss-job-agent', integrationVersion: 26, desktopManaged: true, status: 'ok' };
 
 function desktop(options = {}) {
   const windows = [];
@@ -17,6 +18,8 @@ function desktop(options = {}) {
   const logs = [];
   const savedPorts = [];
   const requests = [];
+  const ipcHandlers = new Map();
+  const protocols = new Map();
   let removedPort = false;
   const app = new EventEmitter();
   Object.assign(app, {
@@ -45,9 +48,16 @@ function desktop(options = {}) {
       this.minimized = false;
       this.focusCount = 0;
       this.webContents = new EventEmitter();
+      this.webContents.mainFrame = { url: APP_ORIGIN + '/' };
+      this.maximized = false;
       this.webContents.setWindowOpenHandler = (handler) => { this.openHandler = handler; };
       windows.push(this);
     }
+    minimize() { this.minimized = true; }
+    maximize() { this.maximized = true; }
+    unmaximize() { this.maximized = false; }
+    isMaximized() { return this.maximized; }
+    close() { this.destroyed = true; this.emit('closed'); app.emit('window-all-closed'); }
     isDestroyed() { return this.destroyed; }
     isMinimized() { return this.minimized; }
     isVisible() { return this.visible; }
@@ -72,7 +82,7 @@ function desktop(options = {}) {
     appendFileSync(_file, value) { logs.push(value); },
     existsSync: () => !options.missingBuild,
     readFileSync: file => file.endsWith('boss-automation-safety.json') ? JSON.stringify({ hold: options.automationHold ? { reason: 'user_reported_ban' } : null })
-      : JSON.stringify({ port: savedPorts.at(-1)?.port || 1878 }),
+      : JSON.stringify({ port: savedPorts.at(-1)?.port || 1878, token: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }),
     writeFileSync(_file, value) { savedPorts.push(JSON.parse(value)); },
     unlinkSync() { removedPort = true; },
     openSync: () => 20,
@@ -88,6 +98,8 @@ function desktop(options = {}) {
   const dependencies = {
     electron: {
       app,
+      protocol: { registerSchemesAsPrivileged() {}, handle: (scheme, handler) => protocols.set(scheme, handler) },
+      ipcMain: { handle: (channel, handler) => ipcHandlers.set(channel, handler) },
       BrowserWindow,
       dialog: { showErrorBox: (title, message) => errors.push({ title, message }) },
       session: { defaultSession: { setPermissionRequestHandler() {} } },
@@ -103,6 +115,8 @@ function desktop(options = {}) {
     },
     'node:fs': fakeFs,
     'node:path': path,
+    'node:crypto': { randomUUID: () => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' },
+    './app-protocol.cjs': { APP_ORIGIN, isAppUrl, createAppProtocol },
     './user-profile.cjs': {
       profileDirectory: (dataDir) => profileDirectory(dataDir, options.account || 'S-1-5-21-100-500'),
     },
@@ -135,6 +149,7 @@ function desktop(options = {}) {
         if (options.startOwnServer && !url.includes(':4567/')) throw new Error('No service');
         return { ok: true, json: async () => health };
       }
+      if (url.endsWith('/api/boss/automation-safety')) return { ok: true, json: async () => ({ success: true, data: { blocked: !!options.automationHold } }) };
       if (url.endsWith('/api/delivery/stop')) return { ok: true, json: async () => ({ success: true }) };
       return {
         ok: true,
@@ -143,7 +158,7 @@ function desktop(options = {}) {
     },
   };
   vm.runInNewContext(source, context, { filename: entry });
-  return { app, windows, children, errors, logs, savedPorts, requests, removedPort: () => removedPort };
+  return { app, windows, children, errors, logs, savedPorts, requests, ipcHandlers, protocols, removedPort: () => removedPort };
 }
 
 async function settled() {
@@ -155,7 +170,7 @@ test('启动不依赖 ready-to-show，隐藏启动状态也能显示主页', asy
   await settled();
   assert.equal(run.windows.length, 1);
   assert.equal(run.windows[0].visible, true);
-  assert.equal(run.windows[0].url, 'http://127.0.0.1:1878/');
+  assert.equal(run.windows[0].url, APP_ORIGIN + '/');
   assert.equal(run.errors.length, 0);
 });
 
@@ -175,25 +190,26 @@ test('再次启动恢复隐藏或最小化的窗口，并复用同一后台', as
   assert.equal(run.children.length, 1);
 });
 
-test('升级时复用仍在投递的上一版后台，不创建第二个投递服务', async () => {
-  const run = desktop({ deliveryStatus: 'running', healthRequest: async () => ({ ok: true, json: async () => ({ ...health, integrationVersion: 22 }) }) });
+test('升级时先停止旧任务，再启动新版桌面服务', async () => {
+  const run = desktop({ deliveryStatus: 'running', healthRequest: async url => ({ ok: true, json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 26 : 22 }) }) });
   await settled();
-  assert.equal(run.windows[0].url, 'http://127.0.0.1:1878/');
-  assert.equal(run.children.length, 0); assert.equal(run.errors.length, 0);
+  assert.equal(run.windows[0].url, APP_ORIGIN + '/');
+  assert.equal(run.children.length, 1); assert.equal(run.errors.length, 0);
+  assert.ok(run.requests.some(request => request.url.endsWith('/api/delivery/stop')));
 });
 
 test('上一版空闲后台不会阻止新版本启动', async () => {
-  const run = desktop({ healthRequest: async url => ({ ok: true, json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 25 : 24 }) }) });
+  const run = desktop({ healthRequest: async url => ({ ok: true, json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 26 : 25 }) }) });
   await settled();
-  assert.equal(run.windows[0].url, 'http://127.0.0.1:4567/');
+  assert.equal(run.windows[0].url, APP_ORIGIN + '/');
   assert.equal(run.children.length, 1); assert.equal(run.errors.length, 0);
 });
 test('账号已有停止状态时，停止旧版任务并加载带保护的新版本', async () => {
   const run = desktop({ automationHold: true, deliveryStatus: 'running', healthRequest: async url => ({ ok: true,
-    json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 25 : 24 }) }) });
+    json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 26 : 25 }) }) });
   await settled();
   assert.ok(run.requests.some(request => request.url.endsWith('/api/delivery/stop') && request.method === 'POST'));
-  assert.equal(run.windows[0].url, 'http://127.0.0.1:4567/');
+  assert.equal(run.windows[0].url, APP_ORIGIN + '/');
   assert.equal(run.children.length, 1); assert.equal(run.errors.length, 0);
 });
 
@@ -206,7 +222,7 @@ test('已有窗口失效时，再次启动会重新创建可用窗口', async ()
   await settled();
   assert.equal(run.windows.length, 2);
   assert.equal(run.windows[1].visible, true);
-  assert.equal(run.windows[1].url, 'http://127.0.0.1:4567/');
+  assert.equal(run.windows[1].url, APP_ORIGIN + '/');
   assert.equal(run.children.length, 1);
 });
 
@@ -234,7 +250,7 @@ test('启动页渲染失败时只重启桌面，不提前启动后台', async ()
   assert.equal(run.errors.length, 0);
 });
 
-test('后台启动期间渲染失败，先记下可复用端口再重启', async () => {
+test('后台启动期间渲染失败，结束所属后台并移除失效端口再重启', async () => {
   let finishHealth;
   const pendingHealth = new Promise((resolve) => { finishHealth = resolve; });
   const run = desktop({
@@ -253,6 +269,7 @@ test('后台启动期间渲染失败，先记下可复用端口再重启', async
   assert.equal(run.savedPorts.at(-1).port, 4567);
   assert.equal(run.app.relaunchOptions.args[0], '--no-sandbox');
   assert.equal(run.children.length, 1);
+  assert.equal(run.children[0].kills, 1); assert.equal(run.removedPort(), true);
   assert.equal(run.windows[0].url, undefined);
 });
 
@@ -285,15 +302,15 @@ test('关闭空闲窗口结束它启动的后台', async () => {
   assert.equal(run.app.quitCount, 1);
 });
 
-test('关闭窗口保留正在投递的后台和端口', async () => {
+test('关闭窗口停止任务，不留下无人管理的投递后台', async () => {
   const run = desktop({ startOwnServer: true, deliveryStatus: 'running' });
   await settled();
   run.app.emit('window-all-closed');
   await settled();
-  assert.equal(run.children[0].kills, 0);
-  assert.equal(run.removedPort(), false);
+  assert.equal(run.children[0].kills, 1);
+  assert.equal(run.removedPort(), true);
   assert.equal(run.app.quitCount, 1);
-  assert.equal(run.requests.filter((request) => request.method === 'POST').length, 0);
+  assert.ok(run.requests.some(request => request.url.endsWith('/api/delivery/stop') && request.method === 'POST'));
 });
 
 test('Windows 账号分别持有桌面启动锁，不共用测试账号的窗口', async () => {
@@ -309,4 +326,22 @@ test('Windows 账号分别持有桌面启动锁，不共用测试账号的窗口
   assert.equal(adminAgain.windows.length, 0, '同账号再次启动仍只恢复已有窗口');
   assert.equal(adminAgain.app.quitCount, 1);
   assert.equal(admin.windows[0].url, sandbox.windows[0].url, '桌面目录分开后仍复用原后台配置');
+});
+
+test('隔离 preload、内部协议和受限窗口命令', async () => {
+  const run = desktop(); await settled();
+  const window = run.windows[0];
+  assert.equal(window.settings.frame, false);
+  assert.equal(window.settings.webPreferences.nodeIntegration, false);
+  assert.equal(window.settings.webPreferences.contextIsolation, true);
+  assert.equal(window.settings.webPreferences.sandbox, true);
+  assert.match(window.settings.webPreferences.preload, /preload\.cjs$/);
+  assert.ok(run.protocols.has('boss-app'));
+  const command = run.ipcHandlers.get('desktop:window');
+  const sender = { sender: window.webContents, senderFrame: window.webContents.mainFrame };
+  command(sender, 'minimize'); assert.equal(window.minimized, true);
+  command(sender, 'toggle-maximize'); assert.equal(window.maximized, true);
+  command(sender, 'toggle-maximize'); assert.equal(window.maximized, false);
+  assert.throws(() => command({ sender: window.webContents, senderFrame: { url: 'https://example.com' } }, 'close'), /Invalid desktop sender/);
+  assert.throws(() => command(sender, 'run-arbitrary-code'), /Unknown window action/);
 });

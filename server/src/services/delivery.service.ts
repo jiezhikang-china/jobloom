@@ -18,6 +18,7 @@ import { notSuitableStore } from './not-suitable-store.js';
 import { DeliveryStats, DeliveryLogItem, BossJobItem, BossPositionSelection, WorkConditionReview, AppConfig } from '../types.js';
 import { bossActionScheduler } from './boss-action-scheduler.js';
 import { bossAutomationSafety } from './boss-automation-safety.js';
+import { bossOperationPolicy } from './boss-operation-policy.js';
 
 const COOL_DOWN_SECONDS = 15 * 60;
 
@@ -170,7 +171,10 @@ export class DeliveryService {
   }
 
   /** Rate browsing at selection time; reading and AI time count toward the interval. */
-  private async paceJobSelection(delivery: AppConfig['delivery']): Promise<boolean> {
+  private selectionDelayMs(): number {
+    return bossOperationPolicy.selectionMinMs + Math.random() * (bossOperationPolicy.selectionMaxMs - bossOperationPolicy.selectionMinMs);
+  }
+  private async paceJobSelection(_delivery?: AppConfig['delivery']): Promise<boolean> {
     const remaining = Math.max(0, this.nextSelectionAt - Date.now());
     if (remaining > 0) {
       this.log('info', '[浏览间隔] ' + (remaining / 1000).toFixed(1) + ' 秒后选择下一岗位');
@@ -178,9 +182,7 @@ export class DeliveryService {
     }
     while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
     if (this.isStopRequested) return false;
-    const min = Math.max(0, delivery.minDelaySeconds);
-    const max = Math.max(min, delivery.maxDelaySeconds);
-    this.nextSelectionAt = Date.now() + (min + Math.random() * (max - min)) * 1000;
+    this.nextSelectionAt = Date.now() + this.selectionDelayMs();
     return true;
   }
 

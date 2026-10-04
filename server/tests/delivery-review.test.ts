@@ -14,13 +14,15 @@ import { isolateBossSafety } from './fixtures/safety.js';
 
 const restores: Array<() => void> = [];
 function stub(object: any, key: string, replacement: any) { const previous = object[key]; object[key] = replacement; restores.push(() => { object[key] = previous; }); }
+let selectionMs = 0;
+stub(DeliveryService.prototype, 'selectionDelayMs', () => selectionMs);
 const original = configManager.getConfig();
 let config = { ...original, filter: { ...original.filter, cityName: '', candidateLanguages: '', salaryMin: 0, salaryMax: 0,
   degree: [], experience: [], hrActiveDaysLimit: 0, companyBlacklist: ['金融'], requiredKeywords: [],
   skipMissingCompanyIntro: false, skipVagueJobDescription: false,
   commute: {},
   workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true }] },
-  delivery: { ...original.delivery, dailyMaxQuota: 2, minDelaySeconds: 0, maxDelaySeconds: 0 } };
+  delivery: { ...original.delivery, dailyMaxQuota: 2 } };
 const make = (n: number): WorkConditionReview => ({ id: n.toString(16).padStart(20, '0'), jobHref: 'https://www.zhipin.com/job_detail/review' + n + '.html',
   jobName: '内容运营' + n, companyName: '测试公司' + n, salary: '6-8K', reason: '每天工作不超过八小时需确认',
   requirements: config.filter.workRequirements, assessment: [{ requirementId: 'hours', text: '每天工作不超过八小时', status: 'unknown', evidence: '' }],
@@ -83,7 +85,7 @@ async function main() {
     assert.equal(continuation.getStats().status, 'failed'); assert.equal(continuation.getStats().todayAppliedCount, 1);
     assert.equal(records.length, 0, '已发送但继续失败的记录不能留下来再投递');
     records = [make(7), make(8)]; sends.length = 0; chronology.length = 0;
-    config.delivery.dailyMaxQuota = 2; config.delivery.minDelaySeconds = 10; config.delivery.maxDelaySeconds = 10;
+    config.delivery.dailyMaxQuota = 2; selectionMs = 10000;
     sendResult = { success: true, verified: true, continued: true };
     const paced = new DeliveryService(); (paced as any).sleepInterruptible = async () => { chronology.push('selection-wait'); return true; };
     await paced.startReviewDelivery([...records]);
@@ -93,7 +95,7 @@ async function main() {
     const stopped = new DeliveryService(); (stopped as any).sleepInterruptible = async () => { stopped.stop(); return false; };
     await stopped.startReviewDelivery([...records]);
     assert.equal(stopped.getStats().status, 'idle'); assert.equal(opened.length, 1); assert.equal(records.length, 1, '停止不投递后续记录');
-    config.delivery.minDelaySeconds = 0; config.delivery.maxDelaySeconds = 0;
+    selectionMs = 0;
     config.filter.commute = { origin: { name: '出发点', address: '上海人民广场', cityName: '上海', query: '上海人民广场',
       longitude: 121.48, latitude: 31.23, coordinateSystem: 'boss' }, maxDistanceKm: 5, maxTransitMinutes: 60 };
     records = [make(11), make(12), make(13), make(14)]; sends.length = 0;

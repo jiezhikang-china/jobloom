@@ -5,6 +5,8 @@ import fs from 'fs';
 import { apiRouter } from './routes/api.router.js';
 import { browserService } from './services/browser.service.js';
 import { deepseekProxyService } from './services/deepseek.proxy.service.js';
+import { desktopAuth } from './desktop-auth.js';
+import { deliveryService } from './services/delivery.service.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -23,7 +25,7 @@ app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // 挂载 API
-app.use('/api', apiRouter);
+app.use('/api', desktopAuth(process.env.BOSS_DESKTOP_TOKEN), apiRouter);
 
 // 未匹配的 /api 路由必须返回 JSON 404，不能被下面的 SPA fallback 吞成 200 + HTML
 app.use('/api', (_req, res) => {
@@ -32,7 +34,7 @@ app.use('/api', (_req, res) => {
 
 // 健康检查
 app.get('/health', (_req, res) => {
-  res.json({ app: 'boss-job-agent', integrationVersion: 25, status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ app: 'boss-job-agent', integrationVersion: 26, desktopManaged: !!process.env.BOSS_DESKTOP_TOKEN, status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // 静态托管前端生产页面 (开箱即用)
@@ -66,6 +68,7 @@ let isShuttingDown = false;
 const cleanup = async (signal: string) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
+  deliveryService.stop();
   console.log(`\n收到 ${signal}，正在优雅关闭服务与释放浏览器资源...`);
   try {
     await browserService.close();
@@ -83,3 +86,7 @@ const cleanup = async (signal: string) => {
 
 process.on('SIGINT', () => void cleanup('SIGINT'));
 process.on('SIGTERM', () => void cleanup('SIGTERM'));
+// If the owning Electron process crashes, its worker must not keep sending in the background.
+if (process.env.BOSS_DESKTOP_TOKEN && process.connected) {
+  process.on('disconnect', () => void cleanup('DESKTOP_DISCONNECT'));
+}
