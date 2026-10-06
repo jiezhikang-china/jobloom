@@ -3,7 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 export type BossSafetyReason = 'user_reported_ban' | 'account_restricted' | 'verification' | 'rate_limit' | 'state_unreadable';
-export interface BossSafetyHold { id: string; reason: BossSafetyReason; message: string; detectedAt: string; retryAfter?: string; }
+export interface BossSafetyHold { id: string; reason: BossSafetyReason; message: string; detectedAt: string; retryAfter?: string; requiresPageVerification?: boolean; }
 export class BossAutomationBlockedError extends Error {
   readonly code = 'BOSS_AUTOMATION_BLOCKED';
   constructor(public readonly hold: BossSafetyHold) { super(hold.message); }
@@ -26,14 +26,21 @@ export class BossAutomationSafety {
   public status(): { blocked: boolean; hold: BossSafetyHold | null } { return { blocked: !!this.hold, hold: this.hold ? { ...this.hold } : null }; }
   public assertAllowed(): void { if (this.hold) throw new BossAutomationBlockedError({ ...this.hold }); }
   public halt(reason: BossSafetyReason, message: string, retryAt?: number): BossSafetyHold {
+    const platformEvidence = ['account_restricted', 'verification', 'rate_limit'].includes(reason);
     if (this.hold && priority[this.hold.reason] >= priority[reason]) {
-      if (this.hold.reason === reason && retryAt && retryAt > Date.parse(this.hold.retryAfter || '1970-01-01')) {
-        this.hold.retryAfter = new Date(retryAt).toISOString(); this.save();
+      let changed = false;
+      if (platformEvidence && !this.hold.requiresPageVerification) { this.hold.requiresPageVerification = true; changed = true; }
+      if (retryAt && retryAt > Date.parse(this.hold.retryAfter || '1970-01-01')) {
+        this.hold.retryAfter = new Date(retryAt).toISOString(); changed = true;
       }
+      if (changed) this.save();
       return { ...this.hold };
     }
+    const previous = this.hold;
+    const until = Math.max(retryAt || 0, Date.parse(previous?.retryAfter || '1970-01-01'));
     this.hold = { id: randomUUID(), reason, message, detectedAt: new Date(this.now()).toISOString(),
-      ...(retryAt && retryAt > this.now() ? { retryAfter: new Date(retryAt).toISOString() } : {}) };
+      ...(until > this.now() ? { retryAfter: new Date(until).toISOString() } : {}),
+      ...(platformEvidence || previous?.requiresPageVerification || previous && ['account_restricted', 'verification', 'rate_limit'].includes(previous.reason) ? { requiresPageVerification: true } : {}) };
     this.save(); return { ...this.hold };
   }
   public confirmRecovery(id: string): void {

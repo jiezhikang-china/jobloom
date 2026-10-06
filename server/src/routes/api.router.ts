@@ -70,10 +70,18 @@ apiRouter.post('/boss/automation-safety/report', (_req, res) => {
 apiRouter.post('/boss/automation-safety/confirm', async (req, res) => {
   if (req.body?.platformAccessRestored !== true || typeof req.body?.holdId !== 'string') return res.status(400).json({ success: false, message: '请先人工确认 BOSS 账号已恢复正常使用' });
   try {
+    const hold = bossAutomationSafety.status().hold;
     const login = await browserService.checkLoginStatus({ restore: false, observeBlocked: true });
-    if (!login.isLoggedIn || await browserService.checkVisibleRestriction()) return res.status(409).json({ success: false, message: '尚未看到可正常使用的已登录 BOSS 页面；请先在浏览器人工核实，系统不会自动刷新或测试账号' });
+    // A human-reported ban can be withdrawn by the same explicit human confirmation.
+    // Requiring an open logged-in page would deadlock with the guarded browser/login routes.
+    const humanReport = hold?.reason === 'user_reported_ban' && !hold.requiresPageVerification;
+    if (login.isBrowserActive && await browserService.checkVisibleRestriction()) {
+      bossAutomationSafety.halt('verification', '当前 BOSS 页面仍显示限制或安全验证，请先人工处理');
+      return res.status(409).json({ success: false, message: '当前 BOSS 页面仍显示限制或安全验证，请先人工处理' });
+    }
+    if (!humanReport && !login.isLoggedIn) return res.status(409).json({ success: false, message: '尚未看到可正常使用的已登录 BOSS 页面；请先在浏览器人工核实，系统不会自动刷新或测试账号' });
     bossAutomationSafety.confirmRecovery(req.body.holdId);
-    res.json({ success: true, data: bossAutomationSafety.status(), message: '停止状态已解除，任务仍需主动开始或恢复' });
+    res.json({ success: true, data: bossAutomationSafety.status(), message: login.isLoggedIn ? '停止状态已解除，任务仍需主动开始或恢复' : '已按你的解封确认解除本机停止状态，可以打开或验证 BOSS 会话；任务仍需主动开始' });
   } catch (error) { res.status(409).json({ success: false, message: (error as Error).message }); }
 });
 
