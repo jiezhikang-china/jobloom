@@ -30,7 +30,7 @@ export class DeepSeekProxyService {
       const runtime = JSON.parse(fs.readFileSync(runtimeFile, 'utf8'));
       if (!Number.isInteger(runtime.port) || runtime.port < 1 || runtime.port > 65535 ||
         typeof runtime.secret !== 'string' || runtime.secret.length < 32 ||
-        (runtime.integrationVersion !== 5 && !(allowPreviousVersion && [1, 2, 3, 4].includes(runtime.integrationVersion)))) return null;
+        (runtime.integrationVersion !== 6 && !(allowPreviousVersion && [1, 2, 3, 4, 5].includes(runtime.integrationVersion)))) return null;
       const response = await fetch(`http://127.0.0.1:${runtime.port}/health`, { signal: AbortSignal.timeout(1000) });
       const health: any = await response.json();
       if (health.app !== 'boss-deepseek-web-proxy' || health.integrationVersion !== runtime.integrationVersion || health.status !== 'ok') return null;
@@ -52,7 +52,7 @@ export class DeepSeekProxyService {
     const existing = await this.existing();
     if (existing) return existing;
     const previous = await this.existing(true);
-    if (previous?.integrationVersion === 5) return previous;
+    if (previous?.integrationVersion === 6) return previous;
     if (previous) {
       const stopped = await fetch(`http://127.0.0.1:${previous.port}/shutdown`, {
         method: 'POST', headers: { Authorization: `Bearer ${previous.secret}` }, signal: AbortSignal.timeout(2000),

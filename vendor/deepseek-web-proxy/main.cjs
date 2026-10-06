@@ -144,7 +144,7 @@ async function openLogin(chatUrl) {
 async function handle(req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
   if (url.pathname === '/health' && req.method === 'GET') {
-    return reply(res, 200, { app: 'boss-deepseek-web-proxy', integrationVersion: 5, status: 'ok' });
+    return reply(res, 200, { app: 'boss-deepseek-web-proxy', integrationVersion: 6, status: 'ok' });
   }
   if (!authenticated(req)) return reply(res, 401, { error: { message: '本机代理认证失败', code: 'proxy_unauthorized' } });
   try {
@@ -243,6 +243,8 @@ if (hasLock && secret.length >= 32) app.whenReady().then(async () => {
   try { token = vault.load(); if (token) setState('saved'); }
   catch (error) { state = 'error'; stateMessage = error.message; }
   adapter = new DeepSeekWebAdapter({
+    // Keep certificate trust, cookies and proxy behavior with the logged-in browser session.
+    fetchImpl: (input, init) => loginSession.fetch(input, init),
     credentials: async () => ({ token, userAgent: loginSession.getUserAgent(),
       cookie: (await loginSession.cookies.get({ url: 'https://chat.deepseek.com' })).map((item) => `${item.name}=${item.value}`).join('; ') }),
     onAuthState: setState,
@@ -252,7 +254,7 @@ if (hasLock && secret.length >= 32) app.whenReady().then(async () => {
   server.requestTimeout = 210000;
   server.on('error', () => { state = 'error'; stateMessage = '本机 DeepSeek 代理无法启动'; void close(); });
   server.listen(0, '127.0.0.1', () => {
-    fs.writeFileSync(runtimeFile, JSON.stringify({ port: server.address().port, secret, pid: process.pid, integrationVersion: 5 }), { mode: 0o600 });
+    fs.writeFileSync(runtimeFile, JSON.stringify({ port: server.address().port, secret, pid: process.pid, integrationVersion: 6 }), { mode: 0o600 });
   });
 }).catch(() => void close());
 app.on('window-all-closed', () => {}); // Login window lifetime does not control the proxy.

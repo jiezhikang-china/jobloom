@@ -33,3 +33,7 @@ Copyright (C) 2026 Chat2API Team. 本组件和改编文件使用 **GPL-3.0-or-la
 本机只提供 OpenAI 格式的非流式文本聊天接口，不提供 Anthropic 接口。实际请求发送到 `chat.deepseek.com/api/v0`，使用网页登录凭据和网页 PoW 校验；不调用官方 `api.deepseek.com`，也不使用开放平台 API Key。官方模型命名规则与这个本机别名独立，说明见项目 README。
 
 下载的完整源码副本和压缩包已从本机清理；当前改编源码、WASM 与授权保留在本目录。对应上游源码可从[固定提交](https://github.com/xiaoY233/Chat2API/tree/59f03ab2988867a4d7bacb97d98f3ee018b0e4d0)获取。
+
+## 2026-10-07 网络层修正（组件版本6）
+
+真实场景前置检查中，Node fetch 在当前环境返回 SELF_SIGNED_CERT_IN_CHAIN；相同网页登录凭据通过 Electron 浏览器网络层可用。适配器现使用已登录 loginSession.fetch，统一系统证书信任、Cookie 和代理环境；仍执行证书校验。凭据格式、批量队列、流式答案解析与待完成请求记录不变。主应用自动识别并替换空闲的旧版组件，忙碌或存在登录窗口时保留原组件并提示等待。
