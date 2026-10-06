@@ -12,6 +12,7 @@
     "desktop:prepare": "npm run build:client && npm run build:server",
     "desktop": "npm run desktop:prepare && electron .",
     "desktop:open": "electron .",
+    "test:ui": "node server/tests/claude-ui.test.cjs",
     "test:desktop": "node --test desktop/tests/startup.test.cjs desktop/tests/protocol.test.cjs",
     "start": "cd server && npm start"
   },

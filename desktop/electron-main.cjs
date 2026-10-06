@@ -228,7 +228,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 640,
     show: true,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#faf9f5',
     autoHideMenuBar: true,
     frame: false,
     webPreferences: {

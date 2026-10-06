@@ -308,7 +308,7 @@ async function main() {
     await page.getByRole('navigation').getByRole('button', { name: '开始投递', exact: true }).click();
     await page.getByLabel('BOSS 职位来源', { exact: true }).selectOption('saved_expectations');
     const targetPanel = page.getByRole('region', { name: 'BOSS 自选目标设置', exact: true });
-    await targetPanel.getByText('自选目标 · 最多3个', { exact: true }).waitFor();
+    await targetPanel.getByLabel('具体岗位', { exact: true }).first().waitFor();
     const targetNames = ['网络客服', '数据采集', '数据标注/AI训练师'];
     for (let index = 0; index < targetNames.length; index++) {
       if (index) await targetPanel.getByRole('button', { name: '添加目标岗位', exact: true }).click();

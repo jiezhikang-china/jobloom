@@ -69,6 +69,6 @@ export default function ResumePdfPanel({ result, disabled, disabledReason, onUpd
     <details className="resume-pdf-changes"><summary>查看润色前后（{pdf.changes.length} 段）</summary>{pdf.changes.map(change => <div key={change.id}>
       <p>原文：{change.before}</p><p>优化：{change.after}</p></div>)}</details>
     <details className="resume-pdf-changes"><summary>查看 PDF 提取文字</summary><pre>{pdf.text}</pre></details>
-    <div className="resume-pdf-actions resume-use"><button type="button" disabled={busy} onClick={onUse}>使用此简历匹配岗位 →</button></div>
+    <div className="resume-pdf-actions resume-use"><button type="button" disabled={busy} onClick={onUse}>使用此简历匹配岗位</button></div>
   </section>;
 }

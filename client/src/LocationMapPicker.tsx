@@ -52,9 +52,9 @@ export default function LocationMapPicker({ cityName, origin, point, disabled, o
     };
     const draw = (position: LocationMapPoint, instance: LeafletMap) => {
       if (marker.current) marker.current.setLatLng([position.latitude, position.longitude]);
-      else marker.current = circleMarker([position.latitude, position.longitude], { radius: 9, color: '#fff', weight: 3, fillColor: '#00b99d', fillOpacity: 1 }).addTo(instance);
+      else marker.current = circleMarker([position.latitude, position.longitude], { radius: 9, color: '#fff', weight: 3, fillColor: '#ad4d31', fillOpacity: 1 }).addTo(instance);
       accuracy.current?.remove(); accuracy.current = undefined;
-      if (position.accuracyMeters) accuracy.current = circle([position.latitude, position.longitude], { radius: position.accuracyMeters, color: '#18aeb8', weight: 1, fillOpacity: .1 }).addTo(instance);
+      if (position.accuracyMeters) accuracy.current = circle([position.latitude, position.longitude], { radius: position.accuracyMeters, color: '#ad4d31', weight: 1, fillOpacity: .1 }).addTo(instance);
       instance.setView([position.latitude, position.longitude], position.accuracyMeters && position.accuracyMeters > 2000 ? 12 : 16, { animate: false });
     };
     void setup().catch(cause => { if (!disposed) setError((cause as Error).message); });
@@ -67,9 +67,9 @@ export default function LocationMapPicker({ cityName, origin, point, disabled, o
     if (!instance || !point) return;
     const latLng: [number, number] = [point.latitude, point.longitude];
     if (marker.current) marker.current.setLatLng(latLng);
-    else marker.current = circleMarker(latLng, { radius: 9, color: '#fff', weight: 3, fillColor: '#00b99d', fillOpacity: 1 }).addTo(instance);
+    else marker.current = circleMarker(latLng, { radius: 9, color: '#fff', weight: 3, fillColor: '#ad4d31', fillOpacity: 1 }).addTo(instance);
     accuracy.current?.remove(); accuracy.current = undefined;
-    if (point.accuracyMeters) accuracy.current = circle(latLng, { radius: point.accuracyMeters, color: '#18aeb8', weight: 1, fillOpacity: .1 }).addTo(instance);
+    if (point.accuracyMeters) accuracy.current = circle(latLng, { radius: point.accuracyMeters, color: '#ad4d31', weight: 1, fillOpacity: .1 }).addTo(instance);
     // Pan only when the selected point is outside the viewport, keeping nearby clicks steady.
     if (!instance.getBounds().contains(latLng)) instance.setView(latLng, point.accuracyMeters && point.accuracyMeters > 2000 ? 12 : 16, { animate: false });
   }, [point]);

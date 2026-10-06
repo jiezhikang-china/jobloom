@@ -25,6 +25,8 @@ import {
   Plus,
   X,
   ExternalLink,
+  Check,
+  MapPin,
 } from 'lucide-react';
 import {
   AppConfig,
@@ -38,8 +40,18 @@ import {
   BossPositionSelection,
 } from './types.js';
 
+type WorkbenchTab = 'launch' | 'diagnosis' | 'tailor' | 'rules' | 'delivery' | 'settings';
+const navigationItems = [
+  { id: 'launch', label: '开始投递', icon: Play, description: '选择岗位与工作条件，开始新的投递。' },
+  { id: 'delivery', label: '运行记录', icon: Activity, description: '查看筛选结果、AI 评估与投递进度。' },
+  { id: 'rules', label: '筛选规则', icon: Sliders, description: '设置工作条件、通勤范围和每日投递数量。' },
+  { id: 'diagnosis', label: '简历分析', icon: FileText, description: '从简历了解优势，找到适合你的岗位方向。' },
+  { id: 'tailor', label: '简历优化', icon: Compass, description: '按目标岗位润色经历，保留原 PDF 的版式。' },
+] as const;
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'launch' | 'diagnosis' | 'tailor' | 'rules' | 'delivery' | 'settings'>('launch');
+  const [activeTab, setActiveTab] = useState<WorkbenchTab>('launch');
+  const mainRef = useRef<HTMLElement>(null);
+  useEffect(() => { mainRef.current?.scrollTo({ top: 0 }); }, [activeTab]);
   
   // 状态管理
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -555,216 +567,90 @@ export default function App() {
     await fetch('/api/delivery/stop', { method: 'POST' });
   };
 
+  const currentPage = navigationItems.find(item => item.id === activeTab);
+  const pageTitle = currentPage?.label || 'AI 设置';
+  const pageDescription = currentPage?.description || '管理 DeepSeek 账号、思考模式与批量评估。';
+  const modelLabel = config?.llm.connectionMode === 'deepseek-web' ? 'DeepSeek 网页' : config?.llm.model || '尚未设置模型';
+  const summaryTargets = usesSavedExpectations ? targetSlots.filter((item): item is BossPositionSelection => !!item)
+    : searchByConditions ? [] : selectedPosition ? [selectedPosition] : [];
+  const quota = config?.delivery.dailyMaxQuota ?? 0;
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="app-shell">
       <DesktopTitleBar />
-      {/* 顶部导航与状态栏 */}
-      <header
-        className="app-header"
-        style={{
-          borderBottom: '1px solid #334155',
-          background: 'linear-gradient(100deg, #12231f 0%, #142226 55%, #182530 100%)',
-          padding: '18px 28px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '13px',
-              background: 'linear-gradient(135deg, #00c982, #38bdf8)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Compass color="#fff" size={22} />
+      <div className="workbench">
+        <aside className="app-sidebar" aria-label="工作台侧栏">
+          <a className="skip-link" href="#workspace-content">跳到页面内容</a>
+          <div className="sidebar-brand">
+            <span className="brand-mark"><Compass size={24} strokeWidth={1.6} /></span>
+            <div><strong>求职工作台</strong><span>BOSS 求职助手</span></div>
           </div>
-          <div>
-            <h1 style={{ fontSize: '18px', fontWeight: 'bold', letterSpacing: '0.5px' }}>
-              求职投递工作台
-            </h1>
-            <p style={{ fontSize: '12px', color: '#94a3b8' }}>
-              选定目标，检查岗位，再决定投递
-            </p>
-          </div>
-        </div>
-
-        {/* 状态指示器与快捷操作 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* BOSS 登录状态 */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 12px',
-              borderRadius: '20px',
-              backgroundColor: isBossLoggedIn ? 'rgba(0, 190, 104, 0.15)' : 'rgba(244, 63, 94, 0.15)',
-              border: `1px solid ${isBossLoggedIn ? '#00be68' : '#f43f5e'}`,
-            }}
-          >
-            <span
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: isBossLoggedIn ? '#00be68' : '#f43f5e',
-              }}
-            />
-            <span title={loginReason} style={{ fontSize: '13px', color: isBossLoggedIn ? '#4ade80' : '#fda4af', maxWidth: '230px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {isBossLoggedIn ? 'BOSS 会话已就绪' : loginReason || (loginPageOpened ? '等待扫码确认' : '正在检查 BOSS 会话')}
-            </span>
-            {!isBossLoggedIn && loginReasonCode === 'login_required' && (
-              <button
-                onClick={handlePromptLogin}
-                disabled={isCheckingLogin}
-                style={{
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  backgroundColor: '#00be68',
-                  color: '#fff',
-                  fontSize: '12px',
-                  fontWeight: 500,
-                  marginLeft: '4px',
-                }}
-              >
-                {isCheckingLogin ? '正在打开...' : '打开扫码页'}
+          <nav className="sidebar-nav" aria-label="工作台导航">
+            {navigationItems.map(tab => {
+              const Icon = tab.icon;
+              return <button key={tab.id} type="button" className={`nav-item ${activeTab === tab.id ? 'active' : ''}`}
+                aria-current={activeTab === tab.id ? 'page' : undefined} aria-label={tab.label}
+                onClick={() => setActiveTab(tab.id)}>
+                <Icon size={18} strokeWidth={1.7} /><span>{tab.label}</span>
+                {tab.id === 'delivery' && isTaskRunning && <span className="nav-running-dot" title="任务正在运行" />}
+              </button>;
+            })}
+            <div className="sidebar-settings">
+              <button type="button" className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} aria-label="设置"
+                aria-current={activeTab === 'settings' ? 'page' : undefined} onClick={() => setActiveTab('settings')}>
+                <Settings size={18} strokeWidth={1.7} /><span>AI 设置</span>
               </button>
-            )}
-            {!isBossLoggedIn && loginReasonCode === 'unverified' && (
-              <button
-                onClick={handleVerifyLogin}
-                disabled={isCheckingLogin}
-                title="扫码完成后主动验证；打开登录页时不会自动跳转"
-                style={{ padding: '2px 8px', borderRadius: '4px', backgroundColor: '#334155', color: '#e2e8f0', fontSize: '12px' }}
-              >
-                验证会话
+            </div>
+          </nav>
+          <div className="sidebar-model"><Sparkles size={17} /><div><span>当前模型</span><strong>{modelLabel}</strong></div></div>
+        </aside>
+        <div className="workspace">
+          <header className="app-header">
+            <div className="page-heading"><h1>{pageTitle}</h1><p>{pageDescription}</p></div>
+            <div className="session-tools">
+              <div className={`session-status ${isBossLoggedIn ? 'ready' : 'pending'}`} title={loginReason}>
+                <span className="session-dot" />
+                <span>{isBossLoggedIn ? 'BOSS 已连接' : isCheckingLogin ? '正在检查会话' : loginReasonCode === 'login_required' ? 'BOSS 未登录' : 'BOSS 待检查'}</span>
+              </div>
+              {!isBossLoggedIn && loginReasonCode === 'login_required' && <button type="button" className="button-small"
+                disabled={isCheckingLogin} onClick={handlePromptLogin}>{isCheckingLogin ? '正在打开…' : '打开扫码页'}</button>}
+              {!isBossLoggedIn && (loginPageOpened || loginReasonCode === 'unverified') && <button type="button" className="button-small"
+                disabled={isCheckingLogin} onClick={handleVerifyLogin} title="扫码完成后点击验证">验证会话</button>}
+              <button type="button" className="icon-button" aria-label="刷新 BOSS 会话" title="检查保存的 BOSS 会话"
+                disabled={isCheckingLogin} onClick={() => void checkLoginStatus()}>
+                <RefreshCw size={16} className={isCheckingLogin ? 'spinning-indicator' : ''} />
               </button>
-            )}
-            <button
-              onClick={checkLoginStatus}
-              title="重新连接并检查保存的登录会话"
-              style={{ background: 'none', color: '#94a3b8', padding: '2px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-            >
-              <RefreshCw size={14} className={isCheckingLogin ? 'pulsing-indicator' : ''} />
-              {loginReasonCode === 'browser_unavailable' && <span style={{ fontSize: '12px' }}>重连</span>}
-            </button>
-          </div>
-
-          {/* 模型指标 */}
-          <div style={{ fontSize: '13px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Sparkles size={16} color="#38bdf8" />
-            <span>模型: <strong style={{ color: '#38bdf8' }}>{config?.llm?.connectionMode === 'deepseek-web' ? 'DeepSeek 网页' : config?.llm?.model || '未设置'}</strong></span>
-          </div>
-
-          {/* 设置入口 */}
-          <button
-            onClick={() => setActiveTab('settings')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '8px',
-              backgroundColor: activeTab === 'settings' ? '#334155' : 'transparent',
-              color: '#cbd5e1',
-              border: '1px solid #475569',
-            }}
-          >
-            <Settings size={16} />
-            <span style={{ fontSize: '13px' }}>设置</span>
-          </button>
-        </div>
-      </header>
-      <BossAutomationSafetyPanel onChange={setBossAutomationBlocked} onRestored={() => void checkLoginStatus()} />
-
-      {/* 标签页导航栏 */}
-      <nav
-        style={{
-          display: 'flex',
-          gap: '8px',
-          padding: '12px 28px',
-          backgroundColor: '#101b22',
-          borderBottom: '1px solid #1e293b',
-          overflowX: 'auto',
-        }}
-      >
-        {[
-          { id: 'launch', label: '开始投递', icon: Play },
-          { id: 'diagnosis', label: '简历分析', icon: FileText },
-          { id: 'tailor', label: '简历优化（可选）', icon: Compass },
-          { id: 'rules', label: '筛选规则', icon: Sliders },
-          { id: 'delivery', label: '运行记录', icon: Activity },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: '8px',
-                backgroundColor: isActive ? 'rgba(0, 190, 104, 0.16)' : 'transparent',
-                color: isActive ? '#7ae3b3' : '#94a3b8',
-                border: `1px solid ${isActive ? '#00be68' : 'transparent'}`,
-                fontWeight: isActive ? 600 : 400,
-                fontSize: '14px',
-              }}
-            >
-              <Icon size={16} />
-              {tab.label}
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* 核心内容区 */}
-      <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+            </div>
+          </header>
+          <main className="workspace-main" id="workspace-content" ref={mainRef} tabIndex={-1}>
+            <BossAutomationSafetyPanel onChange={setBossAutomationBlocked} onRestored={() => void checkLoginStatus()} />
         {activeTab === 'launch' && (
           <div className="launch-shell">
             <section className="launch-hero">
-              <div>
-                <span className="launch-eyebrow">APPLICATION WORKSPACE</span>
-                <h2>从你的目标出发，直接开始投递</h2>
-                <p>选择简历匹配或手动设置目标。分析简历、优化文案和筛选规则都可以按需使用。</p>
-              </div>
-              <div className="launch-hero-stats">
-                <span>今日已投递 <strong>{deliveryStats.todayAppliedCount}</strong> / {config?.delivery.dailyMaxQuota ?? 0}</span>
-                <span className={isBossLoggedIn ? 'status-ready' : 'status-pending'}>
-                  {isBossLoggedIn ? 'BOSS 会话已连接' : '启动时自动检查 BOSS 会话'}
-                </span>
-              </div>
+              <h2>下一份工作，从这里开始。</h2>
+              <p>选好目标和工作条件，或用简历让 AI 帮你匹配。</p>
             </section>
-
-            <div className="path-grid">
-              <button type="button" className={`path-card ${deliveryMode === 'resume' ? 'selected' : ''}`} onClick={() => { setDeliveryMode('resume'); setStartMessage(''); }}>
-                <span className="path-icon"><FileText size={22} /></span>
-                <span className="path-copy"><strong>用简历匹配岗位</strong><small>上传简历后可直接投递；分析与改写均可跳过</small></span>
-                <span className="path-arrow">↗</span>
-              </button>
-              <button type="button" className={`path-card ${deliveryMode === 'manual' ? 'selected' : ''}`} onClick={() => { setDeliveryMode('manual'); setStartMessage(''); }}>
-                <span className="path-icon"><Sliders size={22} /></span>
-                <span className="path-copy"><strong>手动指定目标</strong><small>填写岗位和筛选要求，无需先上传简历</small></span>
-                <span className="path-arrow">↗</span>
-              </button>
-            </div>
-
+            <div className="launch-layout">
+              <div className="launch-editor">
+                <div className="path-grid" aria-label="投递方式">
+                  <button type="button" aria-pressed={deliveryMode === 'resume'} className={`path-card ${deliveryMode === 'resume' ? 'selected' : ''}`}
+                    onClick={() => { setDeliveryMode('resume'); setStartMessage(''); }}>
+                    <span className="path-icon"><FileText size={20} /></span>
+                    <span className="path-copy"><strong>用简历匹配</strong><small>上传简历，直接匹配岗位</small></span>
+                    {deliveryMode === 'resume' && <Check size={16} className="path-check" />}
+                  </button>
+                  <button type="button" aria-pressed={deliveryMode === 'manual'} className={`path-card ${deliveryMode === 'manual' ? 'selected' : ''}`}
+                    onClick={() => { setDeliveryMode('manual'); setStartMessage(''); }}>
+                    <span className="path-icon"><Sliders size={20} /></span>
+                    <span className="path-copy"><strong>手动指定目标</strong><small>按岗位与要求找工作</small></span>
+                    {deliveryMode === 'manual' && <Check size={16} className="path-check" />}
+                  </button>
+                </div>
             <section className="launch-panel">
               <div className="launch-panel-head">
                 <div>
-                  <span className="section-kicker">投递方案</span>
                   <h3>{deliveryMode === 'resume' ? '简历匹配' : '手动目标'}</h3>
                 </div>
-                <span className="optional-tag">无需按步骤完成其他页面</span>
+                <span className="optional-tag">分析与优化按需使用</span>
               </div>
 
               <div className="launch-field">
@@ -775,7 +661,7 @@ export default function App() {
                   <option value="saved_expectations">按目标设置 BOSS 自选岗位</option>
                   <option value="search">按官方分类和关键词搜索</option>
                 </select>
-                <p>{usesSavedExpectations ? '启动时将目标岗位和城市保存到 BOSS 推荐旁的自选位置，再逐个筛选。' : '按下方分类和搜索词查找职位。'} 淘汰理由保留在本地；标记“不合适”时优先选公司，减少这家公司的重复推荐。</p>
+                <p>{usesSavedExpectations ? '按目标岗位和城市调整 BOSS 的自选职位，再逐个筛选。' : '按官方分类和搜索词查找职位。'}</p>
               </div>
 
               {deliveryMode === 'manual' && (
@@ -809,10 +695,10 @@ export default function App() {
                   <label htmlFor="manual-requirements">{searchByConditions || usesSavedExpectations ? '补充要求' : '你的岗位要求'} <span>{searchByConditions || (usesSavedExpectations && selectedConditions.length) ? '可选' : '必填'}</span></label>
                   <textarea
                     id="manual-requirements"
-                    rows={5}
+                    rows={3}
                     value={manualRequirements}
                     onChange={(e) => setManualRequirements(e.target.value)}
-                    placeholder={searchByConditions ? '例如：不做销售、不上夜班、希望离地铁近。已选工作条件无需重复填写。' : '例如：希望找上海的前端开发岗位，技术栈以 React、TypeScript 为主，偏产品研发，不考虑外包，期望 20K 以上。'}
+                    placeholder={searchByConditions ? '例如：不做销售、不上夜班、希望离地铁近。已选工作条件无需重复填写。' : '例如：优先内容运营或文职岗位，不做销售、不上夜班，可以接受从基础工作做起。'}
                   />
                   <p>AI 会按这里写的条件筛选职位，不会替你编造工作经历。</p>
                 </div>
@@ -821,7 +707,7 @@ export default function App() {
               <div className="launch-fields-grid">
                 <div className="launch-field wide">
                   {usesSavedExpectations && <section aria-label="BOSS 自选目标设置" style={{ display: 'grid', gap: '16px', marginBottom: '20px' }}>
-                    <strong>自选目标 · 最多3个</strong>
+                    <strong>目标岗位 <span className="field-hint">最多 3 个</span></strong>
                     <p>按这里选择的官方岗位调整 BOSS 自选职位。留空时，AI 根据当前简历或求职要求选择方向。</p>
                     {targetSlots.map((position, index) => <div key={index} aria-label={`目标岗位${index + 1}`}>
                       <BossPositionPicker catalog={bossPositions} value={position} loading={isLoadingPositions} error={positionError} disabled={isTaskRunning}
@@ -887,42 +773,60 @@ export default function App() {
                 )}
               </div>
 
-              {!searchByConditions && conditionDescription && <p className="work-condition-summary">已启用工作条件：{conditionDescription}</p>}
-
-              {startMessage && <p role="status" className={`launch-message ${startMessage.startsWith('投递任务已启动') ? 'success' : ''}`}>{startMessage}</p>}
-              <div className="launch-footer">
-                <p>启动时会重新检查已保存的 BOSS 会话；只有确认失效时才需要扫码。</p>
-                <button type="button" className="launch-submit" onClick={handleStartDelivery} disabled={isStarting || isTaskRunning || bossAutomationBlocked}>
-                  <Play size={18} /> {isStarting ? '正在检查并启动…' : isTaskRunning ? '投递任务运行中' : '开始投递'}
-                </button>
-              </div>
             </section>
+              </div>
+              <aside className="launch-summary" aria-label="投递概览">
+                <div className="summary-heading"><Compass size={19} /><h3>这次投递</h3></div>
+                <dl className="summary-details">
+                  <div><dt><MapPin size={14} />求职城市</dt><dd>{config?.filter.cityName || '尚未载入'}</dd></div>
+                  <div><dt>匹配方式</dt><dd>{deliveryMode === 'resume' ? '简历匹配' : '手动目标'}</dd></div>
+                  <div><dt>职位来源</dt><dd>{usesSavedExpectations ? 'BOSS 自选职位' : '分类与关键词搜索'}</dd></div>
+                </dl>
+                <div className="summary-section"><h4>目标方向</h4>
+                  <p>{summaryTargets.length ? summaryTargets.map(item => item.name).join('、') : searchByConditions ? '按工作条件找岗位' : usesSavedExpectations ? '由 AI 规划目标岗位' : '选择一个官方岗位'}</p>
+                </div>
+                <div className="summary-section"><h4>工作条件 <span>{selectedConditions.length} 项</span></h4>
+                  {selectedConditions.length ? <ul className="summary-conditions">{selectedConditions.map(item => <li key={item.id}><Check size={13} />{item.text}</li>)}</ul>
+                    : <p className="summary-empty">可添加工作时长、休息日等要求</p>}
+                </div>
+                <div className="summary-quota"><div><span>今日已投递</span><strong>{deliveryStats.todayAppliedCount}<small> / {quota}</small></strong></div>
+                  <progress aria-label="今日投递进度" max={Math.max(1, quota)} value={Math.min(deliveryStats.todayAppliedCount, Math.max(1, quota))} />
+                  <button type="button" className="text-button" onClick={() => setActiveTab('rules')}>调整筛选与每日数量</button>
+                </div>
+                {startMessage && <p role="status" className={`launch-message ${startMessage.startsWith('投递任务已启动') ? 'success' : ''}`}>{startMessage}</p>}
+                <button type="button" className="launch-submit" onClick={handleStartDelivery} disabled={isStarting || isTaskRunning || bossAutomationBlocked}>
+                  <Play size={16} /> {isStarting ? '正在检查并启动…' : isTaskRunning ? '投递任务运行中' : '开始投递'}
+                </button>
+                <p className="summary-footnote">开始时检查已保存的 BOSS 会话。</p>
+                {isTaskRunning && <button type="button" className="text-button" onClick={() => setActiveTab('delivery')}>查看运行进度</button>}
+              </aside>
+            </div>
           </div>
         )}
         {/* TAB 1: 简历诊断与推荐 */}
         {activeTab === 'diagnosis' && (
-          <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div className="page-column diagnosis-page">
             {/* 上传卡片 */}
             <div
               style={{
-                backgroundColor: '#1e293b',
+                backgroundColor: 'var(--surface)',
                 padding: '24px',
                 borderRadius: '12px',
-                border: '1px solid #334155',
+                border: '1px solid var(--border-color)',
               }}
             >
               <h2 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Upload size={18} color="#00be68" />
-                上传您的简历文件 (支持 PDF, Word .docx, Markdown, 纯文本)
+                <Upload size={18} color="var(--primary)" />
+                上传简历
               </h2>
 
               <div
                 style={{
-                  border: '2px dashed #475569',
+                  border: '2px dashed var(--border-strong)',
                   borderRadius: '8px',
                   padding: '32px',
                   textAlign: 'center',
-                  backgroundColor: '#0f172a',
+                  backgroundColor: 'var(--surface-subtle)',
                   cursor: 'pointer',
                   position: 'relative',
                 }}
@@ -941,24 +845,24 @@ export default function App() {
                     cursor: 'pointer',
                   }}
                 />
-                <FileText size={40} color="#64748b" style={{ margin: '0 auto 12px' }} />
+                <FileText size={40} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
                 {isUploading ? (
                   <div>
-                    <p style={{ color: '#38bdf8', fontWeight: 600, fontSize: '15px' }}>正在解析简历文本中...</p>
-                    <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '4px' }}>正在安全读取 PDF/Word 内容，请稍候</p>
+                    <p style={{ color: 'var(--accent-blue)', fontWeight: 600, fontSize: '15px' }}>正在解析简历文本中...</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>正在安全读取 PDF/Word 内容，请稍候</p>
                   </div>
                 ) : resumeFileName ? (
                   <div>
-                    <p style={{ color: '#4ade80', fontWeight: 600, fontSize: '15px' }}>已加载: {resumeFileName}</p>
-                    <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '4px' }}>
+                    <p style={{ color: 'var(--success)', fontWeight: 600, fontSize: '15px' }}>已加载: {resumeFileName}</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>
                       已成功提取约 {resumeText.length} 字内容，点击下方按钮开始 AI 深度诊断
                     </p>
                   </div>
                 ) : (
                   <div>
-                    <p style={{ color: '#cbd5e1', fontSize: '15px' }}>点击或将简历文件拖拽至此处上传</p>
-                    <p style={{ color: '#64748b', fontSize: '12px', marginTop: '6px' }}>
-                      本地安全解析，仅用于与大模型交互评估职业方向与改写
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>点击或将简历文件拖拽至此处上传</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '6px' }}>
+                      支持 PDF、Word、Markdown 和纯文本
                     </p>
                   </div>
                 )}
@@ -971,7 +875,7 @@ export default function App() {
                     disabled={isDiagnosing}
                     style={{
                       padding: '10px 24px',
-                      backgroundColor: '#00be68',
+                      backgroundColor: 'var(--primary)',
                       color: '#fff',
                       borderRadius: '8px',
                       fontWeight: 600,
@@ -981,7 +885,7 @@ export default function App() {
                     }}
                   >
                     <Sparkles size={18} />
-                    {isDiagnosing ? '大模型深度诊断中...' : '开始 AI 职业方向深度诊断'}
+                    {isDiagnosing ? 'AI 正在分析…' : '分析简历与推荐岗位'}
                   </button>
                 </div>
               )}
@@ -992,14 +896,14 @@ export default function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div
                   style={{
-                    backgroundColor: '#1e293b',
+                    backgroundColor: 'var(--surface)',
                     padding: '20px',
                     borderRadius: '12px',
-                    border: '1px solid #334155',
+                    border: '1px solid var(--border-color)',
                   }}
                 >
-                  <h3 style={{ fontSize: '15px', color: '#94a3b8', marginBottom: '8px' }}>求职者核心竞争力画像</h3>
-                  <p style={{ fontSize: '15px', lineHeight: '1.6', color: '#f8fafc' }}>{diagnosis.summary}</p>
+                  <h3 style={{ fontSize: '15px', color: 'var(--text-muted)', marginBottom: '8px' }}>求职者核心竞争力画像</h3>
+                  <p style={{ fontSize: '15px', lineHeight: '1.6', color: 'var(--text-main)' }}>{diagnosis.summary}</p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
                     {diagnosis.coreSkills?.map((skill, idx) => (
                       <span
@@ -1007,8 +911,8 @@ export default function App() {
                         style={{
                           padding: '4px 10px',
                           borderRadius: '6px',
-                          backgroundColor: '#334155',
-                          color: '#38bdf8',
+                          backgroundColor: 'var(--border-color)',
+                          color: 'var(--accent-blue)',
                           fontSize: '12px',
                           fontWeight: 500,
                         }}
@@ -1019,18 +923,18 @@ export default function App() {
                   </div>
                 </div>
 
-                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#f8fafc' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>
                   推荐岗位方向：选定后即可投递，简历改写可按需进行
                 </h3>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                <div className="recommendation-grid">
                   {diagnosis.recommendations?.map((rec, idx) => (
                     <div
                       key={idx}
                       style={{
-                        backgroundColor: '#1e293b',
+                        backgroundColor: 'var(--surface)',
                         borderRadius: '12px',
-                        border: selectedRole === rec.roleTitle ? '2px solid #00be68' : '1px solid #334155',
+                        border: selectedRole === rec.roleTitle ? '2px solid var(--primary)' : '1px solid var(--border-color)',
                         padding: '20px',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1039,13 +943,13 @@ export default function App() {
                     >
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <h4 style={{ fontSize: '16px', fontWeight: 'bold', color: '#f8fafc' }}>{rec.roleTitle}</h4>
+                          <h4 style={{ fontSize: '16px', fontWeight: 'bold', color: 'var(--text-main)' }}>{rec.roleTitle}</h4>
                           <span
                             style={{
                               padding: '2px 8px',
                               borderRadius: '12px',
-                              backgroundColor: 'rgba(0, 190, 104, 0.2)',
-                              color: '#4ade80',
+                              backgroundColor: 'var(--success-bg)',
+                              color: 'var(--success)',
                               fontSize: '12px',
                               fontWeight: 600,
                             }}
@@ -1053,21 +957,21 @@ export default function App() {
                             匹配度 {rec.matchScore}%
                           </span>
                         </div>
-                        <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.5', marginBottom: '12px' }}>
+                        <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '12px' }}>
                           {rec.recommendedReason}
                         </p>
 
                         <div style={{ marginBottom: '8px' }}>
-                          <span style={{ fontSize: '12px', color: '#38bdf8', fontWeight: 600 }}>核心胜任优势:</span>
-                          <ul style={{ paddingLeft: '18px', fontSize: '12px', color: '#cbd5e1', marginTop: '4px' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--accent-blue)', fontWeight: 600 }}>核心胜任优势:</span>
+                          <ul style={{ paddingLeft: '18px', fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
                             {rec.advantages?.map((adv, aIdx) => <li key={aIdx}>{adv}</li>)}
                           </ul>
                         </div>
 
                         {rec.gapAdvice?.length > 0 && (
                           <div style={{ marginBottom: '12px' }}>
-                            <span style={{ fontSize: '12px', color: '#fbbf24', fontWeight: 600 }}>建议准备/补强:</span>
-                            <ul style={{ paddingLeft: '18px', fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--accent-amber)', fontWeight: 600 }}>建议准备/补强:</span>
+                            <ul style={{ paddingLeft: '18px', fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                               {rec.gapAdvice?.map((gap, gIdx) => <li key={gIdx}>{gap}</li>)}
                             </ul>
                           </div>
@@ -1077,13 +981,13 @@ export default function App() {
                       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                         <button
                           onClick={() => handleSelectRole(rec, 'launch')}
-                          style={{ flex: 1, padding: '10px', borderRadius: '8px', backgroundColor: '#00be68', color: '#fff', fontWeight: 600, fontSize: '13px' }}
+                          style={{ flex: 1, padding: '10px', borderRadius: '8px', backgroundColor: 'var(--primary)', color: '#fff', fontWeight: 600, fontSize: '13px' }}
                         >
-                          选此岗位去投递 →
+                          选此岗位去投递
                         </button>
                         <button
                           onClick={() => handleSelectRole(rec, 'tailor')}
-                          style={{ padding: '10px', borderRadius: '8px', backgroundColor: '#334155', color: '#dbeafe', fontWeight: 600, fontSize: '13px' }}
+                          style={{ padding: '10px', borderRadius: '8px', backgroundColor: 'var(--border-color)', color: 'var(--accent-blue)', fontWeight: 600, fontSize: '13px' }}
                         >
                           先优化简历
                         </button>
@@ -1098,32 +1002,34 @@ export default function App() {
 
         {/* TAB 2: 针对性改写与自荐语 */}
         {activeTab === 'tailor' && (
-          <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="page-column">
             <div
               style={{
-                backgroundColor: '#1e293b',
+                backgroundColor: 'var(--surface)',
                 padding: '20px',
                 borderRadius: '12px',
-                border: '1px solid #334155',
+                border: '1px solid var(--border-color)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '14px',
               }}
             >
               <div>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>当前选择的投递目标方向:</span>
-                <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#00be68', marginTop: '4px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>当前选择的投递目标方向:</span>
+                <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--primary)', marginTop: '4px' }}>
                   {selectedRole || '请从 BOSS 官方分类或简历分析中选择'}
                 </h2>
               </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
+              <div className="action-row">
                 <button type="button" onClick={() => setActiveTab('launch')}>选择官方岗位</button>
                 <button
                   onClick={handleRewrite}
                   disabled={isRewriting || !selectedRole || !resumeSourceId || resumeFormat !== 'pdf'}
                   style={{
                     padding: '10px 20px',
-                    backgroundColor: '#00be68',
+                    backgroundColor: 'var(--primary)',
                     color: '#fff',
                     borderRadius: '8px',
                     fontWeight: 600,
@@ -1145,19 +1051,19 @@ export default function App() {
             {tailoredResult && tailoredResult.targetRole === selectedRole && tailoredResult.pdf?.sourceId === resumeSourceId && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {/* 3大核心亮点与首聊词 */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div className="form-grid">
                   <div
                     style={{
-                      backgroundColor: '#1e293b',
+                      backgroundColor: 'var(--surface)',
                       padding: '16px',
                       borderRadius: '12px',
-                      border: '1px solid #334155',
+                      border: '1px solid var(--border-color)',
                     }}
                   >
-                    <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#38bdf8', marginBottom: '8px' }}>
-                      🔥 针对【{selectedRole}】提炼的 3 大核心卖点
+                    <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--accent-blue)', marginBottom: '8px' }}>
+                      适合【{selectedRole}】的核心优势
                     </h3>
-                    <ul style={{ paddingLeft: '20px', fontSize: '13px', lineHeight: '1.6', color: '#cbd5e1' }}>
+                    <ul style={{ paddingLeft: '20px', fontSize: '13px', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
                       {tailoredResult.topHighlights?.map((h, i) => (
                         <li key={i}>{h}</li>
                       ))}
@@ -1166,14 +1072,14 @@ export default function App() {
 
                   <div
                     style={{
-                      backgroundColor: '#1e293b',
+                      backgroundColor: 'var(--surface)',
                       padding: '16px',
                       borderRadius: '12px',
-                      border: '1px solid #334155',
+                      border: '1px solid var(--border-color)',
                     }}
                   >
-                    <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#4ade80', marginBottom: '8px' }}>
-                      💬 开聊破冰首语（可直接编辑修改，用于自动发起沟通）
+                    <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--success)', marginBottom: '8px' }}>
+                      打招呼内容（可编辑）
                     </h3>
                     <textarea
                       rows={4}
@@ -1194,16 +1100,16 @@ export default function App() {
 
         {/* TAB 3: 筛选规则 */}
         {activeTab === 'rules' && config && (
-          <div style={{ maxWidth: '900px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="page-column rules-page">
             <div
               style={{
-                backgroundColor: '#1e293b',
+                backgroundColor: 'var(--surface)',
                 padding: '24px',
                 borderRadius: '12px',
-                border: '1px solid #334155',
+                border: '1px solid var(--border-color)',
               }}
             >
-              <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '20px', color: '#f8fafc' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '20px', color: 'var(--text-main)' }}>
                 岗位筛选规则
               </h2>
 
@@ -1215,10 +1121,10 @@ export default function App() {
 
               <NotSuitablePanel disabled={isTaskRunning} />
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div className="form-grid">
                 {/* 城市 */}
                 <div>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     目标求职城市
                   </label>
                   <select
@@ -1244,19 +1150,19 @@ export default function App() {
                     }}
                     style={{ width: '100%' }}
                   >
-                    <option value="101010100">北京 (101010100)</option>
-                    <option value="101020100">上海 (101020100)</option>
-                    <option value="101280600">深圳 (101280600)</option>
-                    <option value="101280100">广州 (101280100)</option>
-                    <option value="101210100">杭州 (101210100)</option>
-                    <option value="101270100">成都 (101270100)</option>
-                    <option value="101200100">武汉 (101200100)</option>
+                    <option value="101010100">北京</option>
+                    <option value="101020100">上海</option>
+                    <option value="101280600">深圳</option>
+                    <option value="101280100">广州</option>
+                    <option value="101210100">杭州</option>
+                    <option value="101270100">成都</option>
+                    <option value="101200100">武汉</option>
                   </select>
                 </div>
 
                 {/* 薪资范围 */}
                 <div>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     期望月薪区间 (K)
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1290,7 +1196,7 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label htmlFor="candidate-degree" style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label htmlFor="candidate-degree" style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     我的最高学历
                   </label>
                   <select id="candidate-degree" value={config.filter.degree[0] || ''} onChange={(event) =>
@@ -1299,24 +1205,24 @@ export default function App() {
                     <option value="">不设置</option>
                     {['初中', '高中', '中专', '大专', '本科', '硕士', '博士'].map((degree) => <option key={degree} value={degree}>{degree}</option>)}
                   </select>
-                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px', lineHeight: 1.6 }}>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', lineHeight: 1.6 }}>
                     按岗位最低学历判断。本科可匹配大专、本科及学历不限的岗位。
                   </p>
                 </div>
 
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <label htmlFor="candidate-languages" style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>我的语言能力</label>
+                  <label htmlFor="candidate-languages" style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>我的语言能力</label>
                   <textarea id="candidate-languages" value={config.filter.candidateLanguages || ''} maxLength={1000} rows={2}
                     placeholder="例如：英语 CET4；日语 N1，口语流利；西班牙语熟练，能听懂哥斯达黎加口音"
                     disabled={isTaskRunning} onChange={event => setConfig({ ...config, filter: { ...config.filter, candidateLanguages: event.target.value } })}
                     style={{ width: '100%' }} />
-                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px', lineHeight: 1.6 }}>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', lineHeight: 1.6 }}>
                     填写自己具备的语言、水平和证书，也可从简历读取。岗位明确要求某语言而没有达标依据时，先淘汰；“优先”和“可培训”保留。证书不能自动证明口语流利或掌握特定口音。
                   </p>
                 </div>
 
                 <div>
-                  <label htmlFor="experience-match-mode" style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label htmlFor="experience-match-mode" style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     经验筛选方式
                   </label>
                   <select id="experience-match-mode" value={config.filter.experienceMatchMode || 'flexible'} onChange={(event) =>
@@ -1325,13 +1231,13 @@ export default function App() {
                     <option value="flexible">宽泛：经验标签作参考（推荐）</option>
                     <option value="strict">严格：按经验标签和条件筛选</option>
                   </select>
-                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px', lineHeight: 1.6 }}>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', lineHeight: 1.6 }}>
                     {config.filter.experienceMatchMode === 'strict'
                       ? '启用“允许无经验”时核对标签与正文，冲突留待确认；否则按下方经验范围筛选，留空表示不限。'
                       : '“1—3年”标签和“经验优先”不直接淘汰。正文明确允许无经验可继续筛选；经验条件不清楚时留待确认。'}
                   </p>
                   {config.filter.experienceMatchMode === 'strict' && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-                    {['应届生', '1年以内', '1-3年', '3-5年', '5-10年', '10年以上'].map((experience) => <label key={experience} style={{ fontSize: '12px', color: '#94a3b8' }}>
+                    {['应届生', '1年以内', '1-3年', '3-5年', '5-10年', '10年以上'].map((experience) => <label key={experience} style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                       <input type="checkbox" checked={(config.filter.experience || []).includes(experience)} onChange={(event) =>
                         setConfig({ ...config, filter: { ...config.filter, experience: event.target.checked
                           ? [...(config.filter.experience || []), experience] : (config.filter.experience || []).filter((item) => item !== experience) } })
@@ -1351,12 +1257,12 @@ export default function App() {
                       onChange={(event) => setConfig({ ...config, filter: { ...config.filter, skipVagueJobDescription: event.target.checked } })} />
                     排除职责语焉不详的岗位
                   </label>
-                  <p style={{ fontSize: '12px', color: '#94a3b8' }}>本地先核对职责和公司介绍，再评估其他条件。简短但写明具体工作内容的描述可以继续筛选。</p>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>本地先核对职责和公司介绍，再评估其他条件。简短但写明具体工作内容的描述可以继续筛选。</p>
                 </div>
 
                 {/* HR活跃度 */}
                 <div>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     HR 最近活跃要求 (防僵尸岗位浪费额度)
                   </label>
                   <select
@@ -1377,7 +1283,7 @@ export default function App() {
 
                 {/* 大模型最低打分 */}
                 <div>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     LLM 语义匹配最低准入门槛 (0~100 分)
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1394,7 +1300,7 @@ export default function App() {
                       }
                       style={{ flex: 1 }}
                     />
-                    <span style={{ fontWeight: 'bold', color: '#38bdf8' }}>
+                    <span style={{ fontWeight: 'bold', color: 'var(--accent-blue)' }}>
                       {config.filter.minLlmMatchScore || 75} 分
                     </span>
                   </div>
@@ -1403,7 +1309,7 @@ export default function App() {
 
               {/* 需求词与淘汰词 */}
               <div style={{ marginTop: '20px' }}>
-                <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                   需求词（职位名称、技能标签或职位描述至少命中一个；留空表示不限）
                 </label>
                 <textarea
@@ -1423,7 +1329,7 @@ export default function App() {
                 />
               </div>
               <div style={{ marginTop: '20px' }}>
-                <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                   排除行业、岗位或公司（逗号分隔）
                 </label>
                 <textarea
@@ -1440,15 +1346,15 @@ export default function App() {
                   }
                   style={{ width: '100%', fontSize: '13px' }}
                 />
-                <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
                   检查岗位名称、标签、明确职责，以及公司页行业、介绍和经营范围。金融包含银行、证券、信贷、助贷等；销售会识别电销、网销及实际销售任务。
                 </p>
               </div>
 
               {/* 每日投递限制与浏览间隔 */}
-              <div style={{ marginTop: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div className="form-grid" style={{ marginTop: 20 }}>
                 <div>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     每日自动投递数（0–150；0 表示不投递）
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1486,7 +1392,7 @@ export default function App() {
                   onClick={() => saveConfig(config)}
                   style={{
                     padding: '10px 24px',
-                    backgroundColor: '#334155',
+                    backgroundColor: 'var(--border-color)',
                     color: '#fff',
                     borderRadius: '8px',
                     fontWeight: 600,
@@ -1501,7 +1407,7 @@ export default function App() {
                   }}
                   style={{
                     padding: '10px 24px',
-                    backgroundColor: '#00be68',
+                    backgroundColor: 'var(--primary)',
                     color: '#fff',
                     borderRadius: '8px',
                     fontWeight: 600,
@@ -1516,13 +1422,13 @@ export default function App() {
 
         {/* TAB 4: 投递控制台与实时监控 */}
         {activeTab === 'delivery' && (
-          <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="page-column">
             {/* 风控告警 Banner */}
             {deliveryStats.needsCaptchaVerification && (
               <div
                 style={{
-                  backgroundColor: 'rgba(244, 63, 94, 0.2)',
-                  border: '2px solid #f43f5e',
+                  backgroundColor: 'var(--danger-bg)',
+                  border: '2px solid var(--accent-rose)',
                   borderRadius: '12px',
                   padding: '16px 20px',
                   display: 'flex',
@@ -1531,13 +1437,13 @@ export default function App() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <ShieldAlert size={28} color="#f43f5e" />
+                  <ShieldAlert size={28} color="var(--accent-rose)" />
                   <div>
-                    <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#fda4af' }}>
-                      🚨 触发平台风控滑块验证码！系统已安全暂停
+                    <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: 'var(--accent-rose)' }}>
+                      BOSS 页面需要人工验证，任务已停止
                     </h3>
-                    <p style={{ fontSize: '13px', color: '#fecdd3', marginTop: '2px' }}>
-                      请切换到后台启动的 Chrome 浏览器窗口完成滑块拖动。完成后点击右侧按钮，或等待系统自动感知恢复。
+                    <p style={{ fontSize: '13px', color: 'var(--accent-rose)', marginTop: '2px' }}>
+                      请在 BOSS 浏览器窗口完成验证，再确认账号状态并主动恢复任务。
                     </p>
                   </div>
                 </div>
@@ -1547,7 +1453,7 @@ export default function App() {
                   style={{
                     padding: '8px 16px',
                     borderRadius: '8px',
-                    backgroundColor: '#f43f5e',
+                    backgroundColor: 'var(--accent-rose)',
                     color: '#fff',
                     fontWeight: 600,
                     fontSize: '13px',
@@ -1561,19 +1467,21 @@ export default function App() {
             {/* 控制卡片 */}
             <div
               style={{
-                backgroundColor: '#1e293b',
+                backgroundColor: 'var(--surface)',
                 padding: '20px',
                 borderRadius: '12px',
-                border: '1px solid #334155',
+                border: '1px solid var(--border-color)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '14px',
               }}
             >
               <div>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>当前投递职业与检索关键词:</span>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>当前投递职业与检索关键词:</span>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
-                  <strong style={{ fontSize: '18px', color: '#00be68' }}>{deliveryStats.targetRoles?.join('、') || (usesSavedExpectations ? targetSlots.filter(Boolean).map(item => item!.name).join('、') || 'AI 规划目标岗位' : searchByConditions ? '按工作条件找岗位' : selectedRole || '未选择')}</strong>
+                  <strong style={{ fontSize: '18px', color: 'var(--primary)' }}>{deliveryStats.targetRoles?.join('、') || (usesSavedExpectations ? targetSlots.filter(Boolean).map(item => item!.name).join('、') || 'AI 规划目标岗位' : searchByConditions ? '按工作条件找岗位' : selectedRole || '未选择')}</strong>
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
                     {searchKeywords.map((kw, i) => (
                       <span
@@ -1581,9 +1489,9 @@ export default function App() {
                         style={{
                           padding: '2px 8px',
                           borderRadius: '6px',
-                          backgroundColor: '#334155',
+                          backgroundColor: 'var(--border-color)',
                           fontSize: '12px',
-                          color: '#38bdf8',
+                          color: 'var(--accent-blue)',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '4px',
@@ -1592,7 +1500,7 @@ export default function App() {
                         {kw}
                         <X
                           size={12}
-                          color="#94a3b8"
+                          color="var(--text-muted)"
                           style={{ cursor: 'pointer' }}
                           onClick={() => setSearchKeywords(searchKeywords.filter((_, idx) => idx !== i))}
                         />
@@ -1621,7 +1529,7 @@ export default function App() {
                             setNewKeywordInput('');
                           }
                         }}
-                        style={{ background: 'none', color: '#38bdf8', padding: '2px' }}
+                        style={{ background: 'none', color: 'var(--accent-blue)', padding: '2px' }}
                       >
                         <Plus size={16} />
                       </button>
@@ -1631,7 +1539,7 @@ export default function App() {
               </div>
 
               {/* 运行控制按键 */}
-              <div style={{ display: 'flex', gap: '12px' }}>
+              <div className="action-row">
                 {deliveryStats.status === 'idle' || deliveryStats.status === 'finished' || deliveryStats.status === 'failed' ? (
                   <button
                     onClick={() => setActiveTab('launch')}
@@ -1639,7 +1547,7 @@ export default function App() {
                     style={{
                       padding: '10px 24px',
                       borderRadius: '8px',
-                      backgroundColor: '#00be68',
+                      backgroundColor: 'var(--primary)',
                       color: '#fff',
                       fontWeight: 600,
                       display: 'flex',
@@ -1656,8 +1564,8 @@ export default function App() {
                     style={{
                       padding: '10px 20px',
                       borderRadius: '8px',
-                      backgroundColor: '#fbbf24',
-                      color: '#0f172a',
+                      backgroundColor: 'var(--accent-amber)',
+                      color: 'var(--surface-subtle)',
                       fontWeight: 600,
                       display: 'flex',
                       alignItems: 'center',
@@ -1676,7 +1584,7 @@ export default function App() {
                     style={{
                       padding: '10px 20px',
                       borderRadius: '8px',
-                      backgroundColor: '#00be68',
+                      backgroundColor: 'var(--primary)',
                       color: '#fff',
                       fontWeight: 600,
                       display: 'flex',
@@ -1694,9 +1602,9 @@ export default function App() {
                   style={{
                     padding: '10px 16px',
                     borderRadius: '8px',
-                    backgroundColor: '#334155',
-                    color: '#f43f5e',
-                    border: '1px solid #f43f5e',
+                    backgroundColor: 'var(--border-color)',
+                    color: 'var(--accent-rose)',
+                    border: '1px solid var(--accent-rose)',
                     fontWeight: 600,
                     display: 'flex',
                     alignItems: 'center',
@@ -1710,72 +1618,72 @@ export default function App() {
             </div>
 
             {/* 指标看板 */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '14px' }}>
-              <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '12px', border: '1px solid #334155' }}>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>今日成功开聊</span>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#4ade80', marginTop: '6px' }}>
-                  {deliveryStats.todayAppliedCount} <span style={{ fontSize: '13px', color: '#64748b' }}>/ {deliveryStats.dailyMaxQuota}</span>
+            <div className="delivery-metrics">
+              <div style={{ backgroundColor: 'var(--surface)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>今日成功开聊</span>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--success)', marginTop: '6px' }}>
+                  {deliveryStats.todayAppliedCount} <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>/ {deliveryStats.dailyMaxQuota}</span>
                 </p>
               </div>
 
-              <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '12px', border: '1px solid #334155' }}>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>扫描岗位总数</span>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#f8fafc', marginTop: '6px' }}>
+              <div style={{ backgroundColor: 'var(--surface)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>已浏览岗位</span>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--text-main)', marginTop: '6px' }}>
                   {deliveryStats.totalScanned}
                 </p>
               </div>
 
-              <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '12px', border: '1px solid #334155' }}>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>双筛选达标岗位</span>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#38bdf8', marginTop: '6px' }}>
+              <div style={{ backgroundColor: 'var(--surface)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>筛选通过</span>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--accent-blue)', marginTop: '6px' }}>
                   {deliveryStats.passedFilterCount}
                 </p>
               </div>
 
-              <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '12px', border: '1px solid #334155' }}>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>反向调优(标记不合适)</span>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#f43f5e', marginTop: '6px' }}>
+              <div style={{ backgroundColor: 'var(--surface)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>已标记不合适</span>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--accent-rose)', marginTop: '6px' }}>
                   {deliveryStats.markedNotSuitCount || 0}
                 </p>
               </div>
 
-              <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '12px', border: '1px solid #334155' }}>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>AI 不可用跳过</span>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#fbbf24', marginTop: '6px' }}>
+              <div style={{ backgroundColor: 'var(--surface)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>AI 异常记录</span>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--accent-amber)', marginTop: '6px' }}>
                   {deliveryStats.skippedByLlmErrorCount || 0}
                 </p>
               </div>
 
-              <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '12px', border: '1px solid #334155' }}>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>当前智能体状态</span>
-                <p style={{ fontSize: '15px', fontWeight: 600, color: '#fbbf24', marginTop: '10px' }}>
+              <div style={{ backgroundColor: 'var(--surface)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>任务状态</span>
+                <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--accent-amber)', marginTop: '10px' }}>
                   {deliveryStats.status === 'running'
-                    ? '🚀 正在检索与投递'
+                    ? '正在筛选与投递'
                     : deliveryStats.status === 'paused'
-                    ? '⏸️ 已暂停'
+                    ? '已暂停'
                     : deliveryStats.status === 'sage_time'
-                    ? `☕ 贤者时间 (${deliveryStats.sageTimeRemainingSeconds ?? 0}s)`
+                    ? `休息中 (${deliveryStats.sageTimeRemainingSeconds ?? 0}s)`
                     : deliveryStats.status === 'cool_down'
-                    ? '⏳ 平台限频等待中'
+                    ? '等待平台限制解除'
                     : deliveryStats.status === 'finished'
-                    ? '🎉 任务已完成'
+                    ? '任务已完成'
                     : deliveryStats.status === 'failed'
-                    ? '❌ 任务异常中止，请查看日志'
-                    : '💤 空闲中'}
+                    ? '任务异常中止，请查看日志'
+                    : '尚未开始'}
                 </p>
               </div>
             </div>
 
             {/* 实时终端日志流 */}
-            <p aria-label="评估用量" style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+            <p aria-label="评估用量" style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
               {isTaskRunning && deliveryStats.phase ? ({ planning: '正在规划目标岗位', configuring: '正在设置 BOSS 自选岗位', screening: '脚本初筛中', evaluating: 'AI 批量分析中', delivering: '投递中' })[deliveryStats.phase] + ' · ' : ''}
               本地处理 {deliveryStats.localDecisionCount || 0} 个 · 待批量评估 {deliveryStats.pendingEvaluationCount || 0} 个 ·
               AI 请求 {deliveryStats.aiRequestCount || 0} 次 · 复用评估 {deliveryStats.cachedEvaluationCount || 0} 个
             </p>
             <div
               style={{
-                backgroundColor: '#0f172a',
-                border: '1px solid #334155',
+                backgroundColor: 'var(--surface-subtle)',
+                border: '1px solid var(--border-color)',
                 borderRadius: '12px',
                 padding: '16px',
                 display: 'flex',
@@ -1789,17 +1697,17 @@ export default function App() {
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   marginBottom: '12px',
-                  borderBottom: '1px solid #1e293b',
+                  borderBottom: '1px solid var(--surface)',
                   paddingBottom: '8px',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Terminal size={18} color="#00be68" />
-                  <span style={{ fontSize: '14px', fontWeight: 600, color: '#f8fafc' }}>
-                    实时投递控制台与风控日志
+                  <Terminal size={18} color="var(--primary)" />
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)' }}>
+                    筛选与投递动态
                   </span>
                 </div>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>最新 300 条动态</span>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>最新 300 条动态</span>
               </div>
 
               <div
@@ -1816,20 +1724,20 @@ export default function App() {
                 }}
               >
                 {logs.length === 0 ? (
-                  <p style={{ color: '#475569', textAlign: 'center', marginTop: '40px' }}>
-                    控制台准备就绪，点击上方【开始自动投递】查看实时流...
+                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '40px' }}>
+                    开始投递后，这里会显示岗位筛选和投递进度。
                   </p>
                 ) : (
                   logs.map((log) => {
                     const colorMap = {
-                      info: '#94a3b8',
-                      warn: '#fbbf24',
-                      error: '#f43f5e',
-                      success: '#4ade80',
+                      info: 'var(--text-muted)',
+                      warn: 'var(--accent-amber)',
+                      error: 'var(--accent-rose)',
+                      success: 'var(--success)',
                     };
                     return (
                       <div key={log.id} style={{ display: 'flex', gap: '8px', lineHeight: '1.4' }}>
-                        <span style={{ color: '#475569', minWidth: '70px' }}>[{log.timestamp}]</span>
+                        <span style={{ color: 'var(--text-muted)', minWidth: '70px' }}>[{log.timestamp}]</span>
                         <span style={{ color: colorMap[log.level] }}>{log.message}</span>
                       </div>
                     );
@@ -1842,13 +1750,13 @@ export default function App() {
 
         {/* TAB 5: 设置 */}
         {activeTab === 'settings' && config && (
-          <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+          <div className="page-column settings-page">
             <div
               style={{
-                backgroundColor: '#1e293b',
+                backgroundColor: 'var(--surface)',
                 padding: '24px',
                 borderRadius: '12px',
-                border: '1px solid #334155',
+                border: '1px solid var(--border-color)',
               }}
             >
               <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '20px' }}>
@@ -1858,8 +1766,8 @@ export default function App() {
               {/* 模型连接预设 */}
               <div
                 style={{
-                  backgroundColor: '#0f172a',
-                  border: '1px solid #00be68',
+                  backgroundColor: 'var(--surface-subtle)',
+                  border: '1px solid var(--primary)',
                   borderRadius: '10px',
                   padding: '16px',
                   marginBottom: '10px',
@@ -1867,12 +1775,12 @@ export default function App() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Sparkles size={18} color="#00be68" />
-                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#f8fafc' }}>
+                    <Sparkles size={18} color="var(--primary)" />
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)' }}>
                       选择模型连接方式
                     </span>
                   </div>
-                  <span style={{ fontSize: '12px', color: '#4ade80', backgroundColor: 'rgba(0,190,104,0.15)', padding: '2px 8px', borderRadius: '10px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--success)', backgroundColor: 'var(--accent-soft)', padding: '2px 8px', borderRadius: '10px' }}>
                     {config.llm.connectionMode === 'deepseek-web' ? 'DeepSeek 网页反代' : '兼容 API'}
                   </span>
                 </div>
@@ -1882,7 +1790,7 @@ export default function App() {
                     aria-label="AI 连接方式"
                     value={selectedPresetId}
                     onChange={(e) => handleSelectPreset(e.target.value)}
-                    style={{ flex: 1, backgroundColor: '#1e293b', border: '1px solid #334155' }}
+                    style={{ flex: 1, backgroundColor: 'var(--surface)', border: '1px solid var(--border-color)' }}
                   >
                     {presets.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -1898,8 +1806,8 @@ export default function App() {
                   const curr = presets.find((p) => p.id === selectedPresetId);
                   if (!curr) return null;
                   return (
-                    <div style={{ marginTop: '12px', padding: '10px', backgroundColor: '#1e293b', borderRadius: '8px', border: '1px solid #334155' }}>
-                      <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5' }}>
+                    <div style={{ marginTop: '12px', padding: '10px', backgroundColor: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
                         {curr.description}
                       </p>
                       {curr.applyUrl && (
@@ -1909,7 +1817,7 @@ export default function App() {
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
-                              color: '#38bdf8',
+                              color: 'var(--accent-blue)',
                               fontSize: '13px',
                               textDecoration: 'none',
                               display: 'inline-flex',
@@ -1931,7 +1839,7 @@ export default function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {config.llm.connectionMode === 'deepseek-web' && <DeepSeekAccountPanel />}
                 {config.llm.connectionMode !== 'deepseek-web' && <div>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     接口地址（Base URL）
                   </label>
                   <input
@@ -1947,7 +1855,7 @@ export default function App() {
                 </div>}
 
                 {config.llm.connectionMode !== 'deepseek-web' && <div>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     API Key
                   </label>
                   <input
@@ -1960,13 +1868,13 @@ export default function App() {
                     placeholder="sk-..."
                     style={{ width: '100%' }}
                   />
-                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                     更换 Key 后点击“保存并测试连接”，可直接检查模型接口是否可用。
                   </p>
                 </div>}
 
                 {config.llm.connectionMode !== 'deepseek-web' && <div>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     Model Name (模型名称)
                   </label>
                   <input
@@ -1982,56 +1890,56 @@ export default function App() {
                 </div>}
 
                 {config.llm.connectionMode === 'deepseek-web' && (
-                  <section aria-label="DeepSeek 网页功能" style={{ padding: '18px', border: '1px solid #334155', borderRadius: '12px', background: '#0f172a' }}>
-                    <h3 style={{ fontSize: '15px', margin: '0 0 8px', color: '#e2e8f0' }}>网页功能</h3>
-                    <p style={{ fontSize: '12px', lineHeight: 1.7, color: '#94a3b8', margin: '0 0 16px' }}>
+                  <section aria-label="DeepSeek 网页功能" style={{ padding: '18px', border: '1px solid var(--border-color)', borderRadius: '12px', background: 'var(--surface-subtle)' }}>
+                    <h3 style={{ fontSize: '15px', margin: '0 0 8px', color: 'var(--text-main)' }}>网页功能</h3>
+                    <p style={{ fontSize: '12px', lineHeight: 1.7, color: 'var(--text-muted)', margin: '0 0 16px' }}>
                       深度思考和联网搜索可以分别开启，也可以同时开启。保存后用于简历分析和岗位匹配。
                     </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', borderRadius: '10px', background: '#1e293b', cursor: 'pointer' }}>
+                    <div className="settings-options-grid">
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', borderRadius: '10px', background: 'var(--surface)', cursor: 'pointer' }}>
                         <input type="checkbox" aria-label="深度思考" disabled={isTestingModel} checked={config.llm.thinking === 'enabled'} onChange={(event) => {
                           setConfig({ ...config, llm: { ...config.llm, thinking: event.target.checked ? 'enabled' : 'disabled' } });
                           setModelTestMessage('');
                         }} />
-                        <span><strong style={{ display: 'block', fontSize: '13px', color: '#e2e8f0' }}>深度思考</strong>
-                          <span style={{ display: 'block', fontSize: '12px', lineHeight: 1.6, color: '#94a3b8', marginTop: '4px' }}>深入分析简历和岗位，回答通常需要更长时间。</span>
+                        <span><strong style={{ display: 'block', fontSize: '13px', color: 'var(--text-main)' }}>深度思考</strong>
+                          <span style={{ display: 'block', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)', marginTop: '4px' }}>深入分析简历和岗位，回答通常需要更长时间。</span>
                         </span>
                       </label>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', borderRadius: '10px', background: '#1e293b', cursor: 'pointer' }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', borderRadius: '10px', background: 'var(--surface)', cursor: 'pointer' }}>
                         <input type="checkbox" aria-label="联网搜索" disabled={isTestingModel} checked={config.llm.webSearch === true} onChange={(event) => {
                           setConfig({ ...config, llm: { ...config.llm, webSearch: event.target.checked } });
                           setModelTestMessage('');
                         }} />
-                        <span><strong style={{ display: 'block', fontSize: '13px', color: '#e2e8f0' }}>联网搜索</strong>
-                          <span style={{ display: 'block', fontSize: '12px', lineHeight: 1.6, color: '#94a3b8', marginTop: '4px' }}>允许模型搜索网页，补充公司或岗位相关信息。</span>
+                        <span><strong style={{ display: 'block', fontSize: '13px', color: 'var(--text-main)' }}>联网搜索</strong>
+                          <span style={{ display: 'block', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)', marginTop: '4px' }}>允许模型搜索网页，补充公司或岗位相关信息。</span>
                         </span>
                       </label>
                     </div>
                   </section>
                 )}
                 {modelTestMessage && (
-                  <p role="status" style={{ fontSize: '13px', color: modelTestMessage.startsWith('连接失败') ? '#fda4af' : '#4ade80' }}>
+                  <p role="status" style={{ fontSize: '13px', color: modelTestMessage.startsWith('连接失败') ? 'var(--accent-rose)' : 'var(--success)' }}>
                     {modelTestMessage}
                   </p>
                 )}
-                <section aria-label="AI 调用安排" style={{ padding: '18px', border: '1px solid #334155', borderRadius: '12px', background: '#0f172a' }}>
-                  <h3 style={{ fontSize: '15px', margin: '0 0 8px', color: '#e2e8f0' }}>先初筛，再批量评估</h3>
-                  <p style={{ fontSize: '12px', lineHeight: 1.7, color: '#94a3b8', margin: '0 0 16px' }}>
+                <section aria-label="AI 调用安排" style={{ padding: '18px', border: '1px solid var(--border-color)', borderRadius: '12px', background: 'var(--surface-subtle)' }}>
+                  <h3 style={{ fontSize: '15px', margin: '0 0 8px', color: 'var(--text-main)' }}>先初筛，再批量评估</h3>
+                  <p style={{ fontSize: '12px', lineHeight: 1.7, color: 'var(--text-muted)', margin: '0 0 16px' }}>
                     脚本先检查明确条件，攒齐候选岗位后共用一次简历和要求。重复岗位短期复用结果；最后不足一批也会处理。
                   </p>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                    <label style={{ fontSize: '13px', color: '#cbd5e1' }}>每批岗位数（1–10）
+                  <div className="settings-options-grid">
+                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>每批岗位数（1–10）
                       <input type="number" aria-label="每批岗位数" min={1} max={10} value={config.llm.jobBatchSize ?? 5}
                         disabled={isTestingModel || isTaskRunning} style={{ display: 'block', width: '100%', marginTop: '8px' }}
                         onChange={(event) => setConfig({ ...config, llm: { ...config.llm, jobBatchSize: Number(event.target.value) } })} />
                     </label>
-                    {config.llm.connectionMode === 'deepseek-web' && <label style={{ fontSize: '13px', color: '#cbd5e1' }}>请求间隔秒数（10–300）
+                    {config.llm.connectionMode === 'deepseek-web' && <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>请求间隔秒数（10–300）
                       <input type="number" aria-label="请求间隔秒数" min={10} max={300} value={config.llm.minRequestIntervalSeconds ?? 30}
                         disabled={isTestingModel || isTaskRunning} style={{ display: 'block', width: '100%', marginTop: '8px' }}
                         onChange={(event) => setConfig({ ...config, llm: { ...config.llm, minRequestIntervalSeconds: Number(event.target.value) } })} />
                     </label>}
                   </div>
-                  <p style={{ fontSize: '12px', lineHeight: 1.7, color: '#94a3b8', margin: '12px 0 0' }}>
+                  <p style={{ fontSize: '12px', lineHeight: 1.7, color: 'var(--text-muted)', margin: '12px 0 0' }}>
                     网页请求按顺序执行，间隔从上一轮结束算起；限流或暂时繁忙时保留岗位，等待后重试。岗位描述过长会自动缩小批次。
                   </p>
                 </section>
@@ -2040,7 +1948,7 @@ export default function App() {
                     type="button"
                     onClick={testModelConnection}
                     disabled={isTestingModel}
-                    style={{ padding: '10px 24px', backgroundColor: '#334155', color: '#f8fafc', borderRadius: '8px', fontWeight: 600 }}
+                    style={{ padding: '10px 24px', backgroundColor: 'var(--border-color)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: 600 }}
                   >
                     {isTestingModel ? '测试中…' : '保存并测试连接'}
                   </button>
@@ -2048,7 +1956,7 @@ export default function App() {
                     onClick={() => saveConfig(config)}
                     style={{
                       padding: '10px 24px',
-                      backgroundColor: '#00be68',
+                      backgroundColor: 'var(--primary)',
                       color: '#fff',
                       borderRadius: '8px',
                       fontWeight: 600,
@@ -2063,7 +1971,9 @@ export default function App() {
         )}
         {(activeTab === 'delivery' || (activeTab === 'launch' && selectedConditions.length > 0)) && <WorkConditionReviewPanel
           taskRunning={isTaskRunning || bossAutomationBlocked} onStarted={stats => { setDeliveryStats(stats); setActiveTab('delivery'); }} />}
-      </main>
+          </main>
+        </div>
+      </div>
     </div>
   );
 }
