@@ -349,7 +349,7 @@ async function main() {
     assert.equal(await recovery.isDisabled(), true, '恢复需要明确人工确认');
     await safetyPanel.getByRole('checkbox').check();
     await recovery.click();
-    await safetyPanel.getByText('停止状态已解除，任务仍需主动开始或恢复', { exact: true }).waitFor();
+    await safetyPanel.waitFor({ state: 'detached' });
     assert.equal(starts.length, startsBeforeHold, '确认恢复不能自动投递');
     assert.deepEqual(errors, []);
     console.log('PASS | 三个自选目标、条件与定位设置、待确认投递、封禁横幅拦截、人工恢复不自动投递');

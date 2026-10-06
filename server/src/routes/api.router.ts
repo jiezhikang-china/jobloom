@@ -81,7 +81,7 @@ apiRouter.post('/boss/automation-safety/confirm', async (req, res) => {
     }
     if (!humanReport && !login.isLoggedIn) return res.status(409).json({ success: false, message: '尚未看到可正常使用的已登录 BOSS 页面；请先在浏览器人工核实，系统不会自动刷新或测试账号' });
     bossAutomationSafety.confirmRecovery(req.body.holdId);
-    res.json({ success: true, data: bossAutomationSafety.status(), message: login.isLoggedIn ? '停止状态已解除，任务仍需主动开始或恢复' : '已按你的解封确认解除本机停止状态，可以打开或验证 BOSS 会话；任务仍需主动开始' });
+    res.json({ success: true, data: bossAutomationSafety.status() });
   } catch (error) { res.status(409).json({ success: false, message: (error as Error).message }); }
 });
 
