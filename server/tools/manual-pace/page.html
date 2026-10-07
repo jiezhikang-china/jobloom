@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BOSS 手动操作计时表</title><link rel="stylesheet" href="page.css">
+</head>
+<body>
+<main>
+<header>
+  <div><h1>按你的节奏，走一轮。</h1><p>你按平常的方式操作 BOSS 网页，这里记录真实用时。</p></div>
+  <span class="connection" id="connection">网页尚未连接</span>
+</header>
+<section class="recorder" aria-labelledby="recorder-title">
+  <div class="recorder-top">
+    <div><h2 id="recorder-title">手动操作计时表</h2><p id="status" role="status">尚未开始</p></div>
+    <div class="clock" id="clock" aria-label="有效操作总用时">00:00</div>
+  </div>
+  <label class="mode-label">计时方式 <select id="mode"><option value="manual">手动记录每轮</option><option value="auto">自动记录每步（专用窗口）</option></select></label>
+  <div class="actions">
+    <button id="open">打开 BOSS 网页</button>
+    <button id="start" class="primary">开始采样</button>
+    <button id="pause" hidden>临时离开，暂停</button>
+    <button id="resume" class="primary" hidden>继续计时</button>
+    <button id="round" hidden>完成这一轮</button>
+    <button id="finish" hidden>结束并保存</button>
+    <a id="export" class="button-link" href="api/export" download hidden>导出记录</a>
+  </div>
+  <p class="message" id="message" aria-live="polite">先打开网页，准备好后点“开始采样”。</p>
+  <div id="error" class="error" role="alert" hidden></div>
+</section>
+<div class="workspace">
+<section class="guide" aria-labelledby="guide-title">
+  <h2 id="guide-title">这一轮怎么操作</h2>
+  <p>不用赶时间，也不用刻意放慢。照你平常找工作的方式做。</p>
+  <ol>
+    <li><strong>在列表里选一个岗位</strong><span>看标题、薪资和基本条件，再决定点哪一个。</span></li>
+    <li><strong>读岗位详情</strong><span>正常滚动、阅读，判断职责和要求。</span></li>
+    <li><strong>需要时查看公司页</strong><span>了解介绍和主营业务，再返回岗位。</span></li>
+    <li><strong>做出决定</strong><span>继续浏览、沟通，或在明确排除时点“不合适”。</span></li>
+    <li><strong>如果沟通，处理后续弹窗</strong><span>发送由你决定；出现“继续沟通”时也按正常流程操作。</span></li>
+    <li><strong>返回列表，选下一个岗位</strong><span id="round-guide">回到计时表点“完成这一轮”；下一轮准备好后再点“开始下一轮”。</span></li>
+  </ol>
+  <p class="note">建议连续做 3–5 轮。临时接电话或离开，请先暂停计时。</p>
+</section>
+<div class="records">
+<section aria-labelledby="rounds-title">
+  <div class="section-heading"><h2 id="rounds-title">每轮用时</h2><span id="round-count">0 轮完成</span></div>
+  <div class="table-wrap"><table><thead><tr><th>轮次</th><th>用时</th><th>操作结果</th></tr></thead><tbody id="rounds"><tr><td colspan="3" class="empty">开始采样后，选一个新岗位。</td></tr></tbody></table></div>
+</section>
+<section class="summary" aria-labelledby="summary-title">
+  <h2 id="summary-title">采样摘要</h2>
+  <dl><div><dt>每轮中位用时</dt><dd id="median">—</dd></div><div><dt>详情阅读中位用时</dt><dd id="detail-median">—</dd></div><div><dt>公司阅读中位用时</dt><dd id="company-median">—</dd></div></dl>
+  <p id="sample-note">等待真实操作样本。</p>
+</section>
+<section aria-labelledby="timeline-title">
+  <div class="section-heading"><h2 id="timeline-title">实际操作记录</h2><span id="event-count">0 次</span></div>
+  <div class="table-wrap timeline"><table><thead><tr><th>操作</th><th>距上一步</th><th>累计时间</th></tr></thead><tbody id="events"><tr><td colspan="3" class="empty">开始和完成每轮后，时间会记录在这里。</td></tr></tbody></table></div>
+</section>
+</div>
+</div>
+<footer>记录保存在本机。只记操作类型与时间，不记录输入内容、Cookie 或聊天正文。结束后告诉我“采样完成”，再用这份样本调整自动操作节奏。</footer>
+</main>
+<script src="page.js"></script>
+</body></html>

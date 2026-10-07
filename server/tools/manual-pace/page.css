@@ -1,0 +1,23 @@
+:root{color-scheme:light;--ink:#141413;--muted:#66645f;--paper:#faf9f5;--surface:#fffefc;--line:#e5e3d9;--accent:#ad4d31;--soft:#f5e9e2}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.65 'Segoe UI','Microsoft YaHei UI',sans-serif}
+main{max-width:1180px;padding:42px 44px 28px;margin:auto}header{display:flex;align-items:center;justify-content:space-between;gap:22px;margin-bottom:28px}
+h1{font:500 29px/1.4 Georgia,'Noto Serif SC',SimSun,serif;margin:0 0 8px;letter-spacing:-.6px}h2{font-size:16px;font-weight:650;margin:0}p{margin:6px 0 0;color:var(--muted)}
+.connection{white-space:nowrap;font-size:12px;color:var(--muted)}.connection.ready{color:#41644c}.connection:before{content:'';display:inline-block;width:7px;height:7px;background:currentColor;border-radius:50%;margin-right:8px}
+.recorder{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin-bottom:30px}
+.recorder-top{display:flex;justify-content:space-between;align-items:center;gap:16px}.clock{font-size:38px;font-weight:400;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.2}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}button,.button-link{font:inherit;color:var(--ink);background:var(--surface);border:1px solid #cbc7bb;border-radius:8px;cursor:pointer;padding:8px 14px;text-decoration:none}
+button:hover,.button-link:hover{background:#f1f0e9}button.primary{background:var(--accent);color:white;border-color:var(--accent)}button.primary:hover{background:#913e26}button:disabled{opacity:.5;cursor:wait}
+[hidden]{display:none!important}:where(button,a):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.message{font-size:12px;margin-top:12px}.error{margin-top:12px;color:#a23c35;background:#faeae6;border-radius:7px;padding:10px 12px}
+.workspace{display:grid;grid-template-columns:minmax(250px, .9fr) minmax(380px,1.6fr);gap:40px}.guide{padding:4px 0}.guide>p{max-width:32em}
+ol{list-style:none;counter-reset:step;margin:24px 0 0;padding:0}li{position:relative;padding:0 0 22px 38px;counter-increment:step}li:before{content:counter(step);position:absolute;left:0;top:0;width:24px;height:24px;border-radius:50%;background:#eae4d8;color:#785c4b;text-align:center;line-height:24px;font-size:12px}
+li strong{display:block;font-weight:550}li span{display:block;font-size:12px;color:var(--muted);margin-top:4px}.guide .note{border-top:1px solid var(--line);padding-top:18px;font-size:12px}
+.records>section+section{margin-top:28px}.section-heading{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.section-heading span{font-size:12px;color:var(--muted)}
+.table-wrap{border:1px solid var(--line);border-radius:10px;overflow:auto;background:var(--surface)}table{width:100%;border-collapse:collapse;text-align:left;font-size:13px;font-variant-numeric:tabular-nums}
+th{font-size:12px;color:var(--muted);font-weight:500;background:#f1f0e9}th,td{padding:11px 16px;border-bottom:1px solid var(--line)}tr:last-child td{border-bottom:0}.empty{padding:28px 16px;color:var(--muted);text-align:center;font-size:12px}
+td.in-progress{color:var(--accent)}.timeline{max-height:265px}.timeline thead{position:sticky;top:0}.summary{border-top:1px solid var(--line);padding-top:22px}.summary dl{display:flex;flex-wrap:wrap;gap:12px 24px;margin:16px 0 10px}.summary dl>div{flex:1;min-width:125px}.summary dt{color:var(--muted);font-size:12px}.summary dd{margin:4px 0 0;font-size:22px;font-variant-numeric:tabular-nums}.summary p{font-size:12px}
+footer{border-top:1px solid var(--line);padding-top:18px;margin-top:34px;color:var(--muted);font-size:12px}
+@media(max-width:860px){main{padding:25px 24px}.workspace{grid-template-columns:1fr;gap:28px}.guide ol{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}.guide>p{max-width:none}}
+@media(max-width:500px){main{padding:20px 16px}header{align-items:flex-start;flex-direction:column;gap:12px}h1{font-size:25px}.recorder{padding:18px}.clock{font-size:32px}.guide ol{grid-template-columns:1fr}.actions{gap:8px}button,.button-link{padding:8px 11px}.summary dl{gap:12px}th,td{padding:10px 12px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+.mode-label { display:flex; align-items:center; gap:12px; margin:4px 0 18px; color:var(--muted); font-size:14px; } select { font:inherit; color:var(--ink); background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
