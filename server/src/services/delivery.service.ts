@@ -56,7 +56,6 @@ export class DeliveryService {
   private listeners: Array<(stats: DeliveryStats, log?: DeliveryLogItem) => void> = [];
   private evaluationAbort?: AbortController;
   private operationAbort?: AbortController;
-  private nextSelectionAt = 0;
 
   constructor() {
     // 启动即恢复"今日已投递"计数（跨自然日会自动归零，避免隔天仍被判定配额已满）
@@ -170,22 +169,11 @@ export class DeliveryService {
     return !this.isStopRequested;
   }
 
-  /** Rate browsing at selection time; reading and AI time count toward the interval. */
-  private selectionDelayMs(): number {
-    return bossOperationPolicy.selectionMinMs + Math.random() * (bossOperationPolicy.selectionMaxMs - bossOperationPolicy.selectionMinMs);
-  }
+  /** Only pause/stop here. Actual detail selections are paced by the shared action queue. */
   private async paceJobSelection(_delivery?: AppConfig['delivery']): Promise<boolean> {
-    const remaining = Math.max(0, this.nextSelectionAt - Date.now());
-    if (remaining > 0) {
-      this.log('info', '[浏览间隔] ' + (remaining / 1000).toFixed(1) + ' 秒后选择下一岗位');
-      if (!(await this.sleepInterruptible(remaining))) return false;
-    }
     while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
-    if (this.isStopRequested) return false;
-    this.nextSelectionAt = Date.now() + this.selectionDelayMs();
-    return true;
+    return !this.isStopRequested;
   }
-
   private recordConfirmedChat(target: { jobHref: string; jobName: string; companyName: string }, result: ChatResult): void {
     this.stats.todayAppliedCount++;
     this.persistQuota();
@@ -225,7 +213,6 @@ export class DeliveryService {
     if (this.isTaskActive) throw new Error('投递任务已经在运行中');
     this.isTaskActive = true;
     this.isStopRequested = false;
-    this.nextSelectionAt = 0;
     this.ensureQuotaFresh();
     const cfg = configManager.getConfig();
     this.stats = { status: 'running', isPaused: false, needsCaptchaVerification: false, todayAppliedCount: this.stats.todayAppliedCount,
@@ -268,8 +255,7 @@ export class DeliveryService {
             workConditionReviews.remove(review.id);
             this.log('info', '[已沟通跳过] ' + review.companyName + ' - ' + review.jobName); return;
           }
-          await jobCommuteService.enrich(detail.job, cfg.filter, () => bossPageService.readJobTransit(actualTarget, cfg.filter.commute!.origin!,
-            detail.job.workAddress!, page));
+          await jobCommuteService.enrich(detail.job, cfg.filter);
           const commute = commuteDecision(detail.job, cfg.filter);
           if (commute.status === 'unknown') {
             this.log('warn', '[手动暂未投递] ' + review.companyName + ' - ' + review.jobName + '：' + commute.reason + '；记录已保留'); return;
@@ -326,7 +312,6 @@ export class DeliveryService {
     const cfg = configManager.getConfig();
     this.ensureQuotaFresh();
     this.isStopRequested = false;
-    this.nextSelectionAt = 0;
     this.evaluationAbort = new AbortController();
     this.stats = {
       status: 'running',
@@ -561,7 +546,7 @@ export class DeliveryService {
               cityName: actualCard.cityName, skills: actualCard.skills, brandIndustry: detailRes.brandIndustry,
               companyInfo: detailRes.companyInfo,
               workAddress: detailRes.workAddress, activeTimeDesc: detailRes.activeTimeDesc || freshCard.activeTimeDesc };
-            await jobCommuteService.enrich(freshJob, cfg.filter, () => bossPageService.readJobTransit(actualCard, cfg.filter.commute!.origin!, freshJob.workAddress!));
+            await jobCommuteService.enrich(freshJob, cfg.filter);
             const freshLocation = commuteDecision(freshJob, cfg.filter);
             if (freshLocation.status === 'unknown') {
               await processEvaluation({ ...candidate, jobCard: actualCard, job: freshJob, detail: detailRes }, { ...evaluation, passed: false,
@@ -937,7 +922,7 @@ export class DeliveryService {
               jobDetail: detailRes.jobDetailText, detail: detailRes, sourceHref: previewCard.jobHref };
             const beforeRoute = filterService.evaluateLocally(mockJobItem, detailRes.jobDetailText, params.rulesOnly === true && params.candidateSource === 'requirements', cfg.filter, exclusionText, candidateContext);
             if (!beforeRoute || beforeRoute.needsCommuteConfirmation) {
-              await jobCommuteService.enrich(mockJobItem, cfg.filter, () => bossPageService.readJobTransit(jobCard, cfg.filter.commute!.origin!, mockJobItem.workAddress!));
+              await jobCommuteService.enrich(mockJobItem, cfg.filter);
               if (mockJobItem.commute) {
                 const location = commuteDecision(mockJobItem, cfg.filter);
                 this.log('info', '[地点核对] ' + jobCard.companyName + ' - ' + jobCard.jobName + '：' + (location.reason

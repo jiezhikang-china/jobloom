@@ -71,7 +71,7 @@ async function readJson(url, timeout = 1500) {
 async function isOurService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
-    if (health.app !== 'boss-job-agent' || health.integrationVersion !== 26 || health.status !== 'ok' || health.desktopManaged !== true) return false;
+    if (health.app !== 'boss-job-agent' || health.integrationVersion !== 27 || health.status !== 'ok' || health.desktopManaged !== true) return false;
     const safety = await readJson(`${address(port)}/api/boss/automation-safety`);
     return safety.success === true;
   } catch {
@@ -83,7 +83,7 @@ async function isActivePreviousService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
     if (health.app !== 'boss-job-agent' || health.status !== 'ok' || !Number.isInteger(health.integrationVersion)
-      || health.integrationVersion < 22 || health.integrationVersion >= 26) return false;
+      || health.integrationVersion < 22 || health.integrationVersion >= 27) return false;
     const result = await readJson(`${address(port)}/api/delivery/status`, 2500);
     return activeStatuses.has(result?.data?.stats?.status);
   } catch { return false; }

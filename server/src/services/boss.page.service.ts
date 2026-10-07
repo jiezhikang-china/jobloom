@@ -1,11 +1,11 @@
 import { type CdpLocator, type CdpPage } from './cdp.page.js';
 import { browserService, isSecurityUrl } from './browser.service.js';
-import type { AppConfig, BossCompanyInfo, BossJobItem, BossWorkAddress, CommuteOrigin, WorkConditionReview } from '../types.js';
+import type { AppConfig, BossCompanyInfo, BossJobItem, BossWorkAddress, WorkConditionReview } from '../types.js';
 import { jobInformationIssue } from './job-information.js';
 import { findJobExclusion } from './job-exclusions.js';
 import { decodeBossText, readableBossSalary } from './boss-text.js';
 import { languageQualificationIssue, type CandidateLanguageContext } from './language-qualification.js';
-import { readBossWorkAddress, bossMapService } from './boss-map.service.js';
+import { readBossWorkAddress } from './boss-map.service.js';
 import { commuteDecision } from './commute.js';
 import { bossJobId, sameJobLink, normalizedJobName } from './job-identity.js';
 import { notSuitableStore } from './not-suitable-store.js';
@@ -601,29 +601,6 @@ export class BossPageService {
   }
 
   /** Resolve a user-selected starting place using BOSS's existing map search. */
-  public async searchCommuteOrigins(query: string, cityName: string, cityCode: string): Promise<CommuteOrigin[]> {
-    let page = await browserService.getWorkerPage();
-    if (!(await this.isJobListPage())) page = await this.initJobPage(undefined, cityCode);
-    await this.ensureLoggedIn(page);
-    const selectedHref = await page.locator('.job-detail-box .more-job-btn').first()
-      .evaluate(element => element.getAttribute('href') || '').catch(() => '');
-    const href = selectedHref || (await this.getVisibleJobCards())[0]?.jobHref;
-    if (!href) throw new Error('BOSS 当前没有岗位可打开地图，请先切换到有岗位的职位列表');
-    return browserService.withJobInspection(href, async inspection => {
-      if (!(await readBossWorkAddress(inspection))) throw new Error('参考岗位未提供地图地址，请在 BOSS 中先选择有地址的岗位');
-      return bossMapService.searchOrigins(inspection, query, cityName);
-    });
-  }
-
-  public async readJobTransit(target: { jobHref: string; jobName: string; companyName: string }, origin: CommuteOrigin,
-    address: BossWorkAddress, ownedPage?: CdpPage): Promise<{ minutes: number; summary: string }> {
-    const page = ownedPage || await browserService.getWorkerPage();
-    if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page))) throw new Error('岗位身份已变化，未查询通勤');
-    const result = await bossMapService.readTransit(page, origin, address);
-    if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page))) throw new Error('岗位身份已变化，通勤结果未采用');
-    return result;
-  }
-
   /** BOSS 自选期望中的“不合适”位于右侧详情；点击前再次核对岗位链接。 */
   public async markJobNotSuit(card: CdpLocator, target: { jobName: string; companyName: string; jobHref: string; sourceHref?: string },
     _localReason = ''): Promise<boolean> {

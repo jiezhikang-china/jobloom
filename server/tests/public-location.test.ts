@@ -56,10 +56,10 @@ async function main() {
   assert.equal(validateCommuteFilter({ origin, maxDistanceKm: 15 }), true);
   assert.ok(straightDistanceKm(origin, { ...origin, longitude: expected[0], latitude: expected[1] }) < .000001);
   const job = { cityName: '上海', workAddress: { address: '工作地点', point: { ...origin, longitude: origin.longitude + .01 } } } as unknown as BossJobItem;
-  const filter = { commute: { origin, maxDistanceKm: 15, maxTransitMinutes: 60 } } as AppConfig['filter'];
-  let nativeRoutes = 0;
-  await new JobCommuteService().enrich(job, filter, async () => { nativeRoutes++; return { minutes: 25, summary: 'BOSS原生公交路线' }; });
-  assert.equal(nativeRoutes, 1); assert.equal(job.commute?.transitStatus, 'ok'); assert.equal(job.commute?.transitMinutes, 25);
-  console.log('PASS | 免Key公共搜索、并发缓存、限速/限流、异城和坏坐标排除、系统定位精度/拒绝/过期、本机GPS转换、公共地图继续走原生公交');
+  const filter = { commute: { origin, maxDistanceKm: 15 } } as AppConfig['filter'];
+  await new JobCommuteService().enrich(job, filter);
+  assert.ok(job.commute!.distanceKm! > 0 && job.commute!.distanceKm! < 15);
+  assert.equal('transitStatus' in job.commute!, false);
+  console.log('PASS | 免Key公共搜索、并发缓存、限速/限流、异城和坏坐标排除、系统定位精度/拒绝/过期、本机GPS转换、公共地图位置与本地距离');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

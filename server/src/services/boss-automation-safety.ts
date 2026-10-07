@@ -1,3 +1,4 @@
+import { writeJsonAtomic } from './atomic-json.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -54,9 +55,7 @@ export class BossAutomationSafety {
   }
   private save(): void {
     if (!this.file) return;
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.writeFileSync(this.file + '.tmp', JSON.stringify({ hold: this.hold }), 'utf8');
-    fs.renameSync(this.file + '.tmp', this.file);
+    writeJsonAtomic(this.file, { hold: this.hold });
   }
 }
 export const bossAutomationSafety = new BossAutomationSafety();

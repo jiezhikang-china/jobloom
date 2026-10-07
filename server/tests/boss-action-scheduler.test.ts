@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { BossActionScheduler } from '../src/services/boss-action-scheduler.js';
+import { bossOperationPolicy } from '../src/services/boss-operation-policy.js';
 
 async function main() {
   let clock = 100000;
@@ -70,6 +71,32 @@ async function main() {
   assert.equal(writeClock - beforeSubmit, 15000, '反馈和投递仍遵守分散的写入间隔');
   normal.limit(60000);
   assert.equal(normal.canStartFeedback(), false, '明确平台限频时不能打开可选反馈弹窗');
+  let stageClock = 20000000, stageState: any;
+  const stage = new BossActionScheduler(() => bossOperationPolicy, () => stageClock,
+    async ms => { stageClock += ms; }, state => { stageState = structuredClone(state); });
+  await stage.run('detail', async () => {}); const detailAt = stageClock;
+  for (let i = 0; i < 5; i++) await stage.run('control', async () => {});
+  assert.equal(stageClock - detailAt, 2500, '普通控件半秒，不叠加读岗位等待');
+  await stage.run('detail', async () => {});
+  assert.equal(stageClock - detailAt, 3000, '控件/读取时间计入3秒详情间隔');
+  stageClock += 10000; const alreadyRead = stageClock;
+  await stage.run('detail', async () => {});
+  assert.equal(stageClock, alreadyRead, '已经阅读10秒不能额外等待下一岗位');
+  const afterRead = stageClock;
+  for (let i = 0; i < 20; i++) await stage.run('control', async () => {});
+  assert.equal(stageClock - afterRead, 10000, '超过12次普通动作不会产生整分钟停顿');
+  await stage.run('list', async () => {}); const listAt = stageClock;
+  await stage.run('list', async () => {}); assert.equal(stageClock - listAt, 5000);
+  await stage.run('detail', async () => {});
+  const restartedStage = new BossActionScheduler(() => bossOperationPolicy, () => stageClock, async ms => { stageClock += ms; });
+  restartedStage.restore(stageState); const beforeRestart = stageClock;
+  await restartedStage.run('detail', async () => {});
+  assert.equal(stageClock - beforeRestart, 3000, '同类业务间隔跨重启仍保留');
+  await stage.run('feedback', async () => {}); const feedbackAt = stageClock;
+  await stage.run('submit', async () => {});
+  assert.equal(stageClock - feedbackAt, 1000, '已确认目标的提交不再被15秒反馈间隔堵住');
+  stage.limit(120000);
+  assert.equal(stage.canStartFeedback(), false);
   console.log('PASS | 全页面单队列、连续操作短休息、快速继续沟通、写入与路线间隔、限频持久化、停止取消待执行提交');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

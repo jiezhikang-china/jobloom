@@ -87,10 +87,7 @@ export default function WorkConditionReviewPanel({ taskRunning = false, onStarte
               {item.screening.commute && <>
                 <p>出发位置：{item.screening.commute.origin.cityName} · {item.screening.commute.origin.name}</p>
                 <p>直线距离：{item.screening.commute.distanceKm !== undefined ? '约 ' + item.screening.commute.distanceKm.toFixed(1) + ' 公里' : '待确认'}</p>
-                <p>公交／地铁：{item.screening.commute.transitStatus === 'ok' ? '地图预计 ' + item.screening.commute.transitMinutes + ' 分钟'
-                  : item.screening.needsCommuteConfirmation ? '待核对路线' : '未查询'}
-                  {item.screening.commute.transitSummary ? ' · ' + item.screening.commute.transitSummary : ''}</p>
-                {item.screening.needsCommuteConfirmation && <p>地点尚未通过当前限制。点击投递时会重新查询，确认符合后才发起沟通。</p>}
+                {item.screening.needsCommuteConfirmation && <p>地点尚未通过当前限制。点击投递时会重新核对工作地址和距离，确认符合后才发起沟通。</p>}
               </>}
             </div>}
             {item.screening?.needsDetailConfirmation && <p>岗位详情需重新读取。点击投递时，会打开该岗位自己的完整页面并重新筛选。</p>}

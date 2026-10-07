@@ -1,3 +1,4 @@
+import { writeJsonAtomic } from './atomic-json.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,7 +7,7 @@ import { bossAutomationSafety } from './boss-automation-safety.js';
 
 export type BossActionKind = 'control' | 'input' | 'navigation' | 'route' | 'feedback' | 'submit' | 'confirm' | 'detail' | 'source' | 'list';
 interface ActionScope { signal?: AbortSignal; beforeAction?: () => Promise<void>; onWait?: (seconds: number, kind: BossActionKind) => void; }
-interface Settings { businessBurst?: number; intervalMs: number; burst: number; restMs: number; feedbackMs: number; maxPerMinute?: number; maxPerHour?: number; writesPerHour?: number; }
+interface Settings { kindIntervalsMs?: Partial<Record<BossActionKind, number>>; submitIntervalMs?: number; businessBurst?: number; intervalMs: number; burst: number; restMs: number; feedbackMs: number; maxPerMinute?: number; maxPerHour?: number; writesPerHour?: number; }
 interface ActionState { counterVersion?: number; businessSequenceCount?: number; lastBusinessAt?: number; blockedUntil: number; level: number; lastLimitAt: number; sequenceCount?: number; actionTimes?: number[]; writeTimes?: number[]; recentActions?: Array<{ time: number; kind: BossActionKind; result: 'ok' | 'error' }>; }
 const scopes = new AsyncLocalStorage<ActionScope>();
 const statePath = path.resolve(__dirname, '../../../data/boss-operation-state.json');
@@ -41,6 +42,7 @@ export class BossActionScheduler {
     this.recentActions = Array.isArray(state?.recentActions) ? state.recentActions.filter((item: any) => Number.isFinite(item?.time)
       && ['control', 'input', 'navigation', 'route', 'feedback', 'submit', 'confirm', 'detail', 'source', 'list'].includes(item.kind)
       && ['ok', 'error'].includes(item.result)).slice(-1000) : [];
+    for (const item of this.recentActions) this.lastKindAt.set(item.kind, item.time);
     const restMs = this.settings().restMs;
     if (this.lastAt && this.now() - this.lastAt < restMs) {
       if (Number.isInteger(state?.sequenceCount) && state.sequenceCount >= 0) this.count = Math.min(1000, state.sequenceCount);
@@ -81,7 +83,9 @@ export class BossActionScheduler {
   private waitMs(kind: BossActionKind): number {
     const now = this.now(), settings = this.settings();
     const writes = kind === 'feedback' || kind === 'submit';
-    const kindGap = ['navigation', 'source', 'list'].includes(kind) ? settings.intervalMs * 3 : kind === 'route' ? settings.intervalMs * 5 : 0;
+    const kindGap = settings.kindIntervalsMs?.[kind]
+      ?? (['navigation', 'source', 'list'].includes(kind) ? settings.intervalMs * 3 : kind === 'route' ? settings.intervalMs * 5 : 0);
+    const writeGap = kind === 'submit' ? settings.submitIntervalMs ?? settings.feedbackMs : settings.feedbackMs;
     const globalGap = kind === 'confirm' ? Math.min(600, settings.intervalMs) : settings.intervalMs;
     const budget = kind === 'confirm' ? 0 : Math.max(this.budgetUntil(this.actionTimes, settings.maxPerMinute, 60000, now),
       this.budgetUntil(this.actionTimes, settings.maxPerHour, 3600000, now),
@@ -89,7 +93,7 @@ export class BossActionScheduler {
     const consecutive = this.lastAt && now - this.lastAt >= settings.restMs ? 0 : this.count;
     return Math.max(0, Math.max(this.blockedUntil, this.lastAt ? this.lastAt + globalGap : 0,
       this.lastKindAt.has(kind) ? this.lastKindAt.get(kind)! + kindGap : 0,
-      writes && this.lastWriteAt ? this.lastWriteAt + settings.feedbackMs : 0,
+      writes && this.lastWriteAt ? this.lastWriteAt + writeGap : 0,
       kind !== 'confirm' && settings.burst > 0 && consecutive >= settings.burst && this.lastAt ? this.lastAt + settings.restMs : 0,
       kind !== 'confirm' && settings.businessBurst && this.businessCount >= settings.businessBurst && this.lastBusinessAt
         ? this.lastBusinessAt + settings.restMs : 0, budget) - now);
@@ -134,8 +138,7 @@ export class BossActionScheduler {
 }
 export const bossActionScheduler = new BossActionScheduler(() => bossOperationPolicy, Date.now, undefined, state => {
   try {
-    fs.mkdirSync(path.dirname(statePath), { recursive: true });
-    fs.writeFileSync(statePath + '.tmp', JSON.stringify(state), 'utf8'); fs.renameSync(statePath + '.tmp', statePath);
+    writeJsonAtomic(statePath, state);
   } catch (error) {
     bossAutomationSafety.halt('state_unreadable', 'BOSS 操作节奏记录无法保存，已停止自动操作，请先修复本机记录'); throw error;
   }

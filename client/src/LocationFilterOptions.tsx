@@ -25,7 +25,7 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
   useEffect(() => {
     let disposed = false;
     void fetch('/health').then(response => response.json()).then(data => {
-      if (!disposed && data.app === 'boss-job-agent' && data.integrationVersion < 26) setOldService(true);
+      if (!disposed && data.app === 'boss-job-agent' && data.integrationVersion < 27) setOldService(true);
     }).catch(() => {});
     return () => { disposed = true; };
   }, []);
@@ -80,7 +80,7 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
   };
   return <section className="location-options" aria-label="位置与通勤筛选">
     <h3><MapPin size={18} /> 位置与通勤</h3>
-    <p>以你的出发位置核对岗位实际工作地点，可同时限制直线距离和公交／地铁通勤时间。</p>
+    <p>以你的出发位置核对岗位实际工作地点，按直线距离筛选。</p>
     {oldService && <p role="status" className="location-upgrade">定位功能已更新。当前后台仍是上一版，请结束投递后关闭并重新打开桌面窗口，启用自动定位与地图选点。</p>}
     <div className="location-actions">
       <button type="button" disabled={busy || oldService} onClick={() => void getDeviceLocation()}><LocateFixed size={16} /> {searching ? '正在获取…' : '获取当前位置'}</button>
@@ -144,11 +144,7 @@ export default function LocationFilterOptions({ value = {}, cityName, disabled, 
         onChange={event => onChange({ ...value, maxDistanceKm: event.target.checked ? 15 : 0 })} /> 限制直线距离</label>
         <label className="location-limit-input"><input type="number" aria-label="最大直线距离" min="0" max="200" step="0.5"
           value={value.maxDistanceKm || 0} disabled={busy} onChange={event => onChange({ ...value, maxDistanceKm: Number(event.target.value) })} /> 公里以内</label></div>
-      <div><label><input type="checkbox" aria-label="启用公交地铁通勤上限" checked={Boolean(value.maxTransitMinutes)} disabled={busy}
-        onChange={event => onChange({ ...value, maxTransitMinutes: event.target.checked ? 60 : 0 })} /> 限制公交／地铁通勤</label>
-        <label className="location-limit-input"><input type="number" aria-label="最大公交地铁通勤时间" min="0" max="240" step="1"
-          value={value.maxTransitMinutes || 0} disabled={busy} onChange={event => onChange({ ...value, maxTransitMinutes: Number(event.target.value) })} /> 分钟以内</label></div>
     </div>
-    <p className="location-help">0 表示不限。距离会统一坐标系后计算；公交／地铁读取 BOSS 的较快预计方案，包含路线给出的步行时间。没有准确地址或路线的岗位保留待确认。更改后保存筛选规则。</p>
+    <p className="location-help">0 表示不限。距离统一坐标系后在本机计算，不代表交通路程或通勤时间。没有准确工作地址的岗位保留待确认。更改后保存筛选规则。</p>
   </section>;
 }

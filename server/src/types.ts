@@ -96,16 +96,12 @@ export interface WorkConditionReview {
 /** Coordinates from the same BOSS map; never mix with raw GPS/another provider. */
 export interface BossMapPoint { longitude: number; latitude: number; coordinateSystem: 'boss' | 'gcj02' | 'bd09'; }
 export interface CommuteOrigin extends BossMapPoint { name: string; address: string; cityName: string; query: string; source?: 'boss' | 'amap' | 'baidu' | 'manual' | 'openstreetmap'; }
-export interface CommuteFilter { origin?: CommuteOrigin; maxDistanceKm?: number; maxTransitMinutes?: number; }
+export interface CommuteFilter { origin?: CommuteOrigin; maxDistanceKm?: number; }
 export interface BossWorkAddress { address: string; point?: BossMapPoint; }
 export interface JobCommute {
   origin: CommuteOrigin;
   destination: BossWorkAddress;
   distanceKm?: number;
-  transitMinutes?: number;
-  transitSummary?: string;
-  transitStatus: 'ok' | 'unknown' | 'not_requested';
-  transitReason?: string;
   checkedAt: string;
 }
 

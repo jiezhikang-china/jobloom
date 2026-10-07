@@ -92,7 +92,7 @@ apiRouter.get('/config', (_req: Request, res: Response) => {
 
 apiRouter.post('/config', (req: Request, res: Response) => {
   if (req.body?.filter?.commute !== undefined && !validateCommuteFilter(req.body.filter.commute)) {
-    return res.status(400).json({ success: false, message: '出发位置或距离设置无效：公里数需0至200，通勤分钟数需0至240。' });
+    return res.status(400).json({ success: false, message: '出发位置或距离设置无效：公里数需0至200。' });
   }
   if (req.body?.filter?.candidateLanguages !== undefined && (typeof req.body.filter.candidateLanguages !== 'string'
     || req.body.filter.candidateLanguages.length > 1000)) {

@@ -93,7 +93,7 @@ export class WorkConditionReviews {
     return this.list().filter((item) => !this.exclusionFor(item, filter)).map(item => {
       if (!validCommuteOrigin(filter.commute?.origin)) return item;
       const screening = item.screening || { industry: '', jobDetail: '', skills: [] };
-      const commute = currentCommute(filter.commute.origin, screening.workAddress, screening.commute);
+      const commute = currentCommute(filter.commute.origin, screening.workAddress);
       const decision = commuteDecision({ ...screening, commute }, filter);
       return { ...item, screening: { ...screening, commute, needsCommuteConfirmation: decision.status === 'unknown' } };
     });

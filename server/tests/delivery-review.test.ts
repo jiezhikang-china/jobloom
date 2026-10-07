@@ -14,8 +14,6 @@ import { isolateBossSafety } from './fixtures/safety.js';
 
 const restores: Array<() => void> = [];
 function stub(object: any, key: string, replacement: any) { const previous = object[key]; object[key] = replacement; restores.push(() => { object[key] = previous; }); }
-let selectionMs = 0;
-stub(DeliveryService.prototype, 'selectionDelayMs', () => selectionMs);
 const original = configManager.getConfig();
 let config = { ...original, filter: { ...original.filter, cityName: '', candidateLanguages: '', salaryMin: 0, salaryMax: 0,
   degree: [], experience: [], hrActiveDaysLimit: 0, companyBlacklist: ['金融'], requiredKeywords: [],
@@ -85,39 +83,29 @@ async function main() {
     assert.equal(continuation.getStats().status, 'failed'); assert.equal(continuation.getStats().todayAppliedCount, 1);
     assert.equal(records.length, 0, '已发送但继续失败的记录不能留下来再投递');
     records = [make(7), make(8)]; sends.length = 0; chronology.length = 0;
-    config.delivery.dailyMaxQuota = 2; selectionMs = 10000;
+    config.delivery.dailyMaxQuota = 2;
     sendResult = { success: true, verified: true, continued: true };
     const paced = new DeliveryService(); (paced as any).sleepInterruptible = async () => { chronology.push('selection-wait'); return true; };
     await paced.startReviewDelivery([...records]);
-    assert.deepEqual(chronology, ['open:' + make(7).jobHref, 'send:' + make(7).jobHref, 'selection-wait', 'open:' + make(8).jobHref, 'send:' + make(8).jobHref],
-      '节奏位于选择下一岗位前，已选岗位点击沟通前没有人为停顿');
+    assert.deepEqual(chronology, ['open:' + make(7).jobHref, 'send:' + make(7).jobHref, 'open:' + make(8).jobHref, 'send:' + make(8).jobHref],
+      '共享队列控制实际操作，流程不再叠加额外的岗位等待');
     records = [make(9), make(10)]; opened.length = 0;
-    const stopped = new DeliveryService(); (stopped as any).sleepInterruptible = async () => { stopped.stop(); return false; };
+    const stopped = new DeliveryService(); let selections = 0;
+    (stopped as any).paceJobSelection = async () => { if (selections++ > 0) stopped.stop(); return selections === 1; };
     await stopped.startReviewDelivery([...records]);
     assert.equal(stopped.getStats().status, 'idle'); assert.equal(opened.length, 1); assert.equal(records.length, 1, '停止不投递后续记录');
-    selectionMs = 0;
+
     config.filter.commute = { origin: { name: '出发点', address: '上海人民广场', cityName: '上海', query: '上海人民广场',
-      longitude: 121.48, latitude: 31.23, coordinateSystem: 'boss' }, maxDistanceKm: 5, maxTransitMinutes: 60 };
+      longitude: 121.48, latitude: 31.23, coordinateSystem: 'boss' }, maxDistanceKm: 5 };
     records = [make(11), make(12), make(13), make(14)]; sends.length = 0;
     detailFor = review => ({ job: { ...job(review), workAddress: review.id === make(12).id ? undefined
       : { address: review.id === make(11).id ? '很远的办公地址' : '附近办公地址',
         point: { longitude: review.id === make(11).id ? 121.9 : 121.49, latitude: 31.23, coordinateSystem: 'boss' } } },
       jobDetailText: review.screening!.jobDetail, alreadyChatted: false, chatButtonLocator: {} });
-    let routeCalls = 0;
-    stub(bossPageService, 'readJobTransit', async (target: { jobHref: string }) => {
-      routeCalls++; if (target.jobHref === make(13).jobHref) throw new Error('暂无公交路线');
-      return { minutes: 45, summary: '地铁1号线' };
-    });
-    // Do not reuse a preceding failed route for this independent last job.
-    stub(jobCommuteService, 'enrich', async (current: BossJobItem, filter: any, read: any) => {
-      const { JobCommuteService } = await import('../src/services/job-commute.service.js');
-      return new JobCommuteService().enrich(current, filter, read);
-    });
     const located = new DeliveryService(); await located.startReviewDelivery([...records]);
-    assert.deepEqual(sends, [make(14).jobHref], '手动选择仍核对当前距离/路线；未知地点不直接投递');
-    assert.equal(routeCalls, 2, '很远或没有坐标时不请求公交路线');
-    assert.deepEqual(records.map(item => item.id), [make(12).id, make(13).id], '未知工作地点/路线保留待确认，过远淘汰');
-    assert.equal(located.getStats().todayAppliedCount, 1);
+    assert.deepEqual(sends, [make(13).jobHref, make(14).jobHref], '手动选择核对当前距离；未知地点不直接投递，已废弃交通查询');
+    assert.deepEqual(records.map(item => item.id), [make(12).id], '未知工作地点保留待确认，过远淘汰');
+    assert.equal(located.getStats().todayAppliedCount, 2);
     console.log('PASS | 待确认单条/批量入口、并发锁、登录、每日0/配额、最新排除复核、未知条件手动投递、零重复AI、已沟通去重、计数、继续失败防重投、浏览节奏、停止、最新距离/通勤复核');
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
 }

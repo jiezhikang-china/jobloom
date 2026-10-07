@@ -65,12 +65,9 @@ async function main() {
   stub(workConditionReviews, 'list', () => reviews);
   stub(workConditionReviews, 'pruneExcluded', () => ({ removed: 0 }));
   stub(workConditionReviews, 'remove', (id: string) => { reviews = reviews.filter((item) => item.id !== id); });
-  let locationsQueried = 0;
   const origin = { name: '人民广场', address: '上海市黄浦区人民大道185号', cityName: '上海', query: '上海人民广场',
     longitude: 121.481492, latitude: 31.234736, coordinateSystem: 'boss' };
-  stub(bossPageService, 'searchCommuteOrigins', async (query: string, city: string) => {
-    locationsQueried++; assert.equal(query, '人民广场'); assert.equal(city, '上海'); return [origin];
-  });
+
   const app = express();
   let blocked = [{ id: 'f'.repeat(20), companyName: '界面测试屏蔽公司', jobs: [{ jobId: 'blocked', jobName: '旧岗位' }], updatedAt: new Date().toISOString() }];
   stub(notSuitableStore, 'list', () => blocked);
@@ -85,7 +82,7 @@ async function main() {
     return { longitude: 121.4702, latitude: 31.2283, coordinateSystem: 'wgs84', accuracyMeters: 150, timestamp: new Date().toISOString() };
   });
   app.use(express.json()); app.use('/api', apiRouter);
-  app.get('/health', (_req, res) => res.json({ app: 'boss-job-agent', integrationVersion: 26, status: 'ok' }));
+  app.get('/health', (_req, res) => res.json({ app: 'boss-job-agent', integrationVersion: 27, status: 'ok' }));
   app.use(express.static(path.resolve(process.cwd(), '../client/dist')));
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
@@ -168,18 +165,16 @@ async function main() {
     await location.getByRole('button', { name: /人民广场.*人民大道185号/ }).click();
     await location.getByRole('checkbox', { name: '启用直线距离上限', exact: true }).check();
     await location.getByLabel('最大直线距离', { exact: true }).fill('12.5');
-    await location.getByRole('checkbox', { name: '启用公交地铁通勤上限', exact: true }).check();
-    await location.getByLabel('最大公交地铁通勤时间', { exact: true }).fill('55');
     await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'),
       page.getByRole('button', { name: '保存配置', exact: true }).click()]);
-    assert.equal(locationsQueried, 0); assert.equal(publicLocations, 1); assert.equal(config.filter.commute.origin.name, '人民广场');
-    assert.equal(config.filter.commute.maxDistanceKm, 12.5); assert.equal(config.filter.commute.maxTransitMinutes, 55);
+    assert.equal(publicLocations, 1); assert.equal(config.filter.commute.origin.name, '人民广场');
+    assert.equal(config.filter.commute.maxDistanceKm, 12.5); assert.equal(config.filter.commute.maxTransitMinutes, undefined);
     assert.equal(config.delivery.operationIntervalSeconds, undefined); assert.equal(config.delivery.operationBurstLimit, undefined);
     assert.equal(config.delivery.operationRestSeconds, undefined); assert.equal(config.delivery.feedbackIntervalSeconds, undefined);
     await page.reload(); await page.getByRole('button', { name: '筛选规则', exact: true }).click();
     assert.match(await location.innerText(), /出发位置：上海 · 人民广场/);
     assert.equal(await location.getByLabel('最大直线距离', { exact: true }).inputValue(), '12.5');
-    assert.equal(await location.getByLabel('最大公交地铁通勤时间', { exact: true }).inputValue(), '55');
+    assert.equal(await location.getByLabel('最大公交地铁通勤时间', { exact: true }).count(), 0);
     assert.equal(await pacing.count(), 0);
     await location.screenshot({ path: path.resolve(process.cwd(), '../data/location-filter-preview.png') });
     await location.getByText('手动填写经纬度', { exact: true }).click();
@@ -196,13 +191,12 @@ async function main() {
     await page.getByRole('button', { name: '撤销本地屏蔽：界面测试屏蔽公司', exact: true }).click();
     await page.getByText('尚无本地屏蔽记录。', { exact: true }).waitFor();
     assert.equal(blocked.length, 0);
-    for (const commute of [{ maxDistanceKm: -1 }, { maxTransitMinutes: 241 }, { origin: { ...origin, coordinateSystem: 'wgs84' } }]) {
+    for (const commute of [{ maxDistanceKm: -1 }, { origin: { ...origin, coordinateSystem: 'wgs84' } }]) {
       const invalid = await fetch(base + '/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filter: { commute } }) });
       assert.equal(invalid.status, 400);
     }
-    assert.equal(config.filter.commute.maxTransitMinutes, 55, '非法设置不能覆盖原位置');
+    assert.equal(config.filter.commute.maxDistanceKm, 12.5, '非法设置不能覆盖原距离');
     await location.getByRole('checkbox', { name: '启用直线距离上限', exact: true }).uncheck();
-    await location.getByRole('checkbox', { name: '启用公交地铁通勤上限', exact: true }).uncheck();
     await location.getByRole('button', { name: '清除出发位置', exact: true }).click();
     await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'),
       page.getByRole('button', { name: '保存配置', exact: true }).click()]);
@@ -245,7 +239,6 @@ async function main() {
     await location.getByRole('button', { name: '搜索位置', exact: true }).click();
     await location.getByRole('button', { name: /人民广场.*人民大道185号/ }).click();
     assert.equal(publicLocations, 2);
-    assert.equal(locationsQueried, 0, '公共位置查询无需打开BOSS');
     await location.getByRole('button', { name: '清除出发位置', exact: true }).click();
     await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'), page.getByRole('button', { name: '保存配置', exact: true }).click()]);
     await page.getByLabel('我的语言能力', { exact: true }).fill('英语 CET4；西班牙语 C1');
