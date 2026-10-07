@@ -221,3 +221,42 @@ test('unknown business errors identify endpoint and codes without echoing upstre
     assert.doesNotMatch(error.message, /private-value|private-chat-id|fake-token/); return true;
   });
 });
+
+test('THINK-only terminal streams recover the same chat or remain pending, never delete or regenerate it', async () => {
+  for (const historyHasAnswer of [true, false]) {
+    const emptyFinal = [{ response_message_id: '2' },
+      { v: { response: { thinking_enabled: true, status: 'FINISHED', fragments: [{ type: 'THINK', content: '思考已结束' }] } } }];
+    const { adapter, calls } = mockAdapter(() => new Response(sse(emptyFinal), { headers: { 'Content-Type': 'text/event-stream' } }));
+    const request = { model: 'deepseek-v4-flash', thinking: true, response_format: { type: 'json_object' },
+      request_id: 'thinking-only-recovery-123', messages: [{ role: 'user', content: '虚构岗位批次' }] };
+    const originalFetch = adapter.fetchImpl;
+    adapter.fetchImpl = async (url, init) => {
+      if (!url.includes('/chat/history_messages?')) return originalFetch(url, init);
+      calls.push({ url, init });
+      const { messagesToPrompt } = require('../protocol.cjs');
+      const prompt = messagesToPrompt(request.messages) + '\n\n仅输出一个合法 JSON 对象，不要输出代码围栏或解释。';
+      return new Response(JSON.stringify({ code: 0, data: { biz_code: 0, biz_data: {
+        chat_session: { id: 'owned-temporary-session', model_type: 'default' }, chat_messages: [
+          { message_id: 1, role: 'USER', thinking_enabled: true, search_enabled: false, fragments: [{ type: 'REQUEST', content: prompt }] },
+          { message_id: 2, parent_id: 1, role: 'ASSISTANT', status: 'FINISHED', fragments: [
+            { type: 'THINK', content: '仅思考不得当答案' },
+            ...(historyHasAnswer ? [{ type: 'RESPONSE', content: '{"jobs":[{"jobKey":"job-0","passed":true}]}' }] : []),
+          ] },
+        ],
+      } } }));
+    };
+    if (historyHasAnswer) {
+      const result = await adapter.complete(request);
+      assert.equal(JSON.parse(result.choices[0].message.content).jobs[0].passed, true);
+      assert.equal(adapter.requests.list().length, 0);
+      assert.deepEqual(await adapter.complete(request), result);
+    } else {
+      await assert.rejects(adapter.complete(request), error => error.code === 'completion_uncertain');
+      assert.equal(adapter.requests.list().length, 1);
+      await assert.rejects(adapter.complete(request), error => error.code === 'completion_uncertain');
+    }
+    assert.equal(calls.filter(call => call.url.endsWith('/chat/completion')).length, 1);
+    assert.equal(calls.filter(call => call.url.includes('/chat/history_messages?')).length, 1, '原聊天读取至少间隔60秒');
+    assert.equal(calls.filter(call => call.url.endsWith('/chat_session/delete')).length, 0, '不能删除尚需诊断/恢复的聊天');
+  }
+});

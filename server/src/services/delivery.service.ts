@@ -763,7 +763,7 @@ export class DeliveryService {
 
           for (const previewCard of cards) {
             if (pending.length && (Date.now() - pending[0].queuedAt >= bossOperationPolicy.aiBatchMaxWaitMs
-              || bossActionScheduler.waitSeconds('control') >= 30)) {
+              || bossActionScheduler.isBusinessRestImminent() || bossActionScheduler.waitSeconds('control') >= 30)) {
               this.log('info', '[AI 提前合并] 候选已等待较久或即将休息，先评估 ' + pending.length + ' 个岗位');
               await flushEvaluations();
               if (this.isStopRequested || this.stats.status === 'finished') return;

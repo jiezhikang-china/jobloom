@@ -99,6 +99,12 @@ export class BossActionScheduler {
         ? this.lastBusinessAt + settings.restMs : 0, budget) - now);
   }
   public waitSeconds(kind: BossActionKind): number { return Math.ceil(this.waitMs(kind) / 1000); }
+  /** Flush already collected candidates before the next selection can reach the rest checkpoint. */
+  public isBusinessRestImminent(): boolean {
+    const { businessBurst, restMs } = this.settings();
+    return Boolean(businessBurst && this.businessCount >= businessBurst - 1 && this.lastBusinessAt
+      && this.now() - this.lastBusinessAt < restMs);
+  }
   /** Keep optional feedback from opening a dialog that cannot be completed during a long rest. */
   public canStartFeedback(): boolean { return this.waitMs('feedback') <= 30000; }
   public status(): { remainingSeconds: number; level: number } { return { remainingSeconds: Math.max(0, Math.ceil((this.blockedUntil - this.now()) / 1000)), level: this.level }; }

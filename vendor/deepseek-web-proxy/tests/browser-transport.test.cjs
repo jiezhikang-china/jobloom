@@ -79,5 +79,5 @@ test('the launched proxy uses the login session when Node TLS cannot trust the l
   assert.equal(calls[0].init.headers.Authorization, 'Bearer fixture-login-token');
   assert.ok(calls[0].init.signal, 'request timeout/cancellation remains active');
   const runtime = writes.find(item => item.file.endsWith('deepseek-proxy-runtime.json'));
-  assert.equal(JSON.parse(runtime.content).integrationVersion, 7, 'upgrade cannot silently retain the old network implementation');
+  assert.equal(JSON.parse(runtime.content).integrationVersion, 8, 'upgrade cannot silently retain the old network implementation');
 });

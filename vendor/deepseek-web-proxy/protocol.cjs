@@ -356,6 +356,7 @@ class DeepSeekWebAdapter {
     let sessionId;
     let dispatched = false;
     let confirmed = false;
+    let preserveSession = false;
     try {
       const session = await this.request('chat_session/create', token, { character_id: null }, signal);
       sessionId = session?.chat_session?.id;
@@ -387,10 +388,17 @@ class DeepSeekWebAdapter {
       confirmed = true;
       return completion;
     } catch (error) {
-      if (dispatched && error.completed) {
-        // Generation ended. Preserve this terminal result by ID; do not regenerate it.
-        this.requests.finish(requestId, { error: { message: error.message, code: error.code } }, fingerprint);
-        confirmed = true;
+      if (dispatched && error.code === 'final_answer_missing') {
+        // A terminal stream marker does not prove the final answer was decoded.
+        // Read this same chat once; keep it available if decoding/recovery is unresolved.
+        preserveSession = true;
+        try {
+          const pending = this.requests.list().find(item => item.requestId === requestId);
+          if (pending && await this.recoverPending(pending, signal, true)) {
+            const recovered = this.requests.result(requestId);
+            if (recovered) { confirmed = true; return recovered; }
+          }
+        } catch { /* Keep the original pending record for the next bounded recovery. */ }
       }
       if (dispatched && ['rate_limited', 'login_expired', 'verification_required'].includes(error.code)) {
         this.requests.clear(requestId); dispatched = false;
@@ -399,7 +407,7 @@ class DeepSeekWebAdapter {
       throw error;
     } finally {
       // Only remove the temporary chat created by this request. Never clear the user's history.
-      if (sessionId && (!dispatched || confirmed)) {
+      if (sessionId && !preserveSession && (!dispatched || confirmed)) {
         try { await this.request('chat_session/delete', token, { chat_session_id: sessionId }); }
         catch { /* A failed cleanup must not discard a completed answer. */ }
       }

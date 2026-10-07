@@ -52,7 +52,11 @@ async function main() {
   const beforeControls = checkpointClock;
   for (let i = 0; i < 80; i++) await checkpoints.run('control', async () => {});
   assert.equal(checkpointClock, beforeControls, '普通DOM动作不能再触发累计长休息');
-  for (const kind of ['source', 'detail', 'feedback'] as const) await checkpoints.run(kind, async () => {});
+  assert.equal(checkpoints.isBusinessRestImminent(), false);
+  await checkpoints.run('source', async () => {}); await checkpoints.run('detail', async () => {});
+  assert.equal(checkpoints.waitSeconds('control'), 0, '到上限前一项还没有开始休息');
+  assert.equal(checkpoints.isBusinessRestImminent(), true, '在详情选择触及上限前，必须先评估暂存候选');
+  await checkpoints.run('feedback', async () => {});
   assert.equal(checkpoints.waitSeconds('control'), 20, '详情/来源/反馈按业务检查点累计');
   await checkpoints.run('confirm', async () => {});
   assert.equal(checkpointClock, beforeControls, '已有发送后的确认不能被业务休息堵住');
@@ -61,6 +65,7 @@ async function main() {
   checkpointRestarted.restore(checkpointState);
   await checkpointRestarted.run('detail', async () => {});
   assert.equal(checkpointClock, beforeControls + 20000, '业务检查点计数跨重启保留');
+  assert.equal(checkpointRestarted.isBusinessRestImminent(), false);
 
   let writeClock = 10000000;
   const normalPolicy = { intervalMs: 2000, burst: 0, businessBurst: 100, restMs: 900000, feedbackMs: 15000 };

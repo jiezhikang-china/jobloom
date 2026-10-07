@@ -39,6 +39,7 @@ const origin = { name: '人民广场', address: '上海人民大道185号', city
 async function main() {
   stub(configManager, 'getConfig', () => config);
   stub(bossActionScheduler, 'waitSeconds', () => 0);
+  stub(bossActionScheduler, 'isBusinessRestImminent', () => false);
   stub(DeliveryService.prototype, 'paceJobSelection', async () => true);
   stub(stateManager, 'loadQuota', () => ({ date: todayStr(), count: 0 }));
   stub(stateManager, 'saveQuota', () => {});
@@ -207,10 +208,10 @@ async function main() {
   assert.deepEqual(batches, [['逾时候选']], '等待过久的小批次先评估，不继续攒满');
   assert.deepEqual(sent, ['逾时候选']); assert.equal(loaded.includes('稍后候选'), false);
   loaded.length = 0; sent.length = 0; batches.length = 0;
-  stub(bossActionScheduler, 'waitSeconds', () => loaded.length ? 900 : 0);
+  stub(bossActionScheduler, 'isBusinessRestImminent', () => loaded.length > 0);
   const beforeBreak = new DeliveryService();
   await beforeBreak.startDelivery({ ...params, resumeText: params.resumeText + '业务长休息前合并测试' });
-  assert.deepEqual(batches, [['逾时候选']], '下一次浏览即将长休息时先评估候选');
+  assert.deepEqual(batches, [['逾时候选']], '尚未开始休息但下一次选择会达到休息点时，先评估候选');
   assert.deepEqual(sent, ['逾时候选']); assert.equal(beforeBreak.getStats().aiRequestCount, 1);
   console.log('PASS | 先脚本初筛再暂存、3岗位1请求、尾批处理、乱序对应、同批配额、旧JD不发送、AI请求可停止');
 }
