@@ -10,11 +10,14 @@ function cell(text, cls) { const el = document.createElement('td'); el.textConte
 function emptyRow(text) { const row = document.createElement('tr'), td = cell(text, 'empty'); td.colSpan = 3; row.append(td); return row; }
 function render(value) {
   state = value; receivedAt = performance.now();
-  $('connection').textContent = value.manualMode ? '手动记录每轮' : (value.connected ? 'BOSS 网页已连接' : 'BOSS 网页未连接');
-  $('connection').classList.toggle('ready', value.connected || value.manualMode);
+  const manual = ['recording', 'paused'].includes(value.status) ? value.manualMode : $('mode').value === 'manual';
+  $('connection').textContent = manual ? '手动记录每轮' : (value.connected ? 'BOSS 网页已连接' : 'BOSS 网页未连接');
+  $('connection').classList.toggle('ready', value.connected || manual);
   $('status').textContent = { ready: '尚未开始', recording: '正在记录你的操作', paused: '已暂停，离开时间不计入', finished: '采样已保存' }[value.status];
-  $('message').textContent = !value.manualMode && !value.connected && value.message.includes('网页已打开')
-    ? 'BOSS 窗口已断开，请重新打开网页后开始采样。' : value.message;
+  $('message').textContent = manual && value.status === 'ready' && !value.connected
+    ? '点击“打开 BOSS 网页”会启动专用 Chrome。准备好后点“开始采样”。'
+    : (!value.manualMode && !value.connected && value.message.includes('网页已打开')
+      ? 'BOSS 窗口已断开，请重新打开网页后开始采样。' : value.message);
   $('start').hidden = !['ready', 'finished'].includes(value.status);
   $('start').textContent = value.status === 'finished' ? '重新采样' : '开始采样';
   $('pause').hidden = value.status !== 'recording';
@@ -49,6 +52,7 @@ function render(value) {
 async function action(name) {
   if (requesting) return; requesting = true; $('error').hidden = true;
   document.querySelectorAll('button').forEach(button => button.disabled = true);
+  if (name === 'open') $('message').textContent = '正在启动 Chrome 并检查连接…';
   try {
     if (['open', 'start'].includes(name) && $('mode').value === 'manual') name = 'manual-' + name;
     const response = await fetch('api/' + name, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
@@ -59,6 +63,7 @@ async function action(name) {
   finally { requesting = false; document.querySelectorAll('button').forEach(button => button.disabled = false); }
 }
 for (const name of ['open', 'start', 'pause', 'resume', 'round', 'finish']) $(name).onclick = () => action(name);
+$('mode').onchange = () => { if (state) render(state); };
 const stream = new EventSource('api/events');
 stream.onmessage = event => render(JSON.parse(event.data));
 stream.onopen = () => { if (!requesting) $('error').hidden = true; };

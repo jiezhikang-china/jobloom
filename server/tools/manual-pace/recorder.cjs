@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const net = require('node:net');
-const { spawn } = require('node:child_process');
+const { launchVisibleChrome: launchNativeChrome } = require('./native-launch.cjs');
 const { randomBytes } = require('node:crypto');
 const WebSocket = require('../../node_modules/ws');
 const { PaceSession, KINDS } = require('./model.cjs');
@@ -140,24 +140,7 @@ function chromePath() {
   if (!found) throw new Error('未找到 Chrome，请先安装 Google Chrome');
   return found;
 }
-function launchVisibleChrome(args) {
-  let failure = null;
-  let child;
-  if (process.platform === 'win32') {
-    const literal = value => "'" + value.replace(/'/g, "''") + "'";
-    const windowsArg = value => '"' + value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, '$1$1') + '"';
-    const script = "$ErrorActionPreference='Stop'; Start-Process -FilePath " + literal(chromePath())
-      + ' -ArgumentList ' + literal(args.map(windowsArg).join(' ')) + ' -WindowStyle Normal';
-    child = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
-      { detached: true, windowsHide: true, stdio: 'ignore' });
-  } else {
-    child = spawn(chromePath(), args, { detached: true, stdio: 'ignore' });
-  }
-  child.on('error', error => { failure = error; });
-  child.on('exit', code => { if (code) failure = new Error('浏览器启动进程退出：' + code); });
-  child.unref();
-  return () => failure;
-}
+function launchVisibleChrome(args) { return launchNativeChrome(chromePath(), args); }
 async function freePort() {
   return new Promise(resolve => {
     const probe = net.createServer(); probe.listen(0, '127.0.0.1', () => {
@@ -165,9 +148,9 @@ async function freePort() {
     });
   });
 }
-async function ensureManualBrowser() {
-  manualMode = false;
-  observing = true;
+async function ensureManualBrowser(observe = true) {
+  manualMode = !observe;
+  observing = observe;
   let remembered = null;
   try { remembered = JSON.parse(fs.readFileSync(browserRuntime, 'utf8')); } catch {}
   if (remembered && Number.isInteger(remembered.port)) {
@@ -180,16 +163,27 @@ async function ensureManualBrowser() {
   if (!port) {
     fs.mkdirSync(profileDir, { recursive: true });
     port = await freePort();
-    const launchFailure = launchVisibleChrome(['--user-data-dir=' + profileDir, '--remote-debugging-port=' + port,
+    await launchVisibleChrome(['--user-data-dir=' + profileDir, '--remote-debugging-port=' + port,
       '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', '--new-window', JOBS]);
     let version = null;
-    for (let i = 0; i < 60; i++) {
-      if (launchFailure()) break;
+    const startupDeadline = Date.now() + 12000;
+    while (Date.now() < startupDeadline) {
       try { version = await json('http://127.0.0.1:' + port + '/json/version'); break; } catch {}
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     if (!version) { port = null; throw new Error('专用 Chrome 启动失败。请先关闭占用项目资料目录的窗口，再重新打开。'); }
     atomic(browserRuntime, { port, browserIdentity: new URL(version.webSocketDebuggerUrl).pathname });
+  }
+  if (!observe) {
+    const tabs = await json('http://127.0.0.1:' + port + '/json/list');
+    if (!tabs.some(tab => allowedPage(tab.url))) {
+      await json('http://127.0.0.1:' + port + '/json/new?' + encodeURIComponent(JOBS), { method: 'PUT' });
+    }
+    await discover();
+    if (!connected) throw new Error('Chrome 刚启动就断开了，当前未能打开 BOSS 窗口。');
+    if (!discovery) discovery = setInterval(() => { void discover(); }, 2000);
+    message = '已连接专用 Chrome，BOSS 页面已打开。请在 Chrome 中操作，准备好后开始采样。';
+    changed(); return;
   }
   if (!browser || browser.socket.readyState !== WebSocket.OPEN) {
     const version = await json('http://127.0.0.1:' + port + '/json/version');
@@ -249,8 +243,7 @@ const server = http.createServer(async (req, res) => {
           throw new Error('当前正在采样，请先结束并保存。');
         }
         if (route === '/api/manual-open') {
-          launchVisibleChrome([JOBS]);
-          manualMode = true; message = '已请求用普通 Chrome 打开 BOSS。准备好后点“开始采样”。';
+          await disconnect(); await ensureManualBrowser(false);
         }
         else if (route === '/api/manual-start') {
           await assertDesktopClosed(); await disconnect();
@@ -300,7 +293,7 @@ server.listen(0, '127.0.0.1', () => {
   const url = 'http://127.0.0.1:' + server.address().port + '/' + secret + '/';
   atomic(runtimeFile, { pid: process.pid, port: server.address().port, url, startedAt: new Date().toISOString() });
   console.log('手动节奏采样已就绪：' + url);
-  if (process.argv.includes('--open')) launchVisibleChrome([url]);
+  if (process.argv.includes('--open')) void launchVisibleChrome([url]).catch(error => console.error(error.message));
 });
 process.on('SIGINT', () => { void shutdown(); });
 process.on('SIGTERM', () => { void shutdown(); });
