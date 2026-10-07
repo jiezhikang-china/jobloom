@@ -87,12 +87,14 @@ export class BossPageService {
   private readonly pagePollIntervalMs: number;
   private companyCache = new Map<string, { expiresAt: number; info: BossCompanyInfo }>();
   private feedbackUnavailableUntil = new Map<string, number>();
+  private allowFeedback: () => boolean;
   private rememberNotSuitable: (target: { jobHref: string; jobName: string; companyName: string }) => void;
 
-  constructor(options: { pageReadyTimeoutMs?: number; pagePollIntervalMs?: number;
+  constructor(options: { pageReadyTimeoutMs?: number; pagePollIntervalMs?: number; allowFeedback?: () => boolean;
     rememberNotSuitable?: (target: { jobHref: string; jobName: string; companyName: string }) => void } = {}) {
     this.pageReadyTimeoutMs = options.pageReadyTimeoutMs ?? 20000;
     this.pagePollIntervalMs = options.pagePollIntervalMs ?? 400;
+    this.allowFeedback = options.allowFeedback || (() => bossActionScheduler.canStartFeedback());
     this.rememberNotSuitable = options.rememberNotSuitable || (target => notSuitableStore.remember(target));
   }
 
@@ -209,7 +211,7 @@ export class BossPageService {
         jobs: [...document.querySelectorAll('li.job-card-box a.job-name')].map((item) => item.getAttribute('href')).join('|'),
       }));
       if (before.selected !== options.expectationName) {
-        await tab.click();
+        await clickBossAction(tab, 'source');
         await page.waitForFunction(({ name, previousJobs }) => {
           const selected = (document.querySelector('.expect-item.active') as HTMLElement | null)?.innerText.trim();
           const jobs = [...document.querySelectorAll('li.job-card-box a.job-name')].map((item) => item.getAttribute('href')).join('|');
@@ -455,7 +457,7 @@ export class BossPageService {
   }> {
     const page = card.page();
     if (href && !(await this.isCardStillTarget(card, jobName, companyName, href))) throw new Error('职位卡片在点击前发生变化');
-    await card.click();
+    await clickBossAction(card, 'detail');
     const deadline = Date.now() + 9000;
     let retried = false;
     let opened: DetailIdentity | null = null, settled = false;
@@ -471,7 +473,7 @@ export class BossPageService {
       } else { stable = ''; stableSince = 0; }
       // A rendered card can precede the SPA click handler. Retry that same ID once.
       if (!retried && Date.now() > deadline - 7000 && href && await this.isCardStillTarget(card, jobName, companyName, href)) {
-        retried = true; await card.click();
+        retried = true; await clickBossAction(card, 'detail');
       }
       await pause(250);
     }
@@ -633,9 +635,10 @@ export class BossPageService {
     const hasDetail = await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref);
     if (!hasDetail && !(await this.isCardStillTarget(card, target.jobName, target.companyName, target.sourceHref || target.jobHref))) return false;
     this.rememberNotSuitable(target);
+    if (!this.allowFeedback()) return false;
     if ((this.feedbackUnavailableUntil.get(feedbackScope) || 0) > Date.now()) return false;
     if (!hasDetail) {
-      await card.click();
+      await clickBossAction(card, 'detail');
       const deadline = Date.now() + 6000;
       while (Date.now() < deadline && !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))) {
         this.throwIfUnavailable(await this.inspectPage(page));
@@ -846,7 +849,7 @@ export class BossPageService {
     this.throwIfUnavailable(state);
     if (state.kind !== 'jobs') return;
     await page.locator(CARD).last().scrollIntoViewIfNeeded();
-    await runBossAction(page, 'navigation', () => page.evaluate(() => {
+    await runBossAction(page, 'list', () => page.evaluate(() => {
       let node = document.querySelector('ul.rec-job-list');
       while (node) {
         const style = getComputedStyle(node);

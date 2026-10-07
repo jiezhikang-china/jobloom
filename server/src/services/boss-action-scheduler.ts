@@ -4,10 +4,10 @@ import path from 'node:path';
 import { bossOperationPolicy } from './boss-operation-policy.js';
 import { bossAutomationSafety } from './boss-automation-safety.js';
 
-export type BossActionKind = 'control' | 'input' | 'navigation' | 'route' | 'feedback' | 'submit' | 'confirm';
+export type BossActionKind = 'control' | 'input' | 'navigation' | 'route' | 'feedback' | 'submit' | 'confirm' | 'detail' | 'source' | 'list';
 interface ActionScope { signal?: AbortSignal; beforeAction?: () => Promise<void>; onWait?: (seconds: number, kind: BossActionKind) => void; }
-interface Settings { intervalMs: number; burst: number; restMs: number; feedbackMs: number; maxPerMinute?: number; maxPerHour?: number; writesPerHour?: number; }
-interface ActionState { blockedUntil: number; level: number; lastLimitAt: number; sequenceCount?: number; actionTimes?: number[]; writeTimes?: number[]; recentActions?: Array<{ time: number; kind: BossActionKind; result: 'ok' | 'error' }>; }
+interface Settings { businessBurst?: number; intervalMs: number; burst: number; restMs: number; feedbackMs: number; maxPerMinute?: number; maxPerHour?: number; writesPerHour?: number; }
+interface ActionState { counterVersion?: number; businessSequenceCount?: number; lastBusinessAt?: number; blockedUntil: number; level: number; lastLimitAt: number; sequenceCount?: number; actionTimes?: number[]; writeTimes?: number[]; recentActions?: Array<{ time: number; kind: BossActionKind; result: 'ok' | 'error' }>; }
 const scopes = new AsyncLocalStorage<ActionScope>();
 const statePath = path.resolve(__dirname, '../../../data/boss-operation-state.json');
 
@@ -18,6 +18,8 @@ export class BossActionScheduler {
   private lastKindAt = new Map<BossActionKind, number>();
   private lastWriteAt = 0;
   private count = 0;
+  private businessCount = 0;
+  private lastBusinessAt = 0;
   private blockedUntil = 0;
   private level = 0;
   private lastLimitAt = 0;
@@ -37,7 +39,7 @@ export class BossActionScheduler {
     this.actionTimes = recent(state?.actionTimes); this.writeTimes = recent(state?.writeTimes);
     this.lastAt = this.actionTimes.at(-1) || 0; this.lastWriteAt = this.writeTimes.at(-1) || 0;
     this.recentActions = Array.isArray(state?.recentActions) ? state.recentActions.filter((item: any) => Number.isFinite(item?.time)
-      && ['control', 'input', 'navigation', 'route', 'feedback', 'submit', 'confirm'].includes(item.kind)
+      && ['control', 'input', 'navigation', 'route', 'feedback', 'submit', 'confirm', 'detail', 'source', 'list'].includes(item.kind)
       && ['ok', 'error'].includes(item.result)).slice(-1000) : [];
     const restMs = this.settings().restMs;
     if (this.lastAt && this.now() - this.lastAt < restMs) {
@@ -49,6 +51,12 @@ export class BossActionScheduler {
           this.count++;
         }
       }
+    }
+    // Old sequenceCount used individual DOM actions; it cannot be converted into business checkpoints.
+    if (state?.counterVersion === 2 && Number.isInteger(state.businessSequenceCount) && state.businessSequenceCount >= 0
+      && Number.isFinite(state.lastBusinessAt) && state.lastBusinessAt <= this.now()
+      && this.now() - state.lastBusinessAt < restMs) {
+      this.businessCount = Math.min(1000, state.businessSequenceCount); this.lastBusinessAt = state.lastBusinessAt;
     }
     if (Number.isFinite(state?.blockedUntil) && state.blockedUntil > this.now() && state.blockedUntil <= this.now() + 24 * 3600000) {
       this.blockedUntil = state.blockedUntil; this.level = Math.min(5, Math.max(1, Number(state.level) || 1));
@@ -63,12 +71,32 @@ export class BossActionScheduler {
     this.blockedUntil = Math.max(this.blockedUntil, now + Math.max(Math.min(900000, 60000 * 2 ** (this.level - 1)), Math.min(86400000, retryAfterMs)));
     this.save(); this.onLimit?.(this.blockedUntil, this.level);
   }
-  private save(): void { this.persist?.({ blockedUntil: this.blockedUntil, level: this.level, lastLimitAt: this.lastLimitAt, sequenceCount: this.count, actionTimes: this.actionTimes, writeTimes: this.writeTimes, recentActions: this.recentActions }); }
+  private save(): void { this.persist?.({ counterVersion: 2, businessSequenceCount: this.businessCount, lastBusinessAt: this.lastBusinessAt, blockedUntil: this.blockedUntil, level: this.level, lastLimitAt: this.lastLimitAt, sequenceCount: this.count, actionTimes: this.actionTimes, writeTimes: this.writeTimes, recentActions: this.recentActions }); }
   private budgetUntil(times: number[], limit: number | undefined, window: number, now: number): number {
     if (!limit || limit < 1) return 0;
     const recent = times.filter(time => time > now - window);
     return recent.length >= limit ? recent[recent.length - limit] + window : 0;
   }
+  /** Preview the same scheduling constraints without queueing a website action. */
+  private waitMs(kind: BossActionKind): number {
+    const now = this.now(), settings = this.settings();
+    const writes = kind === 'feedback' || kind === 'submit';
+    const kindGap = ['navigation', 'source', 'list'].includes(kind) ? settings.intervalMs * 3 : kind === 'route' ? settings.intervalMs * 5 : 0;
+    const globalGap = kind === 'confirm' ? Math.min(600, settings.intervalMs) : settings.intervalMs;
+    const budget = kind === 'confirm' ? 0 : Math.max(this.budgetUntil(this.actionTimes, settings.maxPerMinute, 60000, now),
+      this.budgetUntil(this.actionTimes, settings.maxPerHour, 3600000, now),
+      writes ? this.budgetUntil(this.writeTimes, settings.writesPerHour, 3600000, now) : 0);
+    const consecutive = this.lastAt && now - this.lastAt >= settings.restMs ? 0 : this.count;
+    return Math.max(0, Math.max(this.blockedUntil, this.lastAt ? this.lastAt + globalGap : 0,
+      this.lastKindAt.has(kind) ? this.lastKindAt.get(kind)! + kindGap : 0,
+      writes && this.lastWriteAt ? this.lastWriteAt + settings.feedbackMs : 0,
+      kind !== 'confirm' && settings.burst > 0 && consecutive >= settings.burst && this.lastAt ? this.lastAt + settings.restMs : 0,
+      kind !== 'confirm' && settings.businessBurst && this.businessCount >= settings.businessBurst && this.lastBusinessAt
+        ? this.lastBusinessAt + settings.restMs : 0, budget) - now);
+  }
+  public waitSeconds(kind: BossActionKind): number { return Math.ceil(this.waitMs(kind) / 1000); }
+  /** Keep optional feedback from opening a dialog that cannot be completed during a long rest. */
+  public canStartFeedback(): boolean { return this.waitMs('feedback') <= 30000; }
   public status(): { remainingSeconds: number; level: number } { return { remainingSeconds: Math.max(0, Math.ceil((this.blockedUntil - this.now()) / 1000)), level: this.level }; }
   public run<T>(kind: BossActionKind, action: () => Promise<T>): Promise<T> {
     const scope = scopes.getStore();
@@ -81,16 +109,8 @@ export class BossActionScheduler {
         const now = this.now();
         this.actionTimes = this.actionTimes.filter(time => time > now - 3600000); this.writeTimes = this.writeTimes.filter(time => time > now - 3600000);
         if (this.lastAt && now - this.lastAt >= settings.restMs) this.count = 0;
-        const writes = kind === 'feedback' || kind === 'submit';
-        const kindGap = kind === 'navigation' ? settings.intervalMs * 3 : kind === 'route' ? settings.intervalMs * 5 : 0;
-        const globalGap = kind === 'confirm' ? Math.min(600, settings.intervalMs) : settings.intervalMs;
-        const budget = kind === 'confirm' ? 0 : Math.max(this.budgetUntil(this.actionTimes, settings.maxPerMinute, 60000, now),
-          this.budgetUntil(this.actionTimes, settings.maxPerHour, 3600000, now), writes ? this.budgetUntil(this.writeTimes, settings.writesPerHour, 3600000, now) : 0);
-        const until = Math.max(this.blockedUntil, this.lastAt ? this.lastAt + globalGap : 0,
-          this.lastKindAt.has(kind) ? this.lastKindAt.get(kind)! + kindGap : 0,
-          writes && this.lastWriteAt ? this.lastWriteAt + settings.feedbackMs : 0,
-          kind !== 'confirm' && this.count >= settings.burst && this.lastAt ? this.lastAt + settings.restMs : 0, budget);
-        const wait = Math.max(0, until - now);
+        if (this.lastBusinessAt && now - this.lastBusinessAt >= settings.restMs) this.businessCount = 0;
+        const wait = this.waitMs(kind);
         if (!wait) break;
         if (!announced && wait >= 1000) { scope?.onWait?.(Math.ceil(wait / 1000), kind); announced = true; }
         await this.sleep(Math.min(wait, 500), scope?.signal);
@@ -101,6 +121,7 @@ export class BossActionScheduler {
       catch (error) { result = 'error'; throw error; }
       finally {
         this.lastAt = this.now(); this.lastKindAt.set(kind, this.lastAt); this.count++;
+        if (['source', 'list', 'detail', 'feedback', 'submit'].includes(kind)) { this.businessCount++; this.lastBusinessAt = this.lastAt; }
         this.actionTimes.push(this.lastAt);
         this.recentActions.push({ time: this.lastAt, kind, result }); this.recentActions = this.recentActions.slice(-1000);
         if (kind === 'feedback' || kind === 'submit') { this.lastWriteAt = this.lastAt; this.writeTimes.push(this.lastAt); }

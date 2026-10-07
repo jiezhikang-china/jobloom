@@ -22,7 +22,7 @@ import { bossOperationPolicy } from './boss-operation-policy.js';
 
 const COOL_DOWN_SECONDS = 15 * 60;
 
-interface PendingCandidate { jobCard: DOMJobCardInfo; job: BossJobItem; jobDetail: string;
+interface PendingCandidate { queuedAt: number; jobCard: DOMJobCardInfo; job: BossJobItem; jobDetail: string;
   detail: Awaited<ReturnType<typeof bossPageService.loadJobDetail>>; sourceHref?: string; }
 interface DeliveryRequest {
   targetRole: string; positionCode?: string; targetPositions?: BossPositionSelection[];
@@ -777,6 +777,12 @@ export class DeliveryService {
           let newlyFoundInThisBatch = 0;
 
           for (const previewCard of cards) {
+            if (pending.length && (Date.now() - pending[0].queuedAt >= bossOperationPolicy.aiBatchMaxWaitMs
+              || bossActionScheduler.waitSeconds('control') >= 30)) {
+              this.log('info', '[AI 提前合并] 候选已等待较久或即将休息，先评估 ' + pending.length + ' 个岗位');
+              await flushEvaluations();
+              if (this.isStopRequested || this.stats.status === 'finished') return;
+            }
             const jobCard = { ...previewCard, skills: [...previewCard.skills] };
             if (notSuitableStore.matches(jobCard.jobHref, '')) continue;
             this.ensureQuotaFresh();
@@ -927,7 +933,7 @@ export class DeliveryService {
               continue;
             }
 
-            const candidate: PendingCandidate = { jobCard: { ...jobCard, cardLocator }, job: mockJobItem,
+            const candidate: PendingCandidate = { queuedAt: Date.now(), jobCard: { ...jobCard, cardLocator }, job: mockJobItem,
               jobDetail: detailRes.jobDetailText, detail: detailRes, sourceHref: previewCard.jobHref };
             const beforeRoute = filterService.evaluateLocally(mockJobItem, detailRes.jobDetailText, params.rulesOnly === true && params.candidateSource === 'requirements', cfg.filter, exclusionText, candidateContext);
             if (!beforeRoute || beforeRoute.needsCommuteConfirmation) {

@@ -66,11 +66,11 @@ async function main() {
     await fixturePage.route('https://www.zhipin.com/**', (route) => { navigations++; return route.fulfill({ contentType: 'text/html; charset=utf-8', body: fixture }); });
     const tabs = await (await fetch('http://127.0.0.1:' + port + '/json/list')).json() as any[];
     const target = tabs.find((tab) => tab.type === 'page');
-    page = await new CdpPage(target.id, await CdpConnection.connect(target.webSocketDebuggerUrl), target.url).initialize();
+    page = await new CdpPage(target.id, await CdpConnection.connect(target.webSocketDebuggerUrl), target.url, false).initialize();
     browserService.getWorkerPage = async () => page!;
     browserService.checkLoginStatus = async () => ({ isLoggedIn: true, isBrowserActive: true });
     const remembered: string[] = [];
-    const service = new BossPageService({ pageReadyTimeoutMs: 2500, pagePollIntervalMs: 30, rememberNotSuitable: target => { remembered.push(target.companyName); } });
+    const service = new BossPageService({ pageReadyTimeoutMs: 2500, pagePollIntervalMs: 30, allowFeedback: () => true, rememberNotSuitable: target => { remembered.push(target.companyName); } });
     await page.goto('https://www.zhipin.com/web/geek/jobs?jobType=1903');
     assert.deepEqual(await service.getSavedExpectationNames(), names, '读取全部可见自选期望，不写死数量');
     for (const [index, name] of names.entries()) {
@@ -93,6 +93,11 @@ async function main() {
     assert.equal(await service.markJobNotSuit(card.cardLocator, card, '涉及助贷，我的个人信息不得发给平台'), false);
     assert.equal(await page.evaluate(() => (window as any).submissions.length), 2, '平台必须填写文字时取消，无本地理由提交');
     assert.equal(await page.locator('.zp-feedback-dialog').filter({ visible: true }).evaluateAll(items => items.length), 0);
+    let locallyBlocked = '';
+    const deferred = new BossPageService({ allowFeedback: () => false, rememberNotSuitable: target => { locallyBlocked = target.companyName; } });
+    assert.equal(await deferred.markJobNotSuit(card.cardLocator, card), false);
+    assert.equal(locallyBlocked, card.companyName, '无法及时反馈时仍持久化本地屏蔽');
+    assert.equal(await page.evaluate(() => (window as any).submissions.length), 2, '长休息前不再打开或提交反馈弹窗');
     console.log('PASS | 真实 CDP：动态自选期望、原页切换、优先屏蔽公司、零内部理由上传、本地记录、必填文字取消、平台成功信号');
   } finally { browserService.getWorkerPage = getWorker; browserService.checkLoginStatus = login; page?.closeConnection(); await browser.close(); }
 }

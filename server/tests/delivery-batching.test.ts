@@ -1,3 +1,4 @@
+import { bossActionScheduler } from '../src/services/boss-action-scheduler.js';
 import assert from 'node:assert/strict';
 import { configManager } from '../src/config/config.manager.js';
 import { stateManager, todayStr } from '../src/config/state.manager.js';
@@ -14,7 +15,7 @@ function stub(object: any, key: string, replacement: any) {
 }
 const original = configManager.getConfig();
 const config = { ...original, llm: { ...original.llm, jobBatchSize: 3 },
-  filter: { ...original.filter, cityName: '上海', cityCode: '101020100', salaryMin: 3, salaryMax: 8,
+  filter: { ...original.filter, commute: {}, cityName: '上海', cityCode: '101020100', salaryMin: 3, salaryMax: 8,
     degree: ['本科'], experience: [], hrActiveDaysLimit: 0, requiredKeywords: [], companyBlacklist: [],
     workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true },
       { id: 'metro', text: '离地铁步行不超过十分钟', enabled: true }] },
@@ -37,6 +38,8 @@ const origin = { name: '人民广场', address: '上海人民大道185号', city
 
 async function main() {
   stub(configManager, 'getConfig', () => config);
+  stub(bossActionScheduler, 'waitSeconds', () => 0);
+  stub(DeliveryService.prototype, 'paceJobSelection', async () => true);
   stub(stateManager, 'loadQuota', () => ({ date: todayStr(), count: 0 }));
   stub(stateManager, 'saveQuota', () => {});
   stub(workConditionReviews, 'add', (input: any) => { reviewed.push(input.companyName); });
@@ -78,6 +81,7 @@ async function main() {
   const service = new DeliveryService();
   const params = { targetRole: '行政助理', keywords: ['行政'], resumeText: '虚构简历，行政支持经验。'.repeat(8) };
   await service.startDelivery(params);
+
   assert.deepEqual(batches, [['作息未注明', '甲', '乙']], '未知作息与两个合格岗位一起评估；硬拒绝仍不请求，达到配额停止下一批');
   assert.deepEqual(sent, ['甲', '乙'], '同批返回乱序时依旧正确对应，达到配额不发第三个岗位');
   assert.equal(loaded.includes('薪资不符'), true, '先读详情后脚本初筛，不能仅凭卡片薪资淘汰');
@@ -183,6 +187,31 @@ async function main() {
   (outputReview as any).sleepInterruptible = async () => true;
   await outputReview.startDelivery({ ...params, resumeText: params.resumeText + '已返回格式待确认测试' });
   assert.equal(outputCalls, 1); assert.deepEqual(reviewed, ['格式待确认']); assert.deepEqual(sent, [], '响应结论缺失保留待确认，不当网络失败重新生成');
+  // Real long test regression: a short batch must not wait behind a long browsing break.
+  cards = [card('逾时候选'), card('稍后候选')]; config.delivery.dailyMaxQuota = 1;
+  loaded.length = 0; sent.length = 0; batches.length = 0;
+  stub(bossPageService, 'loadJobDetail', async (_locator: any, _name: string, company: string) => {
+    loaded.push(company); currentDetail = company;
+    return { jobDetailText: '负责行政文书和资料整理。', activeTimeDesc: '', brandIndustry: '企业服务', alreadyChatted: false, chatButtonLocator: { key: company } };
+  });
+  stub(llmService, 'chatJson', async (messages: any[], _count: number, options: any) => {
+    const jobs = JSON.parse(messages[1].content.split('【待评估岗位列表（逐个评估）】：\n')[1]);
+    batches.push(jobs.map((item: any) => item.companyName)); options.onRequest();
+    return { jobs: jobs.map((item: any) => ({ jobKey: item.jobKey, score: 90, passed: true, customGreeting: '您好，' + item.companyName })) };
+  });
+  let virtualNow = Date.now();
+  stub(Date, 'now', () => virtualNow);
+  const aging = new DeliveryService();
+  aging.subscribe((_stats, log) => { if (log?.message.startsWith('[初筛暂存')) virtualNow += 90001; });
+  await aging.startDelivery({ ...params, resumeText: params.resumeText + '候选逾期合并测试' });
+  assert.deepEqual(batches, [['逾时候选']], '等待过久的小批次先评估，不继续攒满');
+  assert.deepEqual(sent, ['逾时候选']); assert.equal(loaded.includes('稍后候选'), false);
+  loaded.length = 0; sent.length = 0; batches.length = 0;
+  stub(bossActionScheduler, 'waitSeconds', () => loaded.length ? 900 : 0);
+  const beforeBreak = new DeliveryService();
+  await beforeBreak.startDelivery({ ...params, resumeText: params.resumeText + '业务长休息前合并测试' });
+  assert.deepEqual(batches, [['逾时候选']], '下一次浏览即将长休息时先评估候选');
+  assert.deepEqual(sent, ['逾时候选']); assert.equal(beforeBreak.getStats().aiRequestCount, 1);
   console.log('PASS | 先脚本初筛再暂存、3岗位1请求、尾批处理、乱序对应、同批配额、旧JD不发送、AI请求可停止');
 }
 

@@ -44,6 +44,32 @@ async function main() {
   await assert.rejects(pending, /停止任务/); assert.equal(clicked, false, '停止后排队中的提交不能继续点击');
   clock += 21000;
   await cancellable.run('control', async () => { clicked = true; }); assert.equal(clicked, true, '取消不会破坏后续队列');
+  let checkpointClock = 9000000, checkpointState: any;
+  const checkpointPolicy = { intervalMs: 0, burst: 0, businessBurst: 3, restMs: 20000, feedbackMs: 0 };
+  const checkpoints = new BossActionScheduler(() => checkpointPolicy, () => checkpointClock,
+    async ms => { checkpointClock += ms; }, state => { checkpointState = structuredClone(state); });
+  const beforeControls = checkpointClock;
+  for (let i = 0; i < 80; i++) await checkpoints.run('control', async () => {});
+  assert.equal(checkpointClock, beforeControls, '普通DOM动作不能再触发累计长休息');
+  for (const kind of ['source', 'detail', 'feedback'] as const) await checkpoints.run(kind, async () => {});
+  assert.equal(checkpoints.waitSeconds('control'), 20, '详情/来源/反馈按业务检查点累计');
+  await checkpoints.run('confirm', async () => {});
+  assert.equal(checkpointClock, beforeControls, '已有发送后的确认不能被业务休息堵住');
+  const checkpointRestarted = new BossActionScheduler(() => checkpointPolicy, () => checkpointClock,
+    async ms => { checkpointClock += ms; });
+  checkpointRestarted.restore(checkpointState);
+  await checkpointRestarted.run('detail', async () => {});
+  assert.equal(checkpointClock, beforeControls + 20000, '业务检查点计数跨重启保留');
+
+  let writeClock = 10000000;
+  const normalPolicy = { intervalMs: 2000, burst: 0, businessBurst: 100, restMs: 900000, feedbackMs: 15000 };
+  const normal = new BossActionScheduler(() => normalPolicy, () => writeClock, async ms => { writeClock += ms; });
+  for (let i = 0; i < 10; i++) await normal.run('feedback', async () => {});
+  assert.ok(normal.waitSeconds('submit') <= 15, '10次反馈不能再制造一小时的投递阻塞');
+  const beforeSubmit = writeClock; await normal.run('submit', async () => {});
+  assert.equal(writeClock - beforeSubmit, 15000, '反馈和投递仍遵守分散的写入间隔');
+  normal.limit(60000);
+  assert.equal(normal.canStartFeedback(), false, '明确平台限频时不能打开可选反馈弹窗');
   console.log('PASS | 全页面单队列、连续操作短休息、快速继续沟通、写入与路线间隔、限频持久化、停止取消待执行提交');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
