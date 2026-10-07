@@ -285,7 +285,11 @@ class DeepSeekWebAdapter {
       ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000),
     });
-    return this.readJson(response);
+    try { return await this.readJson(response); }
+    catch (error) {
+      if (error.code === 'upstream_error') error.message += '；接口 ' + route.split('?')[0];
+      throw error;
+    }
   }
   async readJson(response) {
     if (response.status === 429) throw new ProxyError('DeepSeek 网页请求过于频繁，请稍后继续', 429, 'rate_limited', Math.max(1, retryAfterSeconds(response.headers.get('Retry-After'))));
@@ -313,7 +317,7 @@ class DeepSeekWebAdapter {
         this.onAuthState('verification_required');
         throw new ProxyError('DeepSeek 网页需要确认，请打开登录窗口手动处理', 403, 'verification_required');
       }
-      throw new ProxyError('DeepSeek 网页请求失败，请打开登录窗口检查账号状态');
+      throw new ProxyError('DeepSeek 网页请求失败（code=' + (Number.isSafeInteger(data?.code) ? data.code : '未知') + '，biz_code=' + (Number.isSafeInteger(data?.data?.biz_code) ? data.data.biz_code : '未知') + '）');
     }
     return data?.data?.biz_data || data?.biz_data;
   }
@@ -353,7 +357,7 @@ class DeepSeekWebAdapter {
     let dispatched = false;
     let confirmed = false;
     try {
-      const session = await this.request('chat_session/create', token, {}, signal);
+      const session = await this.request('chat_session/create', token, { character_id: null }, signal);
       sessionId = session?.chat_session?.id;
       if (!sessionId) throw new ProxyError('DeepSeek 创建聊天失败，请重新登录或稍后重试');
       const challenge = await this.request('chat/create_pow_challenge', token, { target_path: '/api/v0/chat/completion' }, signal);

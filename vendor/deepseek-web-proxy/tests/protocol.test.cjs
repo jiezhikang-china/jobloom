@@ -67,6 +67,12 @@ function mockAdapter(completionResponse) {
     fetchImpl: async (url, init) => {
       calls.push({ url, init, body: init.body ? JSON.parse(init.body) : undefined });
       const route = url.split('/api/v0/')[1];
+      if (route === 'chat_session/create') {
+        const body = JSON.parse(init.body);
+        if (!Object.hasOwn(body, 'character_id') || body.character_id !== null) {
+          return new Response(JSON.stringify({ code: 0, data: { biz_code: 1001, biz_msg: 'invalid request' } }));
+        }
+      }
       const bizData = route === 'users/current' ? { token: 'validated-access-token' }
         : route === 'chat_session/create' ? { chat_session: { id: 'owned-temporary-session' } }
         : route === 'chat/create_pow_challenge' ? { challenge: { algorithm: 'DeepSeekHashV1' } } : {};
@@ -202,4 +208,16 @@ test('search metadata and control markers do not corrupt the final JSON or reaso
     { type: 'RESPONSE', content: 'SEARCH 是这段回答的原文' },
   ] } } }]));
   assert.equal(ordinary.content, 'SEARCH 是这段回答的原文');
+});
+
+test('unknown business errors identify endpoint and codes without echoing upstream contents', async () => {
+  const adapter = new DeepSeekWebAdapter({
+    credentials: async () => ({ token: 'fake-web-credential' }),
+    fetchImpl: async () => new Response(JSON.stringify({ code: 0, data: { biz_code: 1001, biz_msg: 'private-value-must-not-echo' } })),
+  });
+  await assert.rejects(adapter.request('chat/history_messages?chat_session_id=private-chat-id', 'fake-token'), error => {
+    assert.match(error.message, /code=0/); assert.match(error.message, /biz_code=1001/);
+    assert.match(error.message, /chat\/history_messages/);
+    assert.doesNotMatch(error.message, /private-value|private-chat-id|fake-token/); return true;
+  });
 });
