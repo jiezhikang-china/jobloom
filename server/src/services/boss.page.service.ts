@@ -378,7 +378,7 @@ export class BossPageService {
             verifying: /请完成安全验证|请进行安全验证/.test(document.body?.innerText || '') };
         });
         if (data.verifying) throw new Error('CAPTCHA_REQUIRED: 公司页需要安全验证');
-        if (data.name && data.industry && (data.hasIntroduction || data.businessScope || data.profileReady)) {
+        if (data.name && (data.hasIntroduction || data.businessScope || data.profileReady)) {
           if (data.path !== url.pathname) throw new Error('公司页链接与打开的页面不一致');
           const info: BossCompanyInfo = { url: url.href, name: decodeBossText(data.name), industry: decodeBossText(data.industry),
             introduction: decodeBossText(data.introduction), businessScope: decodeBossText(data.businessScope), checkedAt: new Date().toISOString() };
@@ -414,7 +414,8 @@ export class BossPageService {
             city: (banner?.querySelector('.text-city') as HTMLElement | null)?.innerText?.trim() || '',
             experience: (banner?.querySelector('.text-experiece') as HTMLElement | null)?.innerText?.trim() || '',
             degree: (banner?.querySelector('.text-degree') as HTMLElement | null)?.innerText?.trim() || '',
-            company: sidebar?.querySelector('.company-info a[title]')?.getAttribute('title') || '',
+            company: sidebar?.querySelector('.company-info a[title]')?.getAttribute('title')
+              || (sidebar?.querySelector('.company-info a, .company-info .company-name, .company-info h3') as HTMLElement | null)?.innerText?.trim() || '',
             companyHref: sidebar?.querySelector('.company-info a[href^="/gongsi/"]')?.getAttribute('href') || '',
             industry: (sidebar?.querySelector('a[ka="job-detail-brandindustry"]') as HTMLElement | null)?.innerText?.trim() || '',
             description: (section?.querySelector('.job-sec-text') as HTMLElement | null)?.innerText?.trim() || '',
@@ -422,24 +423,26 @@ export class BossPageService {
             verifying: /请完成安全验证|请进行安全验证/.test(document.body?.innerText || '') };
         });
         if (data.verifying) throw new Error('CAPTCHA_REQUIRED: 公司行业核对页需要安全验证');
-        if (data.name && data.company && data.industry && data.description.length >= 20) {
+        if (data.name && data.company && data.description.length >= 20) {
           if (data.path !== expectedPath) {
             throw new Error('公司行业核对页与所选岗位不一致');
           }
           const detailData: JobDetailData = { jobHref: new URL(expectedPath, ORIGIN).href, jobName: decodeBossText(data.name),
             companyName: decodeBossText(data.company), salary: readableBossSalary(data.salary), cityName: decodeBossText(data.city),
             experience: decodeBossText(data.experience), degree: decodeBossText(data.degree), skills: data.skills.map(decodeBossText) };
-          const result = { detailData, brandIndustry: data.industry, jobDetailText: decodeBossText(data.description), skills: detailData.skills,
+          const result = { detailData, brandIndustry: decodeBossText(data.industry), jobDetailText: decodeBossText(data.description), skills: detailData.skills,
             workAddress: await readBossWorkAddress(page) };
           if (options.filter && findJobExclusion({ jobName: decodeBossText(data.name), brandName: decodeBossText(data.company), brandIndustry: data.industry,
             jobDetail: result.jobDetailText, skills: result.skills }, options.filter, options.exclusionText)) return result;
           if (options.filter && languageQualificationIssue({ jobName: decodeBossText(data.name), skills: result.skills }, result.jobDetailText, options.filter, options.candidateContext)) return result;
-          if (!data.companyHref) throw new Error('缺少该岗位的公司页链接，无法核对实际业务');
-          return { ...result, companyInfo: await this.readCompanyInfo(data.companyHref, data.company, options.refreshCompany) };
+          // Industry tags and public company links are optional, including anonymous employers.
+          if (!data.companyHref) return result;
+          const companyInfo = await this.readCompanyInfo(data.companyHref, data.company, options.refreshCompany);
+          return { ...result, brandIndustry: companyInfo.industry || result.brandIndustry, companyInfo };
         }
         await pause(200);
       }
-      throw new Error('无法从当前岗位的公司基本信息读取行业，已跳过该岗位');
+      throw new Error('完整职位详情尚未就绪：未读取到岗位标题、公司名称或职位描述');
     });
   }
 
@@ -522,7 +525,7 @@ export class BossPageService {
       const companyHref = bound.companyHref;
       if (companyHref) {
         companyInfo = await this.readCompanyInfo(companyHref, detailData.companyName, options.refreshCompany);
-        brandIndustry = companyInfo.industry;
+        brandIndustry = companyInfo.industry || brandIndustry;
       } else {
         const fullPage = await this.readJobCompanyInfo(detailData.jobHref, detailData.jobName, detailData.companyName, options);
         brandIndustry = fullPage.brandIndustry;
@@ -570,7 +573,8 @@ export class BossPageService {
       const banner = document.querySelector('.job-banner');
       return { description: (section?.querySelector('.job-sec-text') as HTMLElement | null)?.innerText?.trim() || '',
         name: (banner?.querySelector('.name h1') as HTMLElement | null)?.innerText?.trim() || '',
-        company: document.querySelector('.sider-company .company-info a[title]')?.getAttribute('title') || '',
+        company: document.querySelector('.sider-company .company-info a[title]')?.getAttribute('title')
+          || (document.querySelector('.sider-company .company-info a, .sider-company .company-info .company-name, .sider-company .company-info h3') as HTMLElement | null)?.innerText?.trim() || '',
         salary: (banner?.querySelector('.salary') as HTMLElement | null)?.innerText?.trim() || '',
         city: (banner?.querySelector('.text-city') as HTMLElement | null)?.innerText?.trim() || '',
         experience: (banner?.querySelector('.text-experiece') as HTMLElement | null)?.innerText?.trim() || '',
@@ -593,7 +597,7 @@ export class BossPageService {
       || commuteDecision(job, filter).status === 'failed';
     if (!earlyExclusion && data.companyHref) {
       job.companyInfo = await this.readCompanyInfo(data.companyHref, job.brandName, true);
-      job.brandIndustry = job.companyInfo.industry;
+      job.brandIndustry = job.companyInfo.industry || job.brandIndustry;
       job.brandName = job.companyInfo.name;
     }
     const button = page.locator(CHAT).filter({ visible: true }).first();

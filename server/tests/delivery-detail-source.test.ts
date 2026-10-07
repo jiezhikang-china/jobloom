@@ -52,10 +52,10 @@ async function main() {
       detailData.jobName = '行政助理（急招）'; detailData.companyName = '详情公司-good正式名称';
     }
     currentHref = detailData.jobHref;
-    return { detailData, activeTimeDesc: '今日活跃', brandIndustry: '企业服务', alreadyChatted: false,
+    return { detailData, activeTimeDesc: '今日活跃', brandIndustry: locator.key === 'good' ? '' : '企业服务', alreadyChatted: false,
       jobDetailText: '负责行政资料整理与文档归档。' + (locator.key === 'review' ? '具体作息面议。' : '每天工作8小时。'),
       companyInfo: { url: 'https://www.zhipin.com/gongsi/' + locator.key + '.html', name: detailData.companyName,
-        industry: '企业服务', introduction: locator.key === 'blocked' ? '公司主营助贷服务与贷款撮合。' : '公司提供文档整理服务。',
+        industry: locator.key === 'good' ? '' : '企业服务', introduction: locator.key === 'blocked' ? '公司主营助贷服务与贷款撮合。' : '公司提供文档整理服务。',
         businessScope: '文书服务。', checkedAt: new Date().toISOString() }, chatButtonLocator: { key: locator.key } };
   });
   stub(bossPageService, 'markJobNotSuit', async (_card: any, target: any) => { rejected.push(target); return true; });
@@ -69,6 +69,7 @@ async function main() {
     aiCalls++; options.onRequest();
     const jobs = JSON.parse(messages[1].content.split('【待评估岗位列表（逐个评估）】：\n')[1]);
     assert.deepEqual(jobs.map((job: any) => job.companyName), ['详情公司-good', '详情公司-review']);
+    assert.equal(jobs[0].industry, '', '没有行业标签的可读岗位也进入 AI 批次');
     assert.ok(jobs.every((job: any) => job.jobName === '行政助理（详情）'), 'AI 应读取详情标题');
     assert.doesNotMatch(messages[1].content, /银行销售|卡片金融|1-2K|博士|过时标签/, '不能把卡片的旧信息传给 AI');
     // Changing a preview after AI evaluation must not invalidate unchanged real details.
@@ -83,7 +84,8 @@ async function main() {
     resumeText: '详情优先测试：擅长文档归档和行政工作。' + Date.now(), candidateSource: 'resume' });
   assert.equal(service.getStats().status, 'finished');
   assert.equal(aiCalls, 1, '本地淘汰后，剩余岗位只批量请求一次');
-  assert.equal(applied.length, 1);
+  assert.equal(applied.length, 1, '行业标签缺失不导致详情重读、待确认或跳过投递');
+  assert.ok(!service.getLogs().some(item => /详情待重读|详情待确认/.test(item.message)));
   assert.equal(rejected[0].companyName, '详情公司-blocked', '助贷排除应针对真实详情公司');
   assert.deepEqual(reviews.map(item => [item.jobHref, item.jobName, item.companyName, item.salary]), [
     [actual('review').jobHref, actual('review').jobName, actual('review').companyName, '6-8K'] ], '待确认记录也使用真实详情');
