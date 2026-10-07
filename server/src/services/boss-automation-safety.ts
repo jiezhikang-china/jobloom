@@ -3,13 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-export type BossSafetyReason = 'user_reported_ban' | 'account_restricted' | 'verification' | 'rate_limit' | 'state_unreadable';
+export type BossSafetyReason = 'user_reported_ban' | 'login_expired' | 'account_restricted' | 'verification' | 'rate_limit' | 'state_unreadable';
 export interface BossSafetyHold { id: string; reason: BossSafetyReason; message: string; detectedAt: string; retryAfter?: string; requiresPageVerification?: boolean; }
 export class BossAutomationBlockedError extends Error {
   readonly code = 'BOSS_AUTOMATION_BLOCKED';
   constructor(public readonly hold: BossSafetyHold) { super(hold.message); }
 }
-const priority: Record<BossSafetyReason, number> = { verification: 1, rate_limit: 2, account_restricted: 3, user_reported_ban: 4, state_unreadable: 5 };
+const priority: Record<BossSafetyReason, number> = { verification: 1, rate_limit: 2, login_expired: 3, account_restricted: 3, user_reported_ban: 4, state_unreadable: 5 };
 
 /** A platform restriction requires a human decision; elapsed time and restarts never clear it. */
 export class BossAutomationSafety {
@@ -27,7 +27,7 @@ export class BossAutomationSafety {
   public status(): { blocked: boolean; hold: BossSafetyHold | null } { return { blocked: !!this.hold, hold: this.hold ? { ...this.hold } : null }; }
   public assertAllowed(): void { if (this.hold) throw new BossAutomationBlockedError({ ...this.hold }); }
   public halt(reason: BossSafetyReason, message: string, retryAt?: number): BossSafetyHold {
-    const platformEvidence = ['account_restricted', 'verification', 'rate_limit'].includes(reason);
+    const platformEvidence = ['account_restricted', 'verification', 'rate_limit', 'login_expired'].includes(reason);
     if (this.hold && priority[this.hold.reason] >= priority[reason]) {
       let changed = false;
       if (platformEvidence && !this.hold.requiresPageVerification) { this.hold.requiresPageVerification = true; changed = true; }
@@ -41,7 +41,7 @@ export class BossAutomationSafety {
     const until = Math.max(retryAt || 0, Date.parse(previous?.retryAfter || '1970-01-01'));
     this.hold = { id: randomUUID(), reason, message, detectedAt: new Date(this.now()).toISOString(),
       ...(until > this.now() ? { retryAfter: new Date(until).toISOString() } : {}),
-      ...(platformEvidence || previous?.requiresPageVerification || previous && ['account_restricted', 'verification', 'rate_limit'].includes(previous.reason) ? { requiresPageVerification: true } : {}) };
+      ...(platformEvidence || previous?.requiresPageVerification || previous && ['account_restricted', 'verification', 'rate_limit', 'login_expired'].includes(previous.reason) ? { requiresPageVerification: true } : {}) };
     this.save(); return { ...this.hold };
   }
   public confirmRecovery(id: string): void {
@@ -61,14 +61,17 @@ export class BossAutomationSafety {
 export const bossAutomationSafety = new BossAutomationSafety();
 
 /** Only visible notices or a dedicated security page supply restriction evidence, never job descriptions. */
-export function visibleBossRestriction(): { reason: 'account_restricted' | 'verification'; message: string } | null {
-  const notices = [...document.querySelectorAll('.common-dialog, .dialog-wrap, .toast, .message, .error-tip, .geetest_popup, .geetest_radar_tip, [class*="security-check"]')]
+export function visibleBossRestriction(): { reason: 'account_restricted' | 'verification' | 'login_expired'; message: string } | null {
+  const notices = [...document.querySelectorAll('.common-dialog, .dialog-wrap, .toast, .message, .error-tip, .login-register-box, .sign-wrap, [class*="login-dialog"], .geetest_popup, .geetest_radar_tip, [class*="security-check"]')]
     .filter(el => (el as HTMLElement).getClientRects().length > 0).map(el => (el as HTMLElement).innerText || '');
   const securityPage = /\/security-check\.html|\/web\/passport\/zp\/security\.html/.test(location.pathname);
   if (securityPage || location.pathname.startsWith('/web/user/')) notices.push((document.body?.innerText || '').slice(0, 3000));
   const text = notices.join('\n');
   if (/(?:你的|您的|当前|该)?(?:账号|帐号)(?:已被|已|被|因[^\n]{0,24})?(?:封禁|封停|冻结|限制使用|禁止使用)|账号异常.{0,20}(?:限制|停止使用)|无法继续使用BOSS|禁止登录/.test(text)) {
     return { reason: 'account_restricted', message: 'BOSS 显示账号限制，自动操作已停止；请通过平台人工核实或申诉' };
+  }
+  if (/账号.{0,16}(?:其他|别处|异地|另一).{0,20}登录|(?:已被|被迫|强制|自动)下线|登录(?:状态|会话|凭证|信息)?.{0,8}(?:失效|过期)|请重新登录|重新扫码登录/.test(text)) {
+    return { reason: 'login_expired', message: 'BOSS 提示登录失效或被强制下线，自动操作已停止，请人工核对当前页面' };
   }
   if (securityPage || /请完成安全验证|请进行安全验证/.test(text)
     || [...document.querySelectorAll('.geetest_popup, .geetest_radar_tip, [class*="security-check"]')].some(el => (el as HTMLElement).getClientRects().length > 0)) {

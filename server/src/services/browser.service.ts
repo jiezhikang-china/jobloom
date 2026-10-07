@@ -16,7 +16,7 @@ export interface LoginStatus {
   isLoggedIn: boolean;
   isBrowserActive: boolean;
   reason?: string;
-  reasonCode?: 'login_required' | 'verification_required' | 'browser_unavailable' | 'unverified' | 'automation_blocked';
+  reasonCode?: 'login_required' | 'verification_required' | 'browser_unavailable' | 'unverified' | 'automation_blocked' | 'resting';
 }
 
 interface ChromeTarget {
@@ -64,6 +64,7 @@ export class BrowserService {
   private loginPromise: Promise<void> | null = null;
   private workerPromise: Promise<CdpPage> | null = null;
   private lastSessionRecordAt = 0;
+  private resting = false;
 
   private async browserIdentity(port: number): Promise<string> {
     const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1500) });
@@ -107,6 +108,7 @@ export class BrowserService {
   }
 
   private async ensureChrome(openLogin: boolean): Promise<void> {
+    if (this.resting) throw new Error('BOSS 浏览器正在关闭休息，休息结束前不会重开');
     if (!this.options.headless) bossAutomationSafety.assertAllowed();
     if (this.port) {
       try { await this.listTabs(); return; } catch {
@@ -321,6 +323,7 @@ export class BrowserService {
 
   /** Cookie 只是线索；职位页 DOM 才能证实已登录。 */
   public async checkLoginStatus(options: { restore?: boolean; observeBlocked?: boolean } = {}): Promise<LoginStatus> {
+    if (this.resting) return { isLoggedIn: false, isBrowserActive: false, reasonCode: 'resting', reason: 'BOSS 浏览器已关闭休息，结束后自动重开并核对登录' };
     const hold = bossAutomationSafety.status().hold;
     if (!this.options.headless && hold && !options.observeBlocked) return {
       isLoggedIn: false, isBrowserActive: !!this.port, reasonCode: 'automation_blocked', reason: hold.message,
@@ -460,6 +463,62 @@ export class BrowserService {
     return false;
   }
 
+  /** Gracefully close this profile's exact Chrome instance, including one reattached after a desktop restart. */
+  public async suspendForRest(): Promise<boolean> {
+    if (!this.options.headless) { bossAutomationSafety.assertAllowed(); await CdpPage.assertPagesReady(); }
+    if (!this.port) await this.tryReconnectChrome();
+    this.resting = true;
+    if (!this.port) return false;
+    const port = this.port;
+    const runtimePath = path.join(this.profileDir, 'boss-browser-runtime.json');
+    const runtime = JSON.parse(fs.readFileSync(runtimePath, 'utf8'));
+    const identity = await this.browserIdentity(port);
+    if (runtime.port !== port || runtime.browserIdentity !== identity) throw new Error('休息关闭前浏览器实例身份变化，任务已停止');
+    const connection = await CdpConnection.connect('ws://127.0.0.1:' + port + identity);
+    try { await connection.send('Browser.close', {}, 3000).catch(() => {}); }
+    finally { connection.close(); }
+    let closed = false;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const accepting = await new Promise<boolean>(resolve => {
+        const socket = net.createConnection({ host: '127.0.0.1', port });
+        const finish = (value: boolean) => { socket.destroy(); resolve(value); };
+        socket.once('connect', () => finish(true));
+        socket.once('error', (error: NodeJS.ErrnoException) => finish(error.code !== 'ECONNREFUSED'));
+        socket.setTimeout(300, () => finish(true));
+      });
+      if (!accepting) { closed = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (!closed) throw new Error('BOSS 浏览器未确认关闭，取消休息恢复，任务已停止');
+    for (const page of this.pages.values()) page.closeConnection();
+    this.pages.clear(); this.loginPage = null; this.workerPage = null; this.verificationPage = null;
+    this.port = null; this.chrome = null;
+    const current = JSON.parse(fs.readFileSync(runtimePath, 'utf8'));
+    if (current.port === port && current.browserIdentity === identity) fs.unlinkSync(runtimePath);
+    return true;
+  }
+
+  /** Open the same persistent profile only after the scheduled rest and validate the new page. */
+  public async resumeAfterRest(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    if (!this.options.headless) bossAutomationSafety.assertAllowed();
+    this.resting = false;
+    const page = await this.getWorkerPage();
+    signal?.throwIfAborted();
+    await this.waitForJobsOrLogin(page);
+    signal?.throwIfAborted();
+    if (!this.options.headless) await CdpPage.assertPagesReady();
+    const login = await this.checkLoginStatus({ restore: false });
+    if (!login.isLoggedIn) {
+      if (login.reasonCode === 'login_required' && !this.options.headless) {
+        bossAutomationSafety.halt('login_expired', 'BOSS 休息后要求重新登录，自动操作已停止，请人工处理当前页面');
+      }
+      throw new Error('休息后无法确认 BOSS 登录：' + (login.reason || '页面尚未就绪'));
+    }
+  }
+
+  /** Stopping a task leaves the rested browser closed; this only releases the local gate for later manual use. */
+  public releaseRestGate(): void { this.resting = false; }
   public async close(): Promise<void> {
     for (const page of this.pages.values()) page.closeConnection();
     this.pages.clear();

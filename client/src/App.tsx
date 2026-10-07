@@ -610,11 +610,11 @@ export default function App() {
             <div className="session-tools">
               <div className={`session-status ${isBossLoggedIn ? 'ready' : 'pending'}`} title={loginReason}>
                 <span className="session-dot" />
-                <span>{isBossLoggedIn ? 'BOSS 已连接' : isCheckingLogin ? '正在检查会话' : loginReasonCode === 'login_required' ? 'BOSS 未登录' : 'BOSS 待检查'}</span>
+                <span>{isBossLoggedIn ? 'BOSS 已连接' : isCheckingLogin ? '正在检查会话' : loginReasonCode === 'resting' ? 'BOSS 关闭休息中' : loginReasonCode === 'login_required' ? 'BOSS 未登录' : 'BOSS 待检查'}</span>
               </div>
               {!isBossLoggedIn && loginReasonCode === 'login_required' && <button type="button" className="button-small"
                 disabled={isCheckingLogin} onClick={handlePromptLogin}>{isCheckingLogin ? '正在打开…' : '打开扫码页'}</button>}
-              {!isBossLoggedIn && (loginPageOpened || loginReasonCode === 'unverified') && <button type="button" className="button-small"
+              {!isBossLoggedIn && loginReasonCode !== 'resting' && (loginPageOpened || loginReasonCode === 'unverified') && <button type="button" className="button-small"
                 disabled={isCheckingLogin} onClick={handleVerifyLogin} title="扫码完成后点击验证">验证会话</button>}
               <button type="button" className="icon-button" aria-label="刷新 BOSS 会话" title="检查保存的 BOSS 会话"
                 disabled={isCheckingLogin} onClick={() => void checkLoginStatus()}>
@@ -1549,7 +1549,7 @@ export default function App() {
                     <Play size={18} />
                     配置并开始投递
                   </button>
-                ) : deliveryStats.status === 'running' ? (
+                ) : ['running', 'sage_time'].includes(deliveryStats.status) ? (
                   <button
                     onClick={handlePauseDelivery}
                     style={{
@@ -1653,7 +1653,7 @@ export default function App() {
                     : deliveryStats.status === 'paused'
                     ? '已暂停'
                     : deliveryStats.status === 'sage_time'
-                    ? `休息中 (${deliveryStats.sageTimeRemainingSeconds ?? 0}s)`
+                    ? `浏览器关闭休息中 (${deliveryStats.sageTimeRemainingSeconds ?? 0}s)`
                     : deliveryStats.status === 'cool_down'
                     ? '等待平台限制解除'
                     : deliveryStats.status === 'finished'

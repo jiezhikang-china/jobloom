@@ -455,7 +455,7 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
 });
 
 apiRouter.post('/delivery/pause', (_req: Request, res: Response) => {
-  if (deliveryService.getStats().status !== 'running') {
+  if (!['running', 'sage_time'].includes(deliveryService.getStats().status)) {
     return res.status(409).json({ success: false, message: '当前任务不在运行状态' });
   }
   deliveryService.pause();

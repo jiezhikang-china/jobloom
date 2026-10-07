@@ -1,3 +1,4 @@
+import './fixtures/activate-isolated-safety.js';
 import assert from 'node:assert/strict';
 import { configManager } from '../src/config/config.manager.js';
 import { stateManager, todayStr } from '../src/config/state.manager.js';
@@ -52,7 +53,7 @@ async function main(): Promise<void> {
     stub(filterService, 'evaluateBatch', async (items: any[]) => Promise.all(items.map((item) =>
       filterService.evaluateStage2(item.job, item.jobDetail, '测试简历', '测试岗位'))));
 
-    const service = new DeliveryService();
+    const service = new DeliveryService({ runIfDue: async () => false });
     await service.startDelivery({ targetRole: '前端开发', positionCode: '100901', keywords: ['前端开发'], resumeText: '完整简历'.repeat(20) });
     assert.deepEqual(searches[0], ['前端开发', '101020100', '100901']);
     assert.equal(sent, 1, '达到每日配额后不能处理同页的下一张卡片');
@@ -74,7 +75,7 @@ async function main(): Promise<void> {
           requirementAssessment: [{ requirementId: 'hours', text: '每天工作不超过八小时', status: 'unknown', evidence: '' }] }
         : { passed: true, score: 90, reason: '匹配', customGreeting: '你好' };
     });
-    const reviewing = new DeliveryService();
+    const reviewing = new DeliveryService({ runIfDue: async () => false });
     await reviewing.startDelivery({ targetRole: '行政助理', keywords: ['双休'], resumeText: '八小时双休允许无经验。', candidateSource: 'requirements' });
     assert.equal(queued, 1, '信息不足的岗位必须进入待确认列表');
     assert.equal(marked, 0, '待确认岗位不能点击网站的不合适按钮');
@@ -84,7 +85,7 @@ async function main(): Promise<void> {
 
     testConfig.filter.workRequirements = [];
     stub(filterService, 'evaluateStage2', async () => ({ passed: false, score: 52, reason: '职责方向不匹配', customGreeting: '', evaluationSource: 'ai' }));
-    const lowScore = new DeliveryService();
+    const lowScore = new DeliveryService({ runIfDue: async () => false });
     await lowScore.startDelivery({ targetRole: '内容运营', keywords: ['内容运营'], resumeText: '完整简历'.repeat(20) });
     assert.equal(marked, 0, 'AI 低分不得向 BOSS 反馈不合适，也不得屏蔽公司');
     assert.equal(lowScore.getStats().markedNotSuitCount, 0);
@@ -93,7 +94,7 @@ async function main(): Promise<void> {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     stub(bossPageService, 'initJobPage', async () => { await gate; return {}; });
-    const second = new DeliveryService();
+    const second = new DeliveryService({ runIfDue: async () => false });
     const running = second.startDelivery({ targetRole: '前端开发', keywords: ['前端开发'], resumeText: '完整简历'.repeat(20) });
     assert.equal(second.isActive(), true);
     second.pause();
@@ -110,7 +111,7 @@ async function main(): Promise<void> {
 
     stub(bossPageService, 'initJobPage', async () => ({}));
     stub(bossPageService, 'executeChatClick', async () => ({ success: false, uncertain: true }));
-    const uncertain = new DeliveryService();
+    const uncertain = new DeliveryService({ runIfDue: async () => false });
     await uncertain.startDelivery({ targetRole: '前端开发', keywords: ['前端开发'], resumeText: '完整简历'.repeat(20) });
     assert.equal(uncertain.getStats().status, 'failed', '沟通结果不确定时必须停止批量任务');
     assert.equal(uncertain.getStats().todayAppliedCount, 0, '未确认成功不能计入配额');

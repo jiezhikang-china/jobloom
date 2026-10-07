@@ -1,3 +1,4 @@
+import './fixtures/activate-isolated-safety.js';
 import { bossActionScheduler } from '../src/services/boss-action-scheduler.js';
 import assert from 'node:assert/strict';
 import { configManager } from '../src/config/config.manager.js';
@@ -79,14 +80,14 @@ async function main() {
     })) };
   });
 
-  const service = new DeliveryService();
+  const service = new DeliveryService({ runIfDue: async () => false });
   const params = { targetRole: '行政助理', keywords: ['行政'], resumeText: '虚构简历，行政支持经验。'.repeat(8) };
   await service.startDelivery(params);
 
   assert.deepEqual(batches, [['作息未注明', '甲', '乙']], '未知作息与两个合格岗位一起评估；硬拒绝仍不请求，达到配额停止下一批');
   assert.deepEqual(sent, ['甲', '乙'], '同批返回乱序时依旧正确对应，达到配额不发第三个岗位');
   assert.equal(loaded.includes('薪资不符'), true, '先读详情后脚本初筛，不能仅凭卡片薪资淘汰');
-  assert.deepEqual(reviewed, ['作息未注明']); assert.equal(marked, 2);
+  assert.deepEqual(reviewed, ['作息未注明']); assert.equal(marked, 0, '薪资或工时不符只做本地筛选，不得向平台发送不合适反馈');
   assert.equal(service.getStats().aiRequestCount, 1);
   assert.equal(service.getStats().todayAppliedCount, 2);
   assert.equal(service.getStats().pendingEvaluationCount, 0);
@@ -95,7 +96,7 @@ async function main() {
   loaded.length = 0; sent.length = 0; batches.length = 0;
   cards = [card('甲'), card('乙')]; changed = true;
   config.delivery.dailyMaxQuota = 1;
-  const stale = new DeliveryService();
+  const stale = new DeliveryService({ runIfDue: async () => false });
   await stale.startDelivery({ ...params, resumeText: params.resumeText + '新批次' });
   assert.deepEqual(batches, [['甲', '乙']], '列表最后不足三条，也只发一个批量请求');
   assert.deepEqual(sent, ['乙'], '暂存岗位的JD改变后不能使用旧评估投递');
@@ -103,12 +104,12 @@ async function main() {
 
   changed = false; changedLocation = true; loaded.length = 0; sent.length = 0;
   config.filter.commute = { origin, maxDistanceKm: 15 };
-  const moved = new DeliveryService();
+  const moved = new DeliveryService({ runIfDue: async () => false });
   await moved.startDelivery({ ...params, resumeText: params.resumeText + '地址变更测试' });
   assert.deepEqual(sent, ['乙'], 'AI通过后重新打开的工作地点变远，也必须拒绝发送');
   assert.ok(moved.getLogs().some(item => item.message.includes('最新岗位已不符合筛选') && item.message.includes('距离')));
   loaded.length = 0; sent.length = 0; reviewed.length = 0; locationAfter = 'unknown';
-  const missingLocation = new DeliveryService();
+  const missingLocation = new DeliveryService({ runIfDue: async () => false });
   await missingLocation.startDelivery({ ...params, resumeText: params.resumeText + '地址变更为未知测试' });
   assert.deepEqual(sent, ['乙']); assert.deepEqual(reviewed, ['甲'], 'AI通过后地址缺失，保留到待确认列表');
   changedLocation = false; config.filter.commute = {};
@@ -125,7 +126,7 @@ async function main() {
     return { jobs: jobs.map((item: any) => ({ jobKey: item.jobKey, score: 90, passed: true, customGreeting: '您好，' + item.companyName,
       workRequirements: [{ requirementId: 'metro', status: 'met', evidence: '步行5分钟到地铁' }] })) };
   });
-  const retrying = new DeliveryService();
+  const retrying = new DeliveryService({ runIfDue: async () => false });
   (retrying as any).sleepInterruptible = async (ms: number) => { delays.push(ms); assert.equal(retrying.getStats().status, 'running'); return true; };
   await retrying.startDelivery({ ...params, resumeText: params.resumeText + '重试恢复测试' });
   assert.deepEqual(retryBatches, [['甲', '乙'], ['甲', '乙'], ['甲', '乙']], '失败后保留同一批岗位');
@@ -135,7 +136,7 @@ async function main() {
   assert.deepEqual([1, 2, 3, 4, 5, 6].map(n => evaluationRetrySeconds(n, 30)), [30, 60, 120, 240, 300, 300]);
   assert.equal(evaluationRetrySeconds(1, 90), 90);
   sent.length = 0; retries = 0;
-  const cancelledRetry = new DeliveryService();
+  const cancelledRetry = new DeliveryService({ runIfDue: async () => false });
   (cancelledRetry as any).sleepInterruptible = async () => { cancelledRetry.stop(); return false; };
   await cancelledRetry.startDelivery({ ...params, resumeText: params.resumeText + '重试等待停止测试' });
   assert.equal(retries, 1); assert.equal(cancelledRetry.getStats().status, 'idle'); assert.deepEqual(sent, [], '等待重试时停止，不再请求或投递');
@@ -146,7 +147,7 @@ async function main() {
     entered();
     return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
   });
-  const stopping = new DeliveryService();
+  const stopping = new DeliveryService({ runIfDue: async () => false });
   const run = stopping.startDelivery({ ...params, resumeText: params.resumeText + '停止测试' });
   await inFlight; stopping.stop(); await run;
   assert.equal(stopping.getStats().status, 'idle'); assert.equal(stopping.getStats().pendingEvaluationCount, 0);
@@ -167,13 +168,13 @@ async function main() {
     batches.push(jobs.map((item: any) => item.companyName));
     return { jobs: jobs.map((item: any) => ({ jobKey: item.jobKey, score: 90, passed: true, customGreeting: '您好，' + item.companyName })) };
   });
-  await new DeliveryService().startDelivery({ ...params, resumeText: params.resumeText + '详情补字段测试' });
+  await new DeliveryService({ runIfDue: async () => false }).startDelivery({ ...params, resumeText: params.resumeText + '详情补字段测试' });
   assert.deepEqual(sent, ['缺卡片字段'], '卡片缺字段先读其已核对详情补齐；招聘者活跃时间未知不无端跳过');
 
   config.filter.hrActiveDaysLimit = 0; cards = [card('临时详情失败')]; sent.length = 0; reviewed.length = 0;
   let detailAttempts = 0;
   stub(bossPageService, 'loadJobDetail', async () => { detailAttempts++; throw new Error('详情还没有绑定到所选职位'); });
-  const deferred = new DeliveryService();
+  const deferred = new DeliveryService({ runIfDue: async () => false });
   (deferred as any).sleepInterruptible = async () => true;
   await deferred.startDelivery({ ...params, resumeText: params.resumeText + '读详情失败保留测试' });
   assert.equal(detailAttempts, 3); assert.deepEqual(reviewed, ['临时详情失败']); assert.deepEqual(sent, []);
@@ -184,7 +185,7 @@ async function main() {
   });
   let outputCalls = 0;
   stub(llmService, 'chatJson', async () => { outputCalls++; return { jobs: [{ jobKey: 'job-0', score: 80 }] }; });
-  const outputReview = new DeliveryService();
+  const outputReview = new DeliveryService({ runIfDue: async () => false });
   (outputReview as any).sleepInterruptible = async () => true;
   await outputReview.startDelivery({ ...params, resumeText: params.resumeText + '已返回格式待确认测试' });
   assert.equal(outputCalls, 1); assert.deepEqual(reviewed, ['格式待确认']); assert.deepEqual(sent, [], '响应结论缺失保留待确认，不当网络失败重新生成');
@@ -202,14 +203,14 @@ async function main() {
   });
   let virtualNow = Date.now();
   stub(Date, 'now', () => virtualNow);
-  const aging = new DeliveryService();
+  const aging = new DeliveryService({ runIfDue: async () => false });
   aging.subscribe((_stats, log) => { if (log?.message.startsWith('[初筛暂存')) virtualNow += 90001; });
   await aging.startDelivery({ ...params, resumeText: params.resumeText + '候选逾期合并测试' });
   assert.deepEqual(batches, [['逾时候选']], '等待过久的小批次先评估，不继续攒满');
   assert.deepEqual(sent, ['逾时候选']); assert.equal(loaded.includes('稍后候选'), false);
   loaded.length = 0; sent.length = 0; batches.length = 0;
   stub(bossActionScheduler, 'isBusinessRestImminent', () => loaded.length > 0);
-  const beforeBreak = new DeliveryService();
+  const beforeBreak = new DeliveryService({ runIfDue: async () => false });
   await beforeBreak.startDelivery({ ...params, resumeText: params.resumeText + '业务长休息前合并测试' });
   assert.deepEqual(batches, [['逾时候选']], '尚未开始休息但下一次选择会达到休息点时，先评估候选');
   assert.deepEqual(sent, ['逾时候选']); assert.equal(beforeBreak.getStats().aiRequestCount, 1);

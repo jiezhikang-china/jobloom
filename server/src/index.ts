@@ -34,7 +34,7 @@ app.use('/api', (_req, res) => {
 
 // 健康检查
 app.get('/health', (_req, res) => {
-  res.json({ app: 'boss-job-agent', integrationVersion: 30, desktopManaged: !!process.env.BOSS_DESKTOP_TOKEN, status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ app: 'boss-job-agent', integrationVersion: 31, desktopManaged: !!process.env.BOSS_DESKTOP_TOKEN, status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // 静态托管前端生产页面 (开箱即用)

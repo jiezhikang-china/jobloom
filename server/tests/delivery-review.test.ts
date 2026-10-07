@@ -68,29 +68,29 @@ async function main() {
     detailFor = review => ({ job: job(review), jobDetailText: review.id === make(2).id ? '公司主营助贷，岗位负责贷款撮合服务。'
       : review.id === make(3).id ? '熟练掌握哥斯达黎加本土西班牙语（核心要求），负责音频转写。'
       : review.screening!.jobDetail, alreadyChatted: review.id === make(4).id, chatButtonLocator: {} });
-    const selected = [...records]; const service = new DeliveryService(); await service.startReviewDelivery(selected);
+    const selected = [...records]; const service = new DeliveryService({ runIfDue: async () => false }); await service.startReviewDelivery(selected);
     assert.deepEqual(sends, [make(1).jobHref, make(5).jobHref], '手动投递允许尚未确认作息，但仍排除最新助贷/语言硬门槛且跳过已沟通');
     assert.equal(records.length, 0); assert.equal(service.getStats().todayAppliedCount, 2); assert.equal(service.getStats().aiRequestCount, 0);
     assert.equal(service.getStats().status, 'finished');
     records = [make(6)]; sends.length = 0; opened.length = 0;
-    config.delivery.dailyMaxQuota = 0; const zero = new DeliveryService(); await zero.startReviewDelivery([...records]);
+    config.delivery.dailyMaxQuota = 0; const zero = new DeliveryService({ runIfDue: async () => false }); await zero.startReviewDelivery([...records]);
     assert.equal(opened.length, 0); assert.equal(records.length, 1); assert.equal(zero.getStats().todayAppliedCount, 0);
     config.delivery.dailyMaxQuota = 1; sendResult = { success: false, uncertain: true };
-    const uncertain = new DeliveryService(); await uncertain.startReviewDelivery([...records]);
+    const uncertain = new DeliveryService({ runIfDue: async () => false }); await uncertain.startReviewDelivery([...records]);
     assert.equal(uncertain.getStats().status, 'failed'); assert.equal(uncertain.getStats().todayAppliedCount, 0); assert.equal(records.length, 1);
     sendResult = { success: true, verified: true, continuationFailed: true };
-    const continuation = new DeliveryService(); await continuation.startReviewDelivery([...records]);
+    const continuation = new DeliveryService({ runIfDue: async () => false }); await continuation.startReviewDelivery([...records]);
     assert.equal(continuation.getStats().status, 'failed'); assert.equal(continuation.getStats().todayAppliedCount, 1);
     assert.equal(records.length, 0, '已发送但继续失败的记录不能留下来再投递');
     records = [make(7), make(8)]; sends.length = 0; chronology.length = 0;
     config.delivery.dailyMaxQuota = 2;
     sendResult = { success: true, verified: true, continued: true };
-    const paced = new DeliveryService(); (paced as any).sleepInterruptible = async () => { chronology.push('selection-wait'); return true; };
+    const paced = new DeliveryService({ runIfDue: async () => false }); (paced as any).sleepInterruptible = async () => { chronology.push('selection-wait'); return true; };
     await paced.startReviewDelivery([...records]);
     assert.deepEqual(chronology, ['open:' + make(7).jobHref, 'send:' + make(7).jobHref, 'open:' + make(8).jobHref, 'send:' + make(8).jobHref],
       '共享队列控制实际操作，流程不再叠加额外的岗位等待');
     records = [make(9), make(10)]; opened.length = 0;
-    const stopped = new DeliveryService(); let selections = 0;
+    const stopped = new DeliveryService({ runIfDue: async () => false }); let selections = 0;
     (stopped as any).paceJobSelection = async () => { if (selections++ > 0) stopped.stop(); return selections === 1; };
     await stopped.startReviewDelivery([...records]);
     assert.equal(stopped.getStats().status, 'idle'); assert.equal(opened.length, 1); assert.equal(records.length, 1, '停止不投递后续记录');
@@ -102,7 +102,7 @@ async function main() {
       : { address: review.id === make(11).id ? '很远的办公地址' : '附近办公地址',
         point: { longitude: review.id === make(11).id ? 121.9 : 121.49, latitude: 31.23, coordinateSystem: 'boss' } } },
       jobDetailText: review.screening!.jobDetail, alreadyChatted: false, chatButtonLocator: {} });
-    const located = new DeliveryService(); await located.startReviewDelivery([...records]);
+    const located = new DeliveryService({ runIfDue: async () => false }); await located.startReviewDelivery([...records]);
     assert.deepEqual(sends, [make(13).jobHref, make(14).jobHref], '手动选择核对当前距离；未知地点不直接投递，已废弃交通查询');
     assert.deepEqual(records.map(item => item.id), [make(12).id], '未知工作地点保留待确认，过远淘汰');
     assert.equal(located.getStats().todayAppliedCount, 2);
@@ -120,13 +120,13 @@ async function main() {
       if ([make(23).id, make(24).id].includes(review.id)) value.job.cityName = '';
       return value;
     };
-    const partial = new DeliveryService(); await partial.startReviewDelivery([...records]);
+    const partial = new DeliveryService({ runIfDue: async () => false }); await partial.startReviewDelivery([...records]);
     assert.equal(partial.getStats().status, 'finished', '单个岗位读取失败不能中断整批');
     assert.deepEqual(sends, [make(26).jobHref, make(27).jobHref]);
     assert.deepEqual(records.map(item => item.id), [21,22,23,25].map(n => make(n).id), '未投递记录保留；已沟通优先去重，无需依赖缺失字段');
     records = [make(28), make(29)]; sends.length = 0; opened.length = 0;
     detailFor = () => { throw new Error('CAPTCHA_REQUIRED: 请先在 Chrome 中完成 BOSS 安全验证'); };
-    const restricted = new DeliveryService(); await restricted.startReviewDelivery([...records]);
+    const restricted = new DeliveryService({ runIfDue: async () => false }); await restricted.startReviewDelivery([...records]);
     assert.equal(restricted.getStats().status, 'failed');
     assert.equal(opened.length, 1, '平台验证必须停止，不得当作单个岗位加载问题继续');
     assert.equal(sends.length, 0);

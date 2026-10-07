@@ -1,3 +1,4 @@
+import './fixtures/activate-isolated-safety.js';
 import assert from 'node:assert/strict';
 import { configManager } from '../src/config/config.manager.js';
 import { stateManager, todayStr } from '../src/config/state.manager.js';
@@ -5,21 +6,23 @@ import { DeliveryService } from '../src/services/delivery.service.js';
 import { bossPageService, type DOMJobCardInfo } from '../src/services/boss.page.service.js';
 import { workConditionReviews } from '../src/services/work-condition-reviews.js';
 import { llmService } from '../src/services/llm.service.js';
+import { notSuitableStore } from '../src/services/not-suitable-store.js';
 
 const restores: Array<() => void> = [];
 function stub(object: any, key: string, replacement: any) { const previous = object[key]; object[key] = replacement; restores.push(() => { object[key] = previous; }); }
 const original = configManager.getConfig();
-const config = { ...original, filter: { ...original.filter, cityName: '上海', candidateLanguages: '英语CET4',
+const config = { ...original, filter: { ...original.filter, cityName: '上海', candidateLanguages: '英语CET4', commute: {},
   salaryMin: 0, salaryMax: 0, degree: [], experience: [], hrActiveDaysLimit: 0, companyBlacklist: [], requiredKeywords: [],
   skipMissingCompanyIntro: false, skipVagueJobDescription: false,
   workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true }] },
   delivery: { jobSource: 'search' as const, dailyMaxQuota: 1, minDelaySeconds: 0, maxDelaySeconds: 0 } };
-const card = (key: string, name = '数据标注'): DOMJobCardInfo => ({ index: 0, jobHref: '/job_detail/' + key + '.html', jobName: name,
+const card = (key: string, name = '数据标注'): DOMJobCardInfo => ({ index: 0, jobHref: '/job_detail/' + Buffer.from(key).toString('hex') + '.html', jobName: name,
   companyName: key, cityName: '上海', salary: '6-8K', experience: '经验不限', degree: '大专', skills: [], activeTimeDesc: '今日活跃', cardLocator: { key } as any });
 const cards = [card('西语口音', '哥斯达黎加数据标注'), card('日语岗位', '日语N1数据标注'), card('英语流利'), card('普通标注')];
 const marked: string[] = []; const loaded: string[] = []; const sent: string[] = [];
 let current = ''; let requests = 0; let reviewed = 0;
 async function main() {
+  stub(notSuitableStore, 'matches', () => false);
   stub(configManager, 'getConfig', () => config); stub(stateManager, 'loadQuota', () => ({ date: todayStr(), count: 0 })); stub(stateManager, 'saveQuota', () => {});
   stub(bossPageService, 'initJobPage', async () => ({})); stub(bossPageService, 'getVisibleJobCards', async () => cards);
   stub(bossPageService, 'isCardStillTarget', async () => true); stub(bossPageService, 'isDetailStillTarget', async (_name: string, company: string) => current === company);
@@ -39,12 +42,12 @@ async function main() {
     assert.deepEqual(batch.map((item: any) => item.companyName), ['普通标注'], '不满足语言门槛的岗位不得进入 AI 暂存');
     return { jobs: batch.map((item: any) => ({ jobKey: item.jobKey, score: 90, passed: true, reason: '匹配', customGreeting: '您好' })) };
   });
-  const service = new DeliveryService();
+  const service = new DeliveryService({ runIfDue: async () => false });
   await service.startDelivery({ targetRole: '数据标注', keywords: ['数据标注'], resumeText: '希望八小时双休的无经验工作。', candidateSource: 'requirements' });
-  assert.deepEqual(marked, ['西语口音', '日语岗位', '英语流利']); assert.equal(loaded.includes('日语岗位'), true, '补读全文确认硬性门槛，避免误判优先或可培训');
-  assert.deepEqual(sent, ['普通标注']); assert.equal(reviewed, 0); assert.equal(requests, 1);
+  assert.deepEqual(marked, [], '语言资格不符在本地淘汰，不属于用户明确排除项，不发送网站反馈'); assert.equal(loaded.includes('日语岗位'), true, '补读全文确认硬性门槛，避免误判优先或可培训');
+  assert.deepEqual(sent, ['普通标注'], JSON.stringify(service.getLogs().map(item => item.message))); assert.equal(reviewed, 0); assert.equal(requests, 1);
   assert.equal(service.getStats().localDecisionCount, 3); assert.equal(service.getStats().todayAppliedCount, 1);
   assert.equal(service.getStats().status, 'finished');
-  console.log('PASS | 投递主循环语言硬门槛先淘汰、原原因标记不合适、零待确认、零无用AI、普通岗位保留');
+  console.log('PASS | 投递主循环语言硬门槛先淘汰、不滥用不合适反馈、零待确认、零无用AI、普通岗位保留');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => restores.reverse().forEach(restore => restore()));

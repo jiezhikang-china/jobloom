@@ -1,3 +1,4 @@
+import './fixtures/activate-isolated-safety.js';
 import assert from 'node:assert/strict';
 import { configManager } from '../src/config/config.manager.js';
 import { stateManager, todayStr } from '../src/config/state.manager.js';
@@ -48,12 +49,12 @@ async function main() {
   stub(bossPageService, 'executeChatClick', async () => { greetings++; return { success: true }; });
   stub(workConditionReviews, 'add', () => { reviews++; }); stub(workConditionReviews, 'removeForJob', () => {});
   stub(llmService, 'chatJson', async () => { requests++; throw new Error('不应问 AI'); });
-  const service = new DeliveryService();
+  const service = new DeliveryService({ runIfDue: async () => false });
   await service.startDelivery({ targetRole: 'BOSS 自选求职期望', keywords: ['不使用的搜索词'], positionCode: '100901',
     resumeText: '希望寻找工作内容明确并且公司有介绍的岗位。', candidateSource: 'requirements', targetPositions: targets });
-  assert.deepEqual(opened, selected); assert.deepEqual(marked, selected);
+  assert.deepEqual(opened, selected); assert.deepEqual(marked, [], '缺失公司介绍只在本地淘汰，不发送网站反馈');
   assert.equal(requests, 0); assert.equal(greetings, 0); assert.equal(reviews, 0);
-  assert.equal(service.getStats().markedNotSuitCount, 3); assert.equal(service.getStats().totalScanned, 3);
+  assert.equal(service.getStats().markedNotSuitCount, 0); assert.equal(service.getStats().totalScanned, 3);
   console.log('PASS | 按三个目标设置并遍历自选期望、忽略无关期望与搜索分类、缺失介绍先淘汰、零 AI 和零发送');
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => restores.reverse().forEach((restore) => restore()));

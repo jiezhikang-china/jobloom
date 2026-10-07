@@ -114,6 +114,7 @@ function resolveElements(steps: LocatorStep[]): Element[] {
 export class CdpPage {
   private static activePages = new Set<CdpPage>();
   private currentUrl: string;
+  private authResponses = new Map<string, boolean>();
   private mainFrameId = '';
   private mainLoaderId = '';
   private commitSequence = 0;
@@ -135,9 +136,44 @@ export class CdpPage {
     this.currentUrl = initialUrl;
     CdpPage.activePages.add(this);
     connection.onEvent((message) => {
+      if (message.method === 'Network.loadingFailed') this.authResponses.delete(message.params?.requestId);
+      if (message.method === 'Network.loadingFinished' && this.paceActions) {
+        const requestId = message.params?.requestId;
+        const identityResponse = this.authResponses.get(requestId);
+        this.authResponses.delete(requestId);
+        if (identityResponse !== undefined && message.params?.encodedDataLength < 1024 * 1024) {
+          void this.connection.send('Network.getResponseBody', { requestId }, 2000).then(result => {
+            const body = JSON.parse(result.base64Encoded ? Buffer.from(result.body, 'base64').toString('utf8') : result.body);
+            if (body?.code === undefined || body.code === 0) return;
+            const text = [body.message, body.msg, body.zpData?.message].filter(v => typeof v === 'string').join(' ');
+            if (identityResponse || /未登录|登录.{0,8}(?:失效|过期)|请重新登录|强制下线|账号.{0,16}(?:其他|异地|别处).{0,16}登录/.test(text)) {
+              this.safety.halt('login_expired', 'BOSS 身份或岗位接口返回登录无效，自动操作已停止，请人工核对当前页面');
+            }
+          }).catch(() => { /* Unreadable bodies are not evidence of a forced logout. */ });
+        }
+      }
       if (message.method === 'Network.responseReceived' && this.paceActions) {
         const response = message.params?.response;
+        if (response?.status === 200) {
+          try {
+            const url = new URL(response.url);
+            if (url.hostname === 'www.zhipin.com' && (/^\/wapi\/zpgeek\//.test(url.pathname)
+              || url.pathname === '/wapi/zpuser/wap/getUserInfo.json')) {
+              this.authResponses.set(message.params.requestId, url.pathname === '/wapi/zpuser/wap/getUserInfo.json');
+              if (this.authResponses.size > 100) this.authResponses.delete(this.authResponses.keys().next().value!);
+            }
+          } catch {}
+        }
         try {
+          if ([401, 403].includes(response?.status)) {
+            const url = new URL(response.url);
+            if (url.hostname === 'www.zhipin.com' && (/^\/wapi\/zpgeek\//.test(url.pathname)
+              || url.pathname === '/wapi/zpuser/wap/getUserInfo.json')) {
+              this.safety.halt(response.status === 401 ? 'login_expired' : 'account_restricted',
+                response.status === 401 ? 'BOSS 岗位业务请求要求重新登录（HTTP 401），自动操作已停止，请人工处理'
+                  : 'BOSS 拒绝岗位业务请求（HTTP 403），自动操作已停止，请人工核对账号');
+            }
+          }
           if (response?.status === 429 && new URL(response.url).hostname === 'www.zhipin.com') {
             const header = Object.entries(response.headers || {}).find(([key]) => key.toLowerCase() === 'retry-after')?.[1];
             const retry = typeof header === 'string' ? /^\d+$/.test(header) ? Number(header) * 1000 : Math.max(0, Date.parse(header) - Date.now()) : 0;

@@ -1,3 +1,4 @@
+import './fixtures/activate-isolated-safety.js';
 import assert from 'node:assert/strict';
 import { configManager } from '../src/config/config.manager.js';
 import { stateManager, todayStr } from '../src/config/state.manager.js';
@@ -79,7 +80,7 @@ async function main() {
         evidence: job.companyName.endsWith('review') ? '作息面议' : '每天工作8小时' }] })) };
   });
 
-  const service = new DeliveryService();
+  const service = new DeliveryService({ runIfDue: async () => false });
   await service.startDelivery({ targetRole: '行政助理', keywords: ['行政'],
     resumeText: '详情优先测试：擅长文档归档和行政工作。' + Date.now(), candidateSource: 'resume' });
   assert.equal(service.getStats().status, 'finished');

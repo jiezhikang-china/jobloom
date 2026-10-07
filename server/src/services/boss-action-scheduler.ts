@@ -6,7 +6,7 @@ import { bossOperationPolicy } from './boss-operation-policy.js';
 import { bossAutomationSafety } from './boss-automation-safety.js';
 
 export type BossActionKind = 'control' | 'input' | 'navigation' | 'route' | 'feedback' | 'submit' | 'confirm' | 'detail' | 'source' | 'list';
-interface ActionScope { signal?: AbortSignal; beforeAction?: () => Promise<void>; onWait?: (seconds: number, kind: BossActionKind) => void; }
+interface ActionScope { managedBusinessRest?: boolean; signal?: AbortSignal; beforeAction?: () => Promise<void>; onWait?: (seconds: number, kind: BossActionKind) => void; }
 interface Settings { kindIntervalsMs?: Partial<Record<BossActionKind, number>>; submitIntervalMs?: number; businessBurst?: number; intervalMs: number; burst: number; restMs: number; feedbackMs: number; maxPerMinute?: number; maxPerHour?: number; writesPerHour?: number; }
 interface ActionState { counterVersion?: number; businessSequenceCount?: number; lastBusinessAt?: number; blockedUntil: number; level: number; lastLimitAt: number; sequenceCount?: number; actionTimes?: number[]; writeTimes?: number[]; recentActions?: Array<{ time: number; kind: BossActionKind; result: 'ok' | 'error' }>; }
 const scopes = new AsyncLocalStorage<ActionScope>();
@@ -56,8 +56,7 @@ export class BossActionScheduler {
     }
     // Old sequenceCount used individual DOM actions; it cannot be converted into business checkpoints.
     if (state?.counterVersion === 2 && Number.isInteger(state.businessSequenceCount) && state.businessSequenceCount >= 0
-      && Number.isFinite(state.lastBusinessAt) && state.lastBusinessAt <= this.now()
-      && this.now() - state.lastBusinessAt < restMs) {
+      && Number.isFinite(state.lastBusinessAt) && state.lastBusinessAt <= this.now()) {
       this.businessCount = Math.min(1000, state.businessSequenceCount); this.lastBusinessAt = state.lastBusinessAt;
     }
     if (Number.isFinite(state?.blockedUntil) && state.blockedUntil > this.now() && state.blockedUntil <= this.now() + 24 * 3600000) {
@@ -95,7 +94,7 @@ export class BossActionScheduler {
       this.lastKindAt.has(kind) ? this.lastKindAt.get(kind)! + kindGap : 0,
       writes && this.lastWriteAt ? this.lastWriteAt + writeGap : 0,
       kind !== 'confirm' && settings.burst > 0 && consecutive >= settings.burst && this.lastAt ? this.lastAt + settings.restMs : 0,
-      kind !== 'confirm' && settings.businessBurst && this.businessCount >= settings.businessBurst && this.lastBusinessAt
+      kind !== 'confirm' && !scopes.getStore()?.managedBusinessRest && settings.businessBurst && this.businessCount >= settings.businessBurst && this.lastBusinessAt
         ? this.lastBusinessAt + settings.restMs : 0, budget) - now);
   }
   public waitSeconds(kind: BossActionKind): number { return Math.ceil(this.waitMs(kind) / 1000); }
@@ -104,6 +103,14 @@ export class BossActionScheduler {
     const { businessBurst, restMs } = this.settings();
     return Boolean(businessBurst && this.businessCount >= businessBurst - 1 && this.lastBusinessAt
       && this.now() - this.lastBusinessAt < restMs);
+  }
+  /** Managed delivery rests close the browser at an application boundary, never inside a stale locator action. */
+  public needsBusinessRest(): boolean {
+    const limit = this.settings().businessBurst;
+    return Boolean(limit && this.businessCount >= limit);
+  }
+  public completeBusinessRest(): void {
+    this.businessCount = 0; this.lastBusinessAt = 0; this.count = 0; this.save();
   }
   /** Keep optional feedback from opening a dialog that cannot be completed during a long rest. */
   public canStartFeedback(): boolean { return this.waitMs('feedback') <= 30000; }
@@ -119,7 +126,7 @@ export class BossActionScheduler {
         const now = this.now();
         this.actionTimes = this.actionTimes.filter(time => time > now - 3600000); this.writeTimes = this.writeTimes.filter(time => time > now - 3600000);
         if (this.lastAt && now - this.lastAt >= settings.restMs) this.count = 0;
-        if (this.lastBusinessAt && now - this.lastBusinessAt >= settings.restMs) this.businessCount = 0;
+        if (!scope?.managedBusinessRest && this.lastBusinessAt && now - this.lastBusinessAt >= settings.restMs) this.businessCount = 0;
         const wait = this.waitMs(kind);
         if (!wait) break;
         if (!announced && wait >= 1000) { scope?.onWait?.(Math.ceil(wait / 1000), kind); announced = true; }

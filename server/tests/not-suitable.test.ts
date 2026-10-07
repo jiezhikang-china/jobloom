@@ -1,3 +1,4 @@
+import './fixtures/activate-isolated-safety.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -32,7 +33,7 @@ async function main() {
     stub(bossPageService, 'getVisibleJobCards', async () => [{ ...target, companyName: target.companyName, salary: '', cityName: '上海', skills: [], cardLocator: {} }]);
     stub(bossPageService, 'isJobListPage', async () => true); stub(bossPageService, 'scrollDownForMore', async () => {});
     stub(bossPageService, 'loadJobDetail', async () => { throw new Error('已屏蔽公司不得重复读详情'); });
-    const task = new DeliveryService();
+    const task = new DeliveryService({ runIfDue: async () => false });
     (task as any).sleepInterruptible = async () => true;
     await task.startDelivery({ targetRole: '客服', keywords: ['客服'], resumeText: '独立测试简历'.repeat(20) });
     assert.equal(task.getStats().totalScanned, 0); assert.equal(task.getStats().aiRequestCount, 0);

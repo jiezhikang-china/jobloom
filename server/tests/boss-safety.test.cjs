@@ -58,7 +58,7 @@ async function main() {
     await writes.run('feedback', async () => {}); assert.equal(clock - firstWrite, 3600000, '沟通与反馈共用小时写入额度');
 
     local = new BossAutomationSafety(null);
-    const task = new DeliveryService(); task.isTaskActive = true;
+    const task = new DeliveryService({ runIfDue: async () => false }); task.isTaskActive = true;
     let sitePolls = 0; stub(browserService, 'checkCaptcha', async () => { sitePolls++; return false; });
     const captchaWait = task.handleCaptcha(); await pause(300);
     assert.equal(task.getStats().status, 'paused'); assert.equal(sitePolls, 0, '验证等待不能轮询网站或自动恢复');

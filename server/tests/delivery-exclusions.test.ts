@@ -1,3 +1,4 @@
+import './fixtures/activate-isolated-safety.js';
 import assert from 'node:assert/strict';
 import { configManager } from '../src/config/config.manager.js';
 import { stateManager, todayStr } from '../src/config/state.manager.js';
@@ -62,7 +63,7 @@ async function main() {
     const jobs = JSON.parse(messages[1].content.split('【待评估岗位列表（逐个评估）】：\n')[1]);
     return { jobs: jobs.map((item: any) => ({ jobKey: item.jobKey, score: 90, passed: true, reason: '匹配', customGreeting: '您好' })) };
   });
-  const service = new DeliveryService();
+  const service = new DeliveryService({ runIfDue: async () => false });
   await service.startDelivery({ targetRole: '工作条件', keywords: [''], resumeText: '希望每天工作八小时并且周末双休。',
     candidateSource: 'requirements', rulesOnly: true });
   assert.deepEqual(sent, ['明确符合']);
@@ -74,7 +75,7 @@ async function main() {
   assert.equal(service.getStats().todayAppliedCount, 1);
 
   changingCompany = true; loads = new Map(); sent.length = 0; cards = [card('公司业务改变')];
-  const stale = new DeliveryService();
+  const stale = new DeliveryService({ runIfDue: async () => false });
   await stale.startDelivery({ targetRole: '行政助理', keywords: ['行政助理'], resumeText: '完整简历摘要。'.repeat(15), candidateSource: 'resume' });
   assert.equal(requests, 1);
   assert.equal(loads.get('公司业务改变'), 2);

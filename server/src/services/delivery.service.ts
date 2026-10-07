@@ -1,3 +1,4 @@
+import { bossSessionRest, type BossSessionRest } from './boss-session-rest.js';
 import { boundedInteger, configManager } from '../config/config.manager.js';
 import { stateManager, todayStr } from '../config/state.manager.js';
 import { bossPageService, DOMJobCardInfo, type ChatResult } from './boss.page.service.js';
@@ -57,7 +58,7 @@ export class DeliveryService {
   private evaluationAbort?: AbortController;
   private operationAbort?: AbortController;
 
-  constructor() {
+  constructor(private readonly sessionRest: Pick<BossSessionRest, 'runIfDue'> = bossSessionRest) {
     // 启动即恢复"今日已投递"计数（跨自然日会自动归零，避免隔天仍被判定配额已满）
     const quota = stateManager.loadQuota();
     this.stats.todayAppliedCount = quota.count;
@@ -112,7 +113,7 @@ export class DeliveryService {
   }
 
   public pause(): void {
-    if (!this.isTaskActive || this.stats.status !== 'running') return;
+    if (!this.isTaskActive || !['running', 'sage_time'].includes(this.stats.status)) return;
     this.stats.isPaused = true;
     this.stats.status = 'paused';
     this.log('warn', '用户主动暂停了自动投递任务（点击【恢复运行】继续）');
@@ -185,6 +186,31 @@ export class DeliveryService {
     }
   }
 
+  private browserGeneration = 0;
+  /** Rest only between complete job operations, then discard old page/locator snapshots. */
+  private async restAtBoundary(reopen?: () => Promise<unknown>): Promise<boolean> {
+    let loggedClosed = false;
+    const rested = await this.sessionRest.runIfDue({
+      signal: this.operationAbort?.signal,
+      beforeResume: async () => {
+        while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
+        if (this.isStopRequested) throw new Error('投递任务已停止');
+      },
+      onState: (stage, seconds) => {
+        if (!this.stats.isPaused) this.stats.status = stage === 'finished' ? 'running' : 'sage_time';
+        this.stats.sageTimeRemainingSeconds = stage === 'finished' ? undefined : seconds;
+        if (stage === 'closing') this.log('info', '[关闭浏览器休息] 累计业务检查达到阈值，正在关闭 BOSS 专用浏览器');
+        if (stage === 'closed' && !loggedClosed) {
+          loggedClosed = true; this.log('info', '[浏览器已关闭] 开始休息 ' + Math.ceil(bossOperationPolicy.restMs / 60000) + ' 分钟，保留登录资料与投递计数');
+        }
+        if (stage === 'opening') this.log('info', '[休息结束] 正在重开 BOSS 浏览器并核对登录');
+        if (stage === 'finished') this.log('info', '[恢复浏览] 新页面登录已确认，重新读取列表与岗位，保留本轮去重记录');
+        this.emit();
+      },
+    });
+    if (rested) { this.browserGeneration++; await reopen?.(); }
+    return rested;
+  }
   /** Website disinterest is reserved for the user's explicit excluded jobs/companies, never AI scores. */
   private async markExplicitExclusion(locator: Parameters<typeof bossPageService.markJobNotSuit>[0],
     target: Parameters<typeof bossPageService.markJobNotSuit>[1], job: BossJobItem, detail: string,
@@ -204,7 +230,7 @@ export class DeliveryService {
     const controller = new AbortController(); this.operationAbort = controller;
     let lastWaitLogAt = 0;
     try {
-      await bossActionScheduler.withScope({ signal: controller.signal, beforeAction: async () => {
+      await bossActionScheduler.withScope({ managedBusinessRest: true, signal: controller.signal, beforeAction: async () => {
         bossAutomationSafety.assertAllowed();
         while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
         if (this.isStopRequested) throw new Error('投递任务已停止');
@@ -216,7 +242,7 @@ export class DeliveryService {
             : '[页面操作间隔] 等待 ' + seconds + ' 秒后继续' + (kind === 'route' ? '查询路线' : ''));
         }
       } }, task);
-    } finally { if (this.operationAbort === controller) this.operationAbort = undefined; }
+    } finally { browserService.releaseRestGate(); this.stats.sageTimeRemainingSeconds = undefined; if (this.operationAbort === controller) this.operationAbort = undefined; }
   }
   private async runReviewDelivery(reviews: WorkConditionReview[]): Promise<void> {
     if (this.isTaskActive) throw new Error('投递任务已经在运行中');
@@ -237,6 +263,7 @@ export class DeliveryService {
           this.log('warn', '今日投递已达预设配额上限，尚未投递的待确认记录已保留'); break;
         }
         if (!(await this.paceJobSelection(cfg.delivery))) break;
+        await this.restAtBoundary();
         if (!workConditionReviews.listEligible(cfg.filter).some(item => item.id === review.id)) {
           this.log('warn', '[手动跳过] 记录已移除或不符合排除条件：' + review.companyName + ' - ' + review.jobName); continue;
         }
@@ -290,7 +317,10 @@ export class DeliveryService {
               this.recordConfirmedChat(actualTarget, result);
               this.log('success', '✅ 投递成功：' + actualTarget.companyName + ' - ' + actualTarget.jobName + '，今日累计 ' + this.stats.todayAppliedCount + ' 家');
             } else if (result.uncertain) throw new Error('已触发沟通，但尚未确认发送结果；请查看平台会话后继续，勿重复投递');
-            else if (result.loginRequired) throw new Error('BOSS 登录失效，请登录后投递');
+            else if (result.loginRequired) {
+              bossAutomationSafety.halt('login_expired', 'BOSS 沟通页面要求重新登录，自动操作已停止，请人工处理');
+              throw new Error('BOSS 登录失效，请登录后投递');
+            }
             else if (result.needCaptcha) { await this.handleCaptcha(); throw new Error('验证已处理，请重新选择尚未投递的岗位'); }
             else if (result.quotaExceeded) { this.stopForPlatformQuota(); this.isStopRequested = true; }
             else if (result.isCoolDown) { await this.handlePlatformLimit(); throw new Error('平台限频后的自动操作已停止，尚未投递记录已保留，请人工核对后重新选择'); }
@@ -365,6 +395,7 @@ export class DeliveryService {
         this.emit();
         return;
       }
+      await this.restAtBoundary();
       const useSavedExpectations = cfg.delivery.jobSource === 'saved_expectations';
       let sources = params.keywords;
       if (useSavedExpectations) {
@@ -420,6 +451,7 @@ export class DeliveryService {
         }
         this.log('info', useSavedExpectations ? '正在打开 BOSS 自选岗位：' + keyword : '正在搜索岗位：' + keyword);
 
+        await this.restAtBoundary();
         let pageReady = false;
         for (let attempt = 0; attempt < 2 && !this.isStopRequested; attempt++) {
           try {
@@ -484,6 +516,7 @@ export class DeliveryService {
             evaluation = { passed: false, score: 0, customGreeting: '', reason: locationDecision.reason, evaluationSource: 'rules',
               needsReview: true, needsCommuteConfirmation: true, requirementAssessment: [] };
           }
+          if (await this.restAtBoundary(() => openList(keyword))) reopen = true;
           let cardLocator = jobCard.cardLocator;
           let detailRes = candidate.detail;
           const sourceLabel = evaluation.evaluationSource === 'rules' ? '本地筛选' : evaluation.evaluationSource === 'cache' ? '已有评估' : 'AI评估';
@@ -598,9 +631,23 @@ export class DeliveryService {
               companyName: jobCard.companyName,
               ...scoreExtra,
             });
-            if (evaluation.evaluationSource === 'rules'
-              && await this.markExplicitExclusion(cardLocator, { ...jobCard, sourceHref: candidate.sourceHref },
+            if (evaluation.evaluationSource === 'rules' && exclusion) {
+              // A rest invalidates feedback locators as well as submission buttons.
+              if (reopen) {
+                const cards = await bossPageService.getVisibleJobCards();
+                const fresh = cards.find(card => sameJobLink(card.jobHref, jobCard.jobHref))
+                  || (candidate.sourceHref ? cards.find(card => sameJobLink(card.jobHref, candidate.sourceHref!)) : undefined);
+                if (!fresh) { this.emit(); return; }
+                const detail = await bossPageService.loadJobDetail(fresh.cardLocator, fresh.jobName, fresh.companyName,
+                  fresh.jobHref, { ...detailOptions, refreshCompany: true });
+                const actual = { ...fresh }; applyDetailData(actual, detail);
+                const latest = { ...mockJobItem, jobName: actual.jobName, brandName: actual.companyName,
+                  brandIndustry: detail.brandIndustry, companyInfo: detail.companyInfo, skills: actual.skills };
+                if (await this.markExplicitExclusion(fresh.cardLocator, actual, latest, detail.jobDetailText,
+                  cfg.filter, exclusionText)) this.stats.markedNotSuitCount++;
+              } else if (await this.markExplicitExclusion(cardLocator, { ...jobCard, sourceHref: candidate.sourceHref },
                 mockJobItem, candidate.jobDetail, cfg.filter, exclusionText)) this.stats.markedNotSuitCount++;
+            }
             this.emit();
             return;
           }
@@ -651,6 +698,7 @@ export class DeliveryService {
           }
 
           if (chatResult.loginRequired) {
+            bossAutomationSafety.halt('login_expired', 'BOSS 沟通页面要求重新登录，自动操作已停止，请人工处理');
             throw new Error('BOSS 直聘登录态在沟通前失效，任务已停止；请重新扫码登录');
           }
 
@@ -710,6 +758,7 @@ export class DeliveryService {
           if (!pending.length || this.isStopRequested) return;
           while (this.stats.isPaused && !this.isStopRequested) await new Promise((resolve) => setTimeout(resolve, 1000));
           if (this.isStopRequested) return;
+          await this.restAtBoundary(() => openList(keyword));
           const candidates = pending.splice(0);
           this.stats.pendingEvaluationCount = candidates.length;
           this.stats.phase = 'evaluating';
@@ -756,7 +805,7 @@ export class DeliveryService {
         };
 
 
-        while (!this.isStopRequested && noNewJobScrollAttempts < 6) {
+        scanJobs: while (!this.isStopRequested && noNewJobScrollAttempts < 6) {
           this.ensureQuotaFresh();
 
           // 检查每日配额
@@ -776,8 +825,10 @@ export class DeliveryService {
             break;
           }
 
+          if (await this.restAtBoundary(() => openList(keyword))) noNewJobScrollAttempts = 0;
           // 扫描当前页面可见卡片
           const cards = await bossPageService.getVisibleJobCards();
+          const snapshotGeneration = this.browserGeneration;
           let newlyFoundInThisBatch = 0;
 
           for (const previewCard of cards) {
@@ -786,6 +837,9 @@ export class DeliveryService {
               this.log('info', '[AI 提前合并] 候选已等待较久或即将休息，先评估 ' + pending.length + ' 个岗位');
               await flushEvaluations();
               if (this.isStopRequested || this.stats.status === 'finished') return;
+            }
+            if (await this.restAtBoundary(() => openList(keyword)) || snapshotGeneration !== this.browserGeneration) {
+              noNewJobScrollAttempts = 0; continue scanJobs;
             }
             const jobCard = { ...previewCard, skills: [...previewCard.skills] };
             if (notSuitableStore.matches(jobCard.jobHref, '')) continue;

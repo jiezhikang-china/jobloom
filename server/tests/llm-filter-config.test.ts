@@ -1,3 +1,4 @@
+import './fixtures/activate-isolated-safety.js';
 import assert from 'node:assert/strict';
 import { configManager } from '../src/config/config.manager.js';
 import { llmService } from '../src/services/llm.service.js';
@@ -17,8 +18,8 @@ const originalLoadQuota = stateManager.loadQuota;
 async function main(): Promise<void> {
   const config = {
     ...originalConfig,
-    llm: { ...originalConfig.llm, connectionMode: 'api' as const, apiKey: 'test-api-key-123456', model: 'GLM-4.7-Flash', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
-    filter: { ...originalConfig.filter, requiredKeywords: ['React', 'TypeScript'], workRequirements: [], minLlmMatchScore: 75 },
+    llm: { ...originalConfig.llm, connectionMode: 'api' as const, thinking: 'disabled' as 'disabled' | 'enabled', apiKey: 'test-api-key-123456', model: 'GLM-4.7-Flash', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
+    filter: { ...originalConfig.filter, requiredKeywords: ['React', 'TypeScript'], workRequirements: [], minLlmMatchScore: 75, companyBlacklist: [], commute: {}, skipMissingCompanyIntro: false, skipVagueJobDescription: false },
     delivery: { ...originalConfig.delivery, dailyMaxQuota: 0 },
   };
   const normalize = (configManager as any).normalize.bind(configManager);
@@ -58,7 +59,7 @@ async function main(): Promise<void> {
   config.llm.baseUrl = 'https://open.bigmodel.cn/api/paas/v4';
   config.llm.thinking = 'disabled';
   globalThis.fetch = (async () => new Response(JSON.stringify({ choices: [{ message: { content: '', reasoning_content: '{"ok":true}' } }] }), { status: 200 })) as typeof fetch;
-  await assert.rejects(llmService.chatJson([{ role: 'user', content: '返回 JSON' }], 1), /没有最终答案/);
+  await assert.rejects(llmService.chatJson([{ role: 'user', content: '返回 JSON' }], 1), /没有最终(?:评估)?答案/);
   globalThis.fetch = (async () => new Response(JSON.stringify({ choices: [{ finish_reason: 'length', message: { content: '{"ok":' } }] }), { status: 200 })) as typeof fetch;
   await assert.rejects(llmService.chatJson([{ role: 'user', content: '返回 JSON' }], 1), /被截断/);
   globalThis.fetch = (async () => new Response(
@@ -102,7 +103,7 @@ async function main(): Promise<void> {
   let opened = 0;
   (stateManager as any).loadQuota = () => ({ date: todayStr(), count: 0 });
   (bossPageService as any).initJobPage = async () => { opened++; return {}; };
-  const delivery = new DeliveryService();
+  const delivery = new DeliveryService({ runIfDue: async () => false });
   await delivery.startDelivery({ targetRole: '前端工程师', keywords: ['前端'], resumeText: '测试简历' });
   assert.equal(delivery.getStats().status, 'finished');
   assert.equal(opened, 0, '0 配额不应打开职位页面');

@@ -102,6 +102,25 @@ async function main() {
   assert.equal(stageClock - feedbackAt, 2500, '提交保持2.5秒写入间隔，确认动作不额外长等');
   stage.limit(120000);
   assert.equal(stage.canStartFeedback(), false);
+  let managedClock = 40000000, managedState: any;
+  const managedPolicy = { intervalMs: 0, burst: 0, businessBurst: 2, restMs: 900000, feedbackMs: 0 };
+  const managed = new BossActionScheduler(() => managedPolicy, () => managedClock,
+    async ms => { managedClock += ms; }, state => managedState = structuredClone(state));
+  await managed.withScope({ managedBusinessRest: true }, async () => {
+    await managed.run('detail', async () => {}); await managed.run('submit', async () => {});
+    assert.equal(managed.needsBusinessRest(), true);
+    const beforeConfirmation = managedClock;
+    await managed.run('confirm', async () => {});
+    await managed.run('navigation', async () => {});
+    assert.equal(managedClock, beforeConfirmation, '同一岗位的提交确认不被长休息拆开');
+    managedClock += 900000;
+    await managed.run('control', async () => {});
+    assert.equal(managed.needsBusinessRest(), true, '页面开着等待不能冒充关闭浏览器休息');
+  });
+  const managedRestart = new BossActionScheduler(() => managedPolicy, () => managedClock, async ms => { managedClock += ms; });
+  managedRestart.restore(managedState);
+  assert.equal(managedRestart.needsBusinessRest(), true, '达到休息阈值跨重启也不能被清除');
+  managedRestart.completeBusinessRest(); assert.equal(managedRestart.needsBusinessRest(), false);
   console.log('PASS | 全页面单队列、连续操作短休息、快速继续沟通、写入与路线间隔、限频持久化、停止取消待执行提交');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
