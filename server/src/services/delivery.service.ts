@@ -233,57 +233,66 @@ export class DeliveryService {
         }
         this.stats.currentProcessingJob = review.companyName + ' - ' + review.jobName;
         this.stats.totalScanned++; this.emit();
-        await browserService.withReviewApplication(review.jobHref, async page => {
-          const detail = await bossPageService.loadReviewJob(page, review, cfg.filter);
-          const actualTarget = { jobHref: review.jobHref, jobName: detail.job.jobName, companyName: detail.job.brandName };
-          this.stats.currentProcessingJob = actualTarget.companyName + ' - ' + actualTarget.jobName;
-          if (this.isStopRequested) return;
-          if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新选择待确认岗位投递');
-          const context = { text: review.screening?.languageEvidence || '', source: 'resume' as const };
-          const exclusion = findJobExclusion({ ...detail.job, jobDetail: detail.jobDetailText }, cfg.filter, '', review.screening?.taskExclusions);
-          const first = filterService.evaluateStage1(detail.job, detail.jobDetailText, cfg.filter, '', context);
-          const local = filterService.evaluateLocally(detail.job, detail.jobDetailText, true, cfg.filter, '', context);
-          const requiredFieldsMissing = ((cfg.filter.salaryMin || cfg.filter.salaryMax) && !detail.job.salaryDesc)
-            || (cfg.filter.degree.length && !detail.job.jobDegree) || (cfg.filter.cityName && !detail.job.cityName);
-          if (requiredFieldsMissing) throw new Error('岗位关键筛选字段无法读取，未发起沟通');
-          if (exclusion || !first.passed || (local && !local.passed && !local.needsReview)) {
-            this.log('warn', '[手动淘汰] ' + review.companyName + ' - ' + review.jobName + '：' + (exclusion?.reason || first.reason || local?.reason));
-            this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
-            workConditionReviews.remove(review.id); return;
-          }
-          if (detail.alreadyChatted) {
-            workConditionReviews.remove(review.id);
-            this.log('info', '[已沟通跳过] ' + review.companyName + ' - ' + review.jobName); return;
-          }
-          await jobCommuteService.enrich(detail.job, cfg.filter);
-          const commute = commuteDecision(detail.job, cfg.filter);
-          if (commute.status === 'unknown') {
-            this.log('warn', '[手动暂未投递] ' + review.companyName + ' - ' + review.jobName + '：' + commute.reason + '；记录已保留'); return;
-          }
-          if (commute.status === 'failed') {
-            this.log('warn', '[手动淘汰] ' + review.companyName + ' - ' + review.jobName + '：' + commute.reason);
-            workConditionReviews.remove(review.id); return;
-          }
-          if (!detail.chatButtonLocator) throw new Error('未找到该岗位的沟通按钮');
-          while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
-          if (this.isStopRequested) return;
-          if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新选择待确认岗位投递');
-          this.ensureQuotaFresh();
-          if (this.stats.todayAppliedCount >= cfg.delivery.dailyMaxQuota) return;
-          this.stats.passedFilterCount++;
-          this.log('info', '[手动投递] ' + actualTarget.companyName + ' - ' + actualTarget.jobName + '，按你的选择发起沟通');
-          const result = await bossPageService.executeChatClick(detail.chatButtonLocator,
-            '您好，我关注贵司的【' + actualTarget.jobName + '】岗位，希望与您交流岗位详情。', actualTarget);
-          if (result.success) {
-            this.recordConfirmedChat(actualTarget, result);
-            this.log('success', '✅ 投递成功：' + actualTarget.companyName + ' - ' + actualTarget.jobName + '，今日累计 ' + this.stats.todayAppliedCount + ' 家');
-          } else if (result.uncertain) throw new Error('已触发沟通，但尚未确认发送结果；请查看平台会话后继续，勿重复投递');
-          else if (result.loginRequired) throw new Error('BOSS 登录失效，请登录后投递');
-          else if (result.needCaptcha) { await this.handleCaptcha(); throw new Error('验证已处理，请重新选择尚未投递的岗位'); }
-          else if (result.quotaExceeded) { this.stopForPlatformQuota(); this.isStopRequested = true; }
-          else if (result.isCoolDown) { await this.handlePlatformLimit(); throw new Error('平台限频后的自动操作已停止，尚未投递记录已保留，请人工核对后重新选择'); }
-          else this.log('warn', '[手动未投递] 目标岗位已变化或沟通未确认，保留记录：' + review.jobName);
-        });
+        let submissionStarted = false;
+        try {
+          await browserService.withReviewApplication(review.jobHref, async page => {
+            const detail = await bossPageService.loadReviewJob(page, review, cfg.filter);
+            const actualTarget = { jobHref: review.jobHref, jobName: detail.job.jobName, companyName: detail.job.brandName };
+            this.stats.currentProcessingJob = actualTarget.companyName + ' - ' + actualTarget.jobName;
+            if (this.isStopRequested) return;
+            if (detail.alreadyChatted) {
+              workConditionReviews.remove(review.id);
+              this.log('info', '[已沟通跳过] ' + review.companyName + ' - ' + review.jobName); return;
+            }
+            if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新选择待确认岗位投递');
+            const context = { text: review.screening?.languageEvidence || '', source: 'resume' as const };
+            const exclusion = findJobExclusion({ ...detail.job, jobDetail: detail.jobDetailText }, cfg.filter, '', review.screening?.taskExclusions);
+            const first = filterService.evaluateStage1(detail.job, detail.jobDetailText, cfg.filter, '', context);
+            const local = filterService.evaluateLocally(detail.job, detail.jobDetailText, true, cfg.filter, '', context);
+            const requiredFieldsMissing = ((cfg.filter.salaryMin || cfg.filter.salaryMax) && !detail.job.salaryDesc)
+              || (cfg.filter.degree.length && !detail.job.jobDegree) || (cfg.filter.cityName && !detail.job.cityName);
+            if (requiredFieldsMissing) throw new Error('岗位关键筛选字段无法读取，未发起沟通');
+            if (exclusion || !first.passed || (local && !local.passed && !local.needsReview)) {
+              this.log('warn', '[手动淘汰] ' + review.companyName + ' - ' + review.jobName + '：' + (exclusion?.reason || first.reason || local?.reason));
+              this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
+              workConditionReviews.remove(review.id); return;
+            }
+            await jobCommuteService.enrich(detail.job, cfg.filter);
+            const commute = commuteDecision(detail.job, cfg.filter);
+            if (commute.status === 'unknown') {
+              this.log('warn', '[手动暂未投递] ' + review.companyName + ' - ' + review.jobName + '：' + commute.reason + '；记录已保留'); return;
+            }
+            if (commute.status === 'failed') {
+              this.log('warn', '[手动淘汰] ' + review.companyName + ' - ' + review.jobName + '：' + commute.reason);
+              workConditionReviews.remove(review.id); return;
+            }
+            if (!detail.chatButtonLocator) throw new Error('未找到该岗位的沟通按钮');
+            while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
+            if (this.isStopRequested) return;
+            if (JSON.stringify(configManager.getConfig().filter) !== JSON.stringify(cfg.filter)) throw new Error('筛选条件已变化，请重新选择待确认岗位投递');
+            this.ensureQuotaFresh();
+            if (this.stats.todayAppliedCount >= cfg.delivery.dailyMaxQuota) return;
+            this.stats.passedFilterCount++;
+            this.log('info', '[手动投递] ' + actualTarget.companyName + ' - ' + actualTarget.jobName + '，按你的选择发起沟通');
+            submissionStarted = true;
+            const result = await bossPageService.executeChatClick(detail.chatButtonLocator,
+              '您好，我关注贵司的【' + actualTarget.jobName + '】岗位，希望与您交流岗位详情。', actualTarget);
+            if (result.success) {
+              this.recordConfirmedChat(actualTarget, result);
+              this.log('success', '✅ 投递成功：' + actualTarget.companyName + ' - ' + actualTarget.jobName + '，今日累计 ' + this.stats.todayAppliedCount + ' 家');
+            } else if (result.uncertain) throw new Error('已触发沟通，但尚未确认发送结果；请查看平台会话后继续，勿重复投递');
+            else if (result.loginRequired) throw new Error('BOSS 登录失效，请登录后投递');
+            else if (result.needCaptcha) { await this.handleCaptcha(); throw new Error('验证已处理，请重新选择尚未投递的岗位'); }
+            else if (result.quotaExceeded) { this.stopForPlatformQuota(); this.isStopRequested = true; }
+            else if (result.isCoolDown) { await this.handlePlatformLimit(); throw new Error('平台限频后的自动操作已停止，尚未投递记录已保留，请人工核对后重新选择'); }
+            else this.log('warn', '[手动未投递] 目标岗位已变化或沟通未确认，保留记录：' + review.jobName);
+          });
+        } catch (error) {
+          const message = (error as Error).message;
+          const recoverableRead = /待确认岗位与当前详情身份不一致|待确认岗位详情尚未加载|无法核对该岗位的公司页和业务信息|岗位关键筛选字段无法读取|未找到该岗位的沟通按钮|Chrome (?:导航|操作)超时/.test(message);
+          if (submissionStarted || this.isStopRequested || bossAutomationSafety.status().blocked || !recoverableRead) throw error;
+          this.log('warn', '[手动暂未投递] ' + review.companyName + ' - ' + review.jobName + '：' + message + '；记录已保留，继续下一个岗位');
+        }
         this.emit();
       }
       this.stats.status = this.isStopRequested && this.stats.status !== 'finished' ? 'idle' : 'finished';

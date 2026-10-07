@@ -559,6 +559,12 @@ export class BossPageService {
       await pause(this.pagePollIntervalMs);
     }
     if (!(await this.isDetailStillTarget(review.jobName, review.companyName, review.jobHref, page))) throw new Error('待确认岗位与当前详情身份不一致');
+    while (Date.now() < deadline && !(await page.evaluate(() => [...document.querySelectorAll('.job-detail-section')]
+      .some(section => (section.querySelector('h3') as HTMLElement | null)?.innerText?.trim() === '职位描述'
+        && Boolean((section.querySelector('.job-sec-text') as HTMLElement | null)?.innerText?.trim()))))) {
+      this.throwIfUnavailable(await this.inspectPage(page));
+      await pause(this.pagePollIntervalMs);
+    }
     const data = await page.evaluate(() => {
       const section = [...document.querySelectorAll('.job-detail-section')].find(item => (item.querySelector('h3') as HTMLElement | null)?.innerText?.trim() === '职位描述');
       const banner = document.querySelector('.job-banner');
@@ -735,6 +741,19 @@ export class BossPageService {
     return index >= 0 ? buttons.nth(index) : null;
   }
 
+  /** The full job page opens the conversation itself, with a sent message and another empty composer. */
+  private async readStartChatAcknowledgement(page: CdpPage,
+    target?: { jobName: string; companyName: string; jobHref: string }): Promise<ChatResult | null> {
+    if (!target) return null;
+    const sent = await page.locator('.startchat-dialog').filter({ visible: true }).evaluateAll(dialogs =>
+      dialogs.some(dialog => [...dialog.querySelectorAll('.message-list .message-item')].some(item =>
+        [...item.querySelectorAll('.status.success')].some(status => (status as HTMLElement).getClientRects().length > 0
+          && (status as HTMLElement).innerText?.trim() === '已发送')
+        && Boolean((item.querySelector('.text') as HTMLElement | null)?.innerText?.trim()))));
+    if (!sent || !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page))) return null;
+    return { success: true, verified: true, platformGreeting: true, continued: true };
+  }
+
   private async finishSentDialog(page: CdpPage, button: CdpLocator): Promise<ChatResult> {
     try {
       await button.click();
@@ -754,6 +773,8 @@ export class BossPageService {
       if (interrupted) return interrupted;
       const sent = await this.sentDialogButton(page);
       if (sent) return this.finishSentDialog(page, sent);
+      const conversation = await this.readStartChatAcknowledgement(page, target);
+      if (conversation) return conversation;
       if (target && await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page)) {
         const label = await page.locator(CHAT).first().innerText({ timeout: 300 }).catch(() => '');
         if (/继续沟通|已在沟通/.test(label)) return { success: true, verified: true };
@@ -779,7 +800,7 @@ export class BossPageService {
     }
     const label = (await chatButton.innerText().catch(() => '')).trim();
     if (!label.includes('立即沟通')) return { success: false, targetChanged: true };
-    if (await this.sentDialogButton(page)) return { success: false, uncertain: true };
+    if (await this.sentDialogButton(page) || await this.readStartChatAcknowledgement(page, target)) return { success: false, uncertain: true };
     let clicked = false;
     try {
       await clickBossAction(chatButton, 'submit', async () => {
@@ -793,7 +814,9 @@ export class BossPageService {
       if (interrupted) return interrupted;
       const acknowledgement = await this.sentDialogButton(page);
       if (acknowledgement) return this.finishSentDialog(page, acknowledgement);
-      const input = page.locator('.dialog-wrap textarea, .boss-dialog textarea, textarea[placeholder*="打招呼"]').first();
+      const conversation = await this.readStartChatAcknowledgement(page, target);
+      if (conversation) return conversation;
+      const input = page.locator('.dialog-wrap:not(.startchat-dialog) textarea, .boss-dialog:not(.startchat-dialog) textarea, textarea[placeholder*="打招呼"]:not(.startchat-dialog textarea)').first();
       if (await input.isVisible({ timeout: 1600 }).catch(() => false)) {
         if (!greeting?.trim()) return { success: false, uncertain: true };
         if (target && !(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref, page))) {

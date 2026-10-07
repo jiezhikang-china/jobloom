@@ -106,6 +106,30 @@ async function main() {
     assert.deepEqual(sends, [make(13).jobHref, make(14).jobHref], '手动选择核对当前距离；未知地点不直接投递，已废弃交通查询');
     assert.deepEqual(records.map(item => item.id), [make(12).id], '未知工作地点保留待确认，过远淘汰');
     assert.equal(located.getStats().todayAppliedCount, 2);
+    config.filter.commute = {};
+    config.filter.cityName = '上海';
+    config.filter.degree = ['本科'];
+    config.delivery.dailyMaxQuota = 5;
+    records = [make(21), make(22), make(23), make(24), make(25), make(26), make(27)];
+    sends.length = 0;
+    detailFor = review => {
+      if (review.id === make(21).id) throw new Error('待确认岗位详情尚未加载，未发起沟通');
+      if (review.id === make(22).id) throw new Error('无法核对该岗位的公司页和业务信息，已跳过该岗位');
+      const value = { job: job(review), jobDetailText: review.screening!.jobDetail,
+        alreadyChatted: review.id === make(24).id, chatButtonLocator: review.id === make(25).id ? null : {} };
+      if ([make(23).id, make(24).id].includes(review.id)) value.job.cityName = '';
+      return value;
+    };
+    const partial = new DeliveryService(); await partial.startReviewDelivery([...records]);
+    assert.equal(partial.getStats().status, 'finished', '单个岗位读取失败不能中断整批');
+    assert.deepEqual(sends, [make(26).jobHref, make(27).jobHref]);
+    assert.deepEqual(records.map(item => item.id), [21,22,23,25].map(n => make(n).id), '未投递记录保留；已沟通优先去重，无需依赖缺失字段');
+    records = [make(28), make(29)]; sends.length = 0; opened.length = 0;
+    detailFor = () => { throw new Error('CAPTCHA_REQUIRED: 请先在 Chrome 中完成 BOSS 安全验证'); };
+    const restricted = new DeliveryService(); await restricted.startReviewDelivery([...records]);
+    assert.equal(restricted.getStats().status, 'failed');
+    assert.equal(opened.length, 1, '平台验证必须停止，不得当作单个岗位加载问题继续');
+    assert.equal(sends.length, 0);
     console.log('PASS | 待确认单条/批量入口、并发锁、登录、每日0/配额、最新排除复核、未知条件手动投递、零重复AI、已沟通去重、计数、继续失败防重投、浏览节奏、停止、最新距离/通勤复核');
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
 }

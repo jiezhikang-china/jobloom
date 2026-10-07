@@ -106,7 +106,7 @@ export default function WorkConditionReviewPanel({ taskRunning = false, onStarte
               ))}
             </dl>
             <p>记录于 {new Date(item.updatedAt).toLocaleString('zh-CN')}</p>
-            <div className="work-review-actions"><p>投递后会自动进入 BOSS 沟通页面。</p>
+            <div className="work-review-actions"><p>投递后会自动打开 BOSS 沟通窗口。</p>
               <button type="button" disabled={busy} aria-label={'投递岗位：' + item.jobName} onClick={() => void apply([item.id])}><Send size={14} /> 投递</button></div>
           </article>
         ))}
