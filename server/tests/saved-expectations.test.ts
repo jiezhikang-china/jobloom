@@ -82,13 +82,14 @@ async function main() {
     assert.equal(await page.evaluate(() => (window as any).recommendClicks), 0);
     const card = (await service.getVisibleJobCards())[0];
     assert.equal(await service.markJobNotSuit(card.cardLocator, { ...card, jobHref: '/job_detail/wrong.html' }), false);
-    assert.equal(await service.markJobNotSuit(card.cardLocator, card, '公司页没有公司介绍'), true,
-      '短或模糊描述也能打开目标详情，操作可见反馈弹窗并确认成功');
+    assert.equal(await service.markJobNotSuit(card.cardLocator, { ...card, scope: 'company' }, '明确排除的公司'), true,
+      '明确排除公司时操作可见反馈弹窗并确认成功');
     assert.deepEqual(await page.evaluate(() => (window as any).submissions), [{ index: 3, reason: '', company: true }], '优先选公司内置选项，内部淘汰理由不上传');
     assert.deepEqual(remembered, ['公司3'], '过期目标不记错公司，正确淘汰目标保存本地');
     await page.evaluate(() => { (window as any).showFeedback = false; document.querySelectorAll('.zp-toast').forEach((item) => item.remove()); });
     assert.equal(await service.markJobNotSuit(card.cardLocator, card, '职责不清晰'), false, '没有确认信号不计入成功');
     assert.equal(await page.evaluate(() => (window as any).submissions.length), 2, '不反复点击确定');
+    assert.equal(await page.evaluate(() => (window as any).submissions[1].company), false, '仅排除岗位时不能选公司选项');
     await page.evaluate(() => { (window as any).neutralOption = false; (window as any).requiresReason = true; });
     assert.equal(await service.markJobNotSuit(card.cardLocator, card, '涉及助贷，我的个人信息不得发给平台'), false);
     assert.equal(await page.evaluate(() => (window as any).submissions.length), 2, '平台必须填写文字时取消，无本地理由提交');

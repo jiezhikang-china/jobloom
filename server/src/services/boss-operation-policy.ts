@@ -3,7 +3,7 @@
  * These timings are local scheduling choices, not platform safe thresholds.
  */
 export const bossOperationPolicy = Object.freeze({
-  intervalMs: 500, burst: 0, businessBurst: 100, restMs: 15 * 60000, feedbackMs: 3000,
-  kindIntervalsMs: Object.freeze({ detail: 3000, navigation: 1500, source: 2500, list: 5000, route: 2000 }),
-  submitIntervalMs: 1000, aiBatchMaxWaitMs: 90000,
+  intervalMs: 1000, burst: 0, businessBurst: 100, restMs: 15 * 60000, feedbackMs: 5000,
+  kindIntervalsMs: Object.freeze({ control: 1000, input: 1200, detail: 3500, navigation: 2000, source: 3000, list: 5000, route: 2000 }),
+  submitIntervalMs: 2500, aiBatchMaxWaitMs: 90000,
 });

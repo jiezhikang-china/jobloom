@@ -58,7 +58,7 @@ async function main() {
   const original = configManager.getConfig(); const get = configManager.getConfig; const chat = llmService.chatJson;
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'boss-language-'));
   let calls = 0;
-  const config = { ...original, filter: { ...original.filter, candidateLanguages: '', companyBlacklist: [], requiredKeywords: [],
+  const config = { ...original, filter: { ...original.filter, candidateLanguages: '', commute: {}, companyBlacklist: [], commute: {}, requiredKeywords: [],
     skipMissingCompanyIntro: false, skipVagueJobDescription: false,
     workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true }] } };
   configManager.getConfig = () => config;
@@ -73,7 +73,7 @@ async function main() {
     llmService.chatJson = (async () => { calls++; return { jobs: [{ jobKey: 'job-0', score: 5, passed: false,
       qualificationFailures: [{ evidence: '必须持有初级会计证书', reason: '未提供所需会计证书' }] }] }; }) as typeof chat;
     const qualification = await service.evaluateStage2(job, '负责财务资料整理。必须持有初级会计证书。作息面议。', '普通行政经历。', '资料整理');
-    assert.equal(qualification.needsReview, undefined, '明确资格失败优先于工时待确认'); assert.match(qualification.reason, /必备资格/);
+    assert.equal(qualification.needsReview, true, '未提供证照不能推断明确不具备，应待确认'); assert.match(qualification.reason, /必备资格待确认/);
     const fabricated = await service.evaluateStage2(job, '负责行政资料整理。作息面议。', '普通行政经历。', '资料整理');
     assert.equal(fabricated.needsReview, true, '无原文的资格失败不能当硬淘汰');
 

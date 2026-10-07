@@ -88,10 +88,10 @@ export class BossPageService {
   private companyCache = new Map<string, { expiresAt: number; info: BossCompanyInfo }>();
   private feedbackUnavailableUntil = new Map<string, number>();
   private allowFeedback: () => boolean;
-  private rememberNotSuitable: (target: { jobHref: string; jobName: string; companyName: string }) => void;
+  private rememberNotSuitable: (target: { jobHref: string; jobName: string; companyName: string; scope?: 'job' | 'company' }) => void;
 
   constructor(options: { pageReadyTimeoutMs?: number; pagePollIntervalMs?: number; allowFeedback?: () => boolean;
-    rememberNotSuitable?: (target: { jobHref: string; jobName: string; companyName: string }) => void } = {}) {
+    rememberNotSuitable?: (target: { jobHref: string; jobName: string; companyName: string; scope?: 'job' | 'company' }) => void } = {}) {
     this.pageReadyTimeoutMs = options.pageReadyTimeoutMs ?? 20000;
     this.pagePollIntervalMs = options.pagePollIntervalMs ?? 400;
     this.allowFeedback = options.allowFeedback || (() => bossActionScheduler.canStartFeedback());
@@ -608,7 +608,7 @@ export class BossPageService {
 
   /** Resolve a user-selected starting place using BOSS's existing map search. */
   /** BOSS 自选期望中的“不合适”位于右侧详情；点击前再次核对岗位链接。 */
-  public async markJobNotSuit(card: CdpLocator, target: { jobName: string; companyName: string; jobHref: string; sourceHref?: string },
+  public async markJobNotSuit(card: CdpLocator, target: { jobName: string; companyName: string; jobHref: string; sourceHref?: string; scope?: 'job' | 'company' },
     _localReason = ''): Promise<boolean> {
     const page = card.page();
     const selected = await page.locator('.expect-item.active').first().innerText({ timeout: 200 }).catch(() => '');
@@ -617,7 +617,7 @@ export class BossPageService {
     if (await dialog.isVisible()) return false;
     const hasDetail = await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref);
     if (!hasDetail && !(await this.isCardStillTarget(card, target.jobName, target.companyName, target.sourceHref || target.jobHref))) return false;
-    this.rememberNotSuitable(target);
+    this.rememberNotSuitable({ ...target, scope: target.scope || 'job' });
     if (!this.allowFeedback()) return false;
     if ((this.feedbackUnavailableUntil.get(feedbackScope) || 0) > Date.now()) return false;
     if (!hasDetail) {
@@ -672,14 +672,15 @@ export class BossPageService {
         if (!(await this.isDetailStillTarget(target.jobName, target.companyName, target.jobHref))
           || !(await confirm.isVisible())) return false;
         // Internal screening, company analysis and candidate information stay local.
-        // Prefer the site's company option so its other jobs stop being recommended.
+        // A job exclusion must not hide the company's other roles.
         const choices = await dialog.locator('.zp-type-item').evaluateAll(items => items.map(item => ({
           text: (item as HTMLElement).innerText.trim(), visible: (item as HTMLElement).getClientRects().length > 0,
         })));
         if (!choices.some(item => item.visible)) { await pause(250); continue; }
         const companyChoice = choices.findIndex(item => item.visible && sameCompany(
           item.text.match(/^[“"「](.+)[”"」]公司$/)?.[1] || '', target.companyName));
-        const index = companyChoice >= 0 ? companyChoice : choices.findIndex(item => item.visible);
+        const jobChoice = choices.findIndex(item => item.visible && !/^[“"「].+[”"」]公司$/.test(item.text));
+        const index = target.scope === 'company' && companyChoice >= 0 ? companyChoice : jobChoice;
         if (index < 0) {
           // Avoid reopening a known unsupported feedback menu on every rejected job.
           this.feedbackUnavailableUntil.set(feedbackScope, Date.now() + 60000);

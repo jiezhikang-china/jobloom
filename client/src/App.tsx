@@ -3,6 +3,7 @@ import BossPositionPicker, { flattenPositions } from './BossPositionPicker.js';
 import DeepSeekAccountPanel from './DeepSeekAccountPanel.js';
 import WorkConditionOptions, { withWorkConditionPresets } from './WorkConditionOptions.js';
 import WorkConditionReviewPanel from './WorkConditionReviewPanel.js';
+import DelimitedListTextArea from './DelimitedListTextArea.js';
 import LocationFilterOptions from './LocationFilterOptions.js';
 import ResumePdfPanel from './ResumePdfPanel.js';
 import DesktopTitleBar from './DesktopTitleBar.js';
@@ -1312,19 +1313,14 @@ export default function App() {
                 <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                   需求词（职位名称、技能标签或职位描述至少命中一个；留空表示不限）
                 </label>
-                <textarea
+                <DelimitedListTextArea
                   rows={2}
                   placeholder="例如：React，TypeScript，前端架构"
-                  value={config.filter.requiredKeywords?.join('，') || ''}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      filter: {
-                        ...config.filter,
-                        requiredKeywords: e.target.value.split(/[，,、;；\n]/).map((s) => s.trim()).filter(Boolean),
-                      },
-                    })
-                  }
+                  aria-label="需求词"
+                  values={config.filter.requiredKeywords || []}
+                  onValuesChange={values => setConfig(previous => previous ? {
+                    ...previous, filter: { ...previous.filter, requiredKeywords: values },
+                  } : previous)}
                   style={{ width: '100%', fontSize: '13px' }}
                 />
               </div>
@@ -1332,18 +1328,13 @@ export default function App() {
                 <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                   排除行业、岗位或公司（逗号分隔）
                 </label>
-                <textarea
+                <DelimitedListTextArea
                   rows={3}
-                  value={config.filter.companyBlacklist?.join('，')}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      filter: {
-                        ...config.filter,
-                        companyBlacklist: e.target.value.split(/[，,、;；\n]/).map((s) => s.trim()).filter(Boolean),
-                      },
-                    })
-                  }
+                  aria-label="排除行业、岗位或公司（逗号分隔）"
+                  values={config.filter.companyBlacklist || []}
+                  onValuesChange={values => setConfig(previous => previous ? {
+                    ...previous, filter: { ...previous.filter, companyBlacklist: values },
+                  } : previous)}
                   style={{ width: '100%', fontSize: '13px' }}
                 />
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>

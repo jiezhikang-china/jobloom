@@ -38,6 +38,11 @@ async function main() {
     assert.equal(task.getStats().totalScanned, 0); assert.equal(task.getStats().aiRequestCount, 0);
     store.remove(store.list()[0].id);
     assert.equal(store.matches(target.jobHref, target.companyName), false, '可撤销本地屏蔽');
+    store.remember({ ...target, scope: 'job' });
+    assert.equal(store.matches(target.jobHref, target.companyName), true);
+    assert.equal(new NotSuitableStore(file).matches('/job_detail/another.html', target.companyName), false, '只排除岗位时不能连带屏蔽整家公司');
+    store.remember({ ...target, scope: 'company' });
+    assert.equal(store.matches('/job_detail/another.html', target.companyName), true, '明确排除公司时才扩大范围');
     fs.writeFileSync(file, 'malformed');
     assert.throws(() => new NotSuitableStore(file).list(), /JSON/);
     console.log('PASS | 公司和岗位持久化屏蔽、跨重启/链接变化去重、同名包含不误封、零详情/AI重复筛选、可撤销、无私有理由保存');

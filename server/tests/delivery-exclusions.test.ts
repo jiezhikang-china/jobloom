@@ -12,7 +12,7 @@ function stub(object: any, key: string, replacement: any) {
 }
 const original = configManager.getConfig();
 const filter = { ...original.filter, cityName: '上海', salaryMin: 0, salaryMax: 0, hrActiveDaysLimit: 0,
-  degree: ['本科'], experience: [], companyBlacklist: ['金融', '房地产', '销售'], requiredKeywords: [],
+  degree: ['本科'], experience: [], companyBlacklist: ['金融', '房地产', '销售'], commute: {}, requiredKeywords: [],
   workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true }] };
 const config = { ...original, filter, delivery: { dailyMaxQuota: 1, minDelaySeconds: 0, maxDelaySeconds: 0 } };
 const card = (key: string, name = '行政助理'): DOMJobCardInfo => ({ index: 0, jobHref: '/job_detail/' + Buffer.from(key).toString('hex') + '.html',

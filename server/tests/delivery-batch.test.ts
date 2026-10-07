@@ -20,7 +20,7 @@ async function main(): Promise<void> {
     filter: {
       ...originalConfig.filter,
       cityCode: '101020100', cityName: '上海', salaryMin: undefined, salaryMax: undefined,
-      experience: [], degree: [], hrActiveDaysLimit: 0, companyBlacklist: [],
+      experience: [], degree: [], hrActiveDaysLimit: 0, companyBlacklist: [], commute: {},
     },
     delivery: { dailyMaxQuota: 1, minDelaySeconds: 0, maxDelaySeconds: 0 },
   };
@@ -82,6 +82,14 @@ async function main(): Promise<void> {
     assert.equal(reviewing.getStats().todayAppliedCount, 1, '待确认不占投递配额');
     stub(filterService, 'evaluateStage2', async () => ({ passed: true, score: 90, reason: '匹配', customGreeting: '你好' }));
 
+    testConfig.filter.workRequirements = [];
+    stub(filterService, 'evaluateStage2', async () => ({ passed: false, score: 52, reason: '职责方向不匹配', customGreeting: '', evaluationSource: 'ai' }));
+    const lowScore = new DeliveryService();
+    await lowScore.startDelivery({ targetRole: '内容运营', keywords: ['内容运营'], resumeText: '完整简历'.repeat(20) });
+    assert.equal(marked, 0, 'AI 低分不得向 BOSS 反馈不合适，也不得屏蔽公司');
+    assert.equal(lowScore.getStats().markedNotSuitCount, 0);
+    assert.equal(sent, 2);
+    stub(filterService, 'evaluateStage2', async () => ({ passed: true, score: 90, reason: '匹配', customGreeting: '你好' }));
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     stub(bossPageService, 'initJobPage', async () => { await gate; return {}; });

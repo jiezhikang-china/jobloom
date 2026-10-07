@@ -185,6 +185,15 @@ export class DeliveryService {
     }
   }
 
+  /** Website disinterest is reserved for the user's explicit excluded jobs/companies, never AI scores. */
+  private async markExplicitExclusion(locator: Parameters<typeof bossPageService.markJobNotSuit>[0],
+    target: Parameters<typeof bossPageService.markJobNotSuit>[1], job: BossJobItem, detail: string,
+    filter: AppConfig['filter'], extraText: string): Promise<boolean> {
+    const exclusion = findJobExclusion({ ...job, jobDetail: detail }, filter, extraText);
+    if (!exclusion) return false;
+    return bossPageService.markJobNotSuit(locator, { ...target, scope: exclusion.field.startsWith('公司') ? 'company' : 'job' }, exclusion.reason);
+  }
+
   /** User-selected review applications share the same task lock, quota and verified send flow. */
   public async startReviewDelivery(reviews: WorkConditionReview[]): Promise<void> {
     return this.withOperations(() => this.runReviewDelivery(reviews));
@@ -567,7 +576,7 @@ export class DeliveryService {
             if (!recheck.passed) {
               this.log('warn', '[暂存淘汰] 最新岗位已不符合筛选：' + recheck.reason);
               try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
-              if (await bossPageService.markJobNotSuit(cardLocator, actualCard, recheck.reason)) this.stats.markedNotSuitCount++;
+              if (await this.markExplicitExclusion(cardLocator, actualCard, freshJob, detailRes.jobDetailText, cfg.filter, exclusionText)) this.stats.markedNotSuitCount++;
               this.emit(); return;
             }
             const companyFacts = (info: typeof detailRes.companyInfo) => {
@@ -589,8 +598,9 @@ export class DeliveryService {
               companyName: jobCard.companyName,
               ...scoreExtra,
             });
-            const marked = await bossPageService.markJobNotSuit(cardLocator, { ...jobCard, sourceHref: candidate.sourceHref }, evaluation.reason);
-            if (marked) this.stats.markedNotSuitCount++;
+            if (evaluation.evaluationSource === 'rules'
+              && await this.markExplicitExclusion(cardLocator, { ...jobCard, sourceHref: candidate.sourceHref },
+                mockJobItem, candidate.jobDetail, cfg.filter, exclusionText)) this.stats.markedNotSuitCount++;
             this.emit();
             return;
           }
@@ -873,7 +883,6 @@ export class DeliveryService {
             }
             if (cfg.filter.cityName && jobCard.cityName !== cfg.filter.cityName) {
               this.log('info', '[初筛淘汰] ' + jobCard.jobName + '：岗位城市与目标城市不符');
-              if (await bossPageService.markJobNotSuit(cardLocator, jobCard)) this.stats.markedNotSuitCount++;
               continue;
             }
 
@@ -910,7 +919,7 @@ export class DeliveryService {
               try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
               this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
               this.log('info', `[初筛淘汰] ${mockJobItem.brandName} - ${jobCard.jobName}: ${stage1.reason}`);
-              const marked = await bossPageService.markJobNotSuit(cardLocator, jobCard, stage1.reason);
+              const marked = await this.markExplicitExclusion(cardLocator, jobCard, mockJobItem, detailRes.jobDetailText, cfg.filter, exclusionText);
               if (marked) this.stats.markedNotSuitCount++;
               this.emit();
               continue;

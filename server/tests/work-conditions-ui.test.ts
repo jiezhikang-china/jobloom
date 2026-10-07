@@ -82,7 +82,7 @@ async function main() {
     return { longitude: 121.4702, latitude: 31.2283, coordinateSystem: 'wgs84', accuracyMeters: 150, timestamp: new Date().toISOString() };
   });
   app.use(express.json()); app.use('/api', apiRouter);
-  app.get('/health', (_req, res) => res.json({ app: 'boss-job-agent', integrationVersion: 28, status: 'ok' }));
+  app.get('/health', (_req, res) => res.json({ app: 'boss-job-agent', integrationVersion: 29, status: 'ok' }));
   app.use(express.static(path.resolve(process.cwd(), '../client/dist')));
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
@@ -153,6 +153,27 @@ async function main() {
     await page.getByRole('button', { name: '筛选规则', exact: true }).click();
     assert.equal(await page.getByLabel('期望月薪下限').inputValue(), '');
     assert.equal(await page.getByLabel('期望月薪上限').inputValue(), '');
+    const exclusions = page.getByRole('textbox', { name: '排除行业、岗位或公司（逗号分隔）', exact: true });
+    const needed = page.getByRole('textbox', { name: '需求词', exact: true });
+    await exclusions.fill('金融'); await exclusions.press('End'); await exclusions.pressSequentially(',');
+    assert.equal(await exclusions.inputValue(), '金融,', '末尾逗号不能被重渲染吞掉');
+    await exclusions.pressSequentially('销售');
+    await exclusions.pressSequentially('，'); await exclusions.pressSequentially('助贷');
+    await exclusions.pressSequentially('；'); await exclusions.pressSequentially('房产');
+    assert.equal(await exclusions.inputValue(), '金融,销售，助贷；房产');
+    await needed.fill('内容'); await needed.press('End'); await needed.pressSequentially(',');
+    assert.equal(await needed.inputValue(), '内容,', '需求词同样保留正在编辑的分隔符');
+    await needed.pressSequentially('编辑');
+    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: '保存配置', exact: true }).click()]);
+    assert.deepEqual(config.filter.companyBlacklist, ['金融', '销售', '助贷', '房产']);
+    assert.deepEqual(config.filter.requiredKeywords, ['内容', '编辑']);
+    await page.reload(); await page.getByRole('button', { name: '筛选规则', exact: true }).click();
+    assert.equal(await exclusions.inputValue(), '金融，销售，助贷，房产');
+    // Restore this fixture's unrelated filters for the remaining interaction tests.
+    await needed.fill('');
+    await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/config') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: '保存配置', exact: true }).click()]);
     const pacing = page.getByRole('region', { name: '网页操作频率', exact: true });
     assert.equal(await pacing.count(), 0, '操作策略由程序管理，不提供用户设置');
     assert.equal(await page.getByText('选择岗位的浏览间隔（秒）', { exact: true }).count(), 0);
