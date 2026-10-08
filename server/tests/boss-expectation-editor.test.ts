@@ -17,6 +17,10 @@ const initial = [
 function editorFixture() {
   let rows = JSON.parse(localStorage.getItem('rows') || JSON.stringify((window as any).initial));
   const roles = (window as any).roles as typeof positions;
+  document.addEventListener('click', event => {
+    const key = event.isTrusted ? 'nativeClicks' : 'scriptClicks';
+    localStorage.setItem(key, String(Number(localStorage.getItem(key) || 0) + 1));
+  }, true);
   const root = document.querySelector('#purpose')!;
   const render = () => {
     root.innerHTML = '<a ka="user-resume-add-expectation">添加</a>' + rows.map((row: any) =>
@@ -81,6 +85,10 @@ async function main() {
   const original = browserService.withExpectationEditor;
   try {
     const page = await browser.newPage();
+    await page.addInitScript('window.__name = (fn) => fn');
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/*', route => route.abort());
     const roles = ['网络客服', '新媒体运营', '数据采集', '数据标注/AI训练师', '自动化测试'].map(find);
     const html = '<!doctype html><meta charset="utf-8"><style>li,span,a,button,input{display:inline-block;padding:6px} .position-dialog{position:fixed;inset:10px;background:white;overflow:auto}</style><div id="purpose"></div>'
       + '<script>window.initial=' + JSON.stringify(initial) + ';window.roles=' + JSON.stringify(roles) + ';(' + editorFixture.toString() + ')();</script>';
@@ -89,6 +97,8 @@ async function main() {
     const service = new BossExpectationsService();
     assert.deepEqual(await service.configure(targets, { code: '101020100', name: '上海' }), targets.map(item => item.name + '(上海)'));
     assert.equal(await page.evaluate(() => localStorage.getItem('saves')), '1', '已有匹配项不应重复改写');
+    assert.equal(await page.evaluate(() => localStorage.getItem('scriptClicks')), null, '自选编辑不再调用脚本点击');
+    assert.ok(await page.evaluate(() => Number(localStorage.getItem('nativeClicks'))) >= 6, '编辑、分类选择和保存使用实际指针点击');
     const second = ['网络客服', '新媒体运营', '自动化测试'].map(find);
     await service.configure(second, { code: '101210100', name: '杭州' });
     const saved = await readSavedExpectations(page as any);
@@ -97,7 +107,8 @@ async function main() {
     await page.evaluate(() => { localStorage.clear(); localStorage.setItem('rows', '[]'); });
     await service.configure([find('网络客服')], { code: '101020100', name: '上海' });
     assert.deepEqual(await readSavedExpectations(page as any), [{ index: 0, position: '网络客服', city: '上海', salary: '面议' }]);
-    console.log('PASS | 三个目标按官方层级编辑、保留匹配项、切换城市、新增位置、保存后重新读取验证');
+    assert.deepEqual(errors, [], '离线编辑页不能有脚本错误');
+    console.log('PASS | 三个目标按官方层级原生点击编辑、保留匹配项、切换城市、新增位置、保存后重新读取验证');
   } finally { browserService.withExpectationEditor = original; await browser.close(); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

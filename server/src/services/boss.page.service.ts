@@ -853,20 +853,39 @@ export class BossPageService {
     const state = await this.inspectPage(page);
     this.throwIfUnavailable(state);
     if (state.kind !== 'jobs') return;
-    await page.locator(CARD).last().scrollIntoViewIfNeeded();
-    await runBossAction(page, 'list', () => page.evaluate(() => {
-      let node = document.querySelector('ul.rec-job-list');
-      while (node) {
+    const previous = await runBossAction(page, 'list', () => page.evaluate((selector) => {
+      const cards = [...document.querySelectorAll(selector)];
+      const signature = JSON.stringify(cards.map(card => card.querySelector('a.job-name')?.getAttribute('href') || ''));
+      const last = cards.at(-1);
+      if (!last) return signature;
+      let node = last.parentElement;
+      while (node && node !== document.documentElement) {
         const style = getComputedStyle(node);
-        if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 20) {
-          node.scrollBy({ top: Math.max(800, node.clientHeight), behavior: 'instant' });
-          return;
-        }
+        if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 20) break;
         node = node.parentElement;
       }
-      window.scrollBy({ top: Math.max(800, window.innerHeight), behavior: 'instant' });
-    }));
-    await pause(900);
+      const scroller = node && node !== document.documentElement ? node : document.scrollingElement;
+      if (!scroller) return signature;
+      const lastRect = last.getBoundingClientRect();
+      const bottom = scroller === document.scrollingElement ? window.innerHeight
+        : scroller.getBoundingClientRect().top + scroller.clientTop + scroller.clientHeight;
+      // One movement reaches the current list end, or advances one viewport if it is already visible.
+      scroller.scrollBy({ top: Math.max(Math.round(scroller.clientHeight * .8), lastRect.bottom - bottom), behavior: 'instant' });
+      return signature;
+    }, CARD));
+    const deadline = Date.now() + 900;
+    while (Date.now() < deadline) {
+      this.throwIfUnavailable(await this.inspectPage(page));
+      const current = await page.evaluate((selector) => {
+        const signature = JSON.stringify([...document.querySelectorAll(selector)]
+          .map(card => card.querySelector('a.job-name')?.getAttribute('href') || ''));
+        const exhausted = [...document.querySelectorAll('.load-more, .loadmore, .no-more, .list-bottom')].some(element =>
+          (element as HTMLElement).getClientRects().length > 0 && /没有更多|暂无更多|已全部加载|已经到底/.test(element.textContent || ''));
+        return { signature, exhausted };
+      }, CARD);
+      if (current.signature !== previous || current.exhausted) return;
+      await pause(Math.min(150, Math.max(0, deadline - Date.now())));
+    }
   }
 }
 

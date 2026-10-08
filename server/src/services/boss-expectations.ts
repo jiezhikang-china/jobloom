@@ -1,7 +1,7 @@
 import { browserService } from './browser.service.js';
 import type { CdpPage } from './cdp.page.js';
 import type { BossPositionSelection } from '../types.js';
-import { runBossAction } from './boss-action-scheduler.js';
+import { clickBossAction } from './boss-action-scheduler.js';
 
 export interface SavedExpectation { index: number; position: string; city: string; salary: string; }
 export interface ExpectationChange { target: BossPositionSelection; slot: number; existing?: SavedExpectation; changed: boolean; }
@@ -45,7 +45,7 @@ async function clickText(page: CdpPage, selector: string, text: string): Promise
     disabled: node.getAttribute('aria-disabled') === 'true' || (node instanceof HTMLButtonElement && node.disabled) })));
   const matches = nodes.filter(node => node.visible && !node.disabled && node.text === text);
   if (matches.length !== 1) throw new Error('BOSS 设置选项未找到或不唯一：' + text);
-  await runBossAction(page, 'control', () => page.locator(selector).nth(matches[0].index).evaluate(node => { (node as HTMLElement).click(); return true; }));
+  await clickBossAction(page.locator(selector).nth(matches[0].index), 'control');
 }
 
 async function hoverText(page: CdpPage, selector: string, text: string): Promise<void> {
@@ -75,15 +75,15 @@ export class BossExpectationsService {
         if (plan.existing) {
           const row = page.locator(`#purpose li[ka="user-resume-edit-expectation${plan.slot}"]`);
           await row.hover();
-          await runBossAction(page, 'control', () => page.locator(`#purpose a[ka="user-resume-edit-expectation${plan.slot}"]`).evaluate(node => { (node as HTMLElement).click(); return true; }));
+          await clickBossAction(page.locator(`#purpose a[ka="user-resume-edit-expectation${plan.slot}"]`), 'control');
         } else {
-          await runBossAction(page, 'control', () => page.locator('#purpose [ka="user-resume-add-expectation"]').evaluate(node => { (node as HTMLElement).click(); return true; }));
+          await clickBossAction(page.locator('#purpose [ka="user-resume-add-expectation"]'), 'control');
         }
         const form = page.locator('#purpose .expectation-form').filter({ visible: true }).first();
         await form.waitFor({ timeout: 5000 });
         const selectedType = await form.locator('.radio-checked').innerText();
         if (!selectedType.includes('全职')) await clickText(page, '#purpose .expectation-form label.radio', '全职');
-        await runBossAction(page, 'control', () => form.locator('[ka="resume_form_edit_positionName"]').evaluate(node => { (node as HTMLElement).click(); return true; }));
+        await clickBossAction(form.locator('[ka="resume_form_edit_positionName"]'), 'control');
         await page.locator('.position-dialog').filter({ visible: true }).first().waitFor({ timeout: 5000 });
         await hoverText(page, '.position-dialog .position-category-wrap li', plan.target.categoryName);
         await page.waitForFunction(({ name }) => [...document.querySelectorAll('.position-dialog .navs .stage-three')]
@@ -97,7 +97,7 @@ export class BossExpectationsService {
         options.signal?.throwIfAborted();
         const cityValue = await form.locator('[ka="resume_form_edit_cityValue"] input[type="hidden"]').inputValue();
         if (!cityValue.split(',').includes(city.code)) {
-          await runBossAction(page, 'control', () => form.locator('[ka="resume_form_edit_cityValue"] .ui-cascader-selection').evaluate(node => { (node as HTMLElement).click(); return true; }));
+          await clickBossAction(form.locator('[ka="resume_form_edit_cityValue"] .ui-cascader-selection'), 'control');
           await clickText(page, '#purpose [ka="resume_form_edit_cityValue"] .ui-cascader > .ui-select-dropdown > .ui-cascader-menu:first-child li', '热门城市');
           await page.waitForFunction(({ name }) => [...document.querySelectorAll('#purpose [ka="resume_form_edit_cityValue"] .ui-cascader-menu:nth-child(2) li')]
             .some(node => node.textContent?.trim() === name), { name: city.name }, { timeout: 3000 });
@@ -107,14 +107,14 @@ export class BossExpectationsService {
         }
         // A new slot must have a salary; 面议 keeps the app's configurable salary filter in charge.
         if (!plan.existing) {
-          await runBossAction(page, 'control', () => form.locator('.salary-scope .ui-select-selection').first().evaluate(node => { (node as HTMLElement).click(); return true; }));
+          await clickBossAction(form.locator('.salary-scope .ui-select-selection').first(), 'control');
           await clickText(page, '#purpose .salary-scope .ui-select-dropdown li', '面议');
         }
         const input = await form.locator('[ka="resume_form_edit_positionName"] input').inputValue();
         const actualCity = await form.locator('[ka="resume_form_edit_cityValue"] input[type="hidden"]').inputValue();
         if (input !== plan.target.name || !actualCity.split(',').includes(city.code)) throw new Error('BOSS 自选岗位设置未生效，已停止保存');
         options.signal?.throwIfAborted();
-        await runBossAction(page, 'submit', () => form.locator('[ka="resume_form_expectation_ok"]').evaluate(node => { (node as HTMLElement).click(); return true; }));
+        await clickBossAction(form.locator('[ka="resume_form_expectation_ok"]'), 'submit');
         await page.waitForFunction(({ role, city }) => !document.querySelector('#purpose .expectation-form')
           && [...document.querySelectorAll('#purpose .expectation-list')].some(node => node.querySelector('.position-item .label-text')?.textContent?.trim() === role
             && node.querySelector('.city-item')?.textContent?.trim() === city), { role: plan.target.name, city: city.name }, { timeout: 10000 });

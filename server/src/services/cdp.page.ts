@@ -112,6 +112,36 @@ function resolveElements(steps: LocatorStep[]): Element[] {
   return roots as Element[];
 }
 
+/** Only scroll an offscreen target; a visible target should not move under the pointer. */
+function visibleElementPoint(element: Element): { x: number; y: number } {
+  const clipped = () => {
+    const rect = element.getBoundingClientRect();
+    if (!rect.width || !rect.height) throw new Error('元素不可见');
+    let left = Math.max(0, rect.left), top = Math.max(0, rect.top);
+    let right = Math.min(document.documentElement.clientWidth, rect.right);
+    let bottom = Math.min(document.documentElement.clientHeight, rect.bottom);
+    for (let parent = element.parentElement; parent && parent !== document.documentElement; parent = parent.parentElement) {
+      const style = getComputedStyle(parent), bounds = parent.getBoundingClientRect();
+      if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+        const edge = bounds.left + parent.clientLeft;
+        left = Math.max(left, edge); right = Math.min(right, edge + parent.clientWidth);
+      }
+      if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+        const edge = bounds.top + parent.clientTop;
+        top = Math.max(top, edge); bottom = Math.min(bottom, edge + parent.clientHeight);
+      }
+    }
+    return { left, right, top, bottom };
+  };
+  let bounds = clipped();
+  if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
+    element.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    bounds = clipped();
+  }
+  if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) throw new Error('元素未滚动到可见区域');
+  return { x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 };
+}
+
 export class CdpPage {
   private static activePages = new Set<CdpPage>();
   private currentUrl: string;
@@ -388,15 +418,10 @@ export class CdpLocator {
   }
   async inputValue(): Promise<string> { return this.evaluate((element) => (element as HTMLInputElement).value); }
   async scrollIntoViewIfNeeded(): Promise<void> {
-    await this.owner.action('control', () => this.evaluate((element) => { element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }); return true; }));
+    await this.owner.action('control', async () => { await this.point(); });
   }
   private async point(): Promise<{ x: number; y: number }> {
-    return this.evaluate((element) => {
-      element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
-      const rect = element.getBoundingClientRect();
-      if (!rect.width || !rect.height) throw new Error('元素不可见');
-      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    });
+    return this.evaluate(visibleElementPoint);
   }
   async hover(): Promise<void> {
     await this.owner.action('control', async () => {
