@@ -31,6 +31,23 @@ async function main() {
     await assert.rejects(protectedBrowser.getWorkerPage(), /fixture account restricted/);
     assert.equal(launches, 0, '停止状态下不能连接或启动业务浏览器');
 
+    let focused = 0, created = 0, selected;
+    const manualPage = { bringToFront: async () => { focused++; }, goto: async () => { throw new Error('must not navigate existing page'); } };
+    stub(protectedBrowser, 'tryReconnectChrome', async () => { launches++; return true; });
+    stub(protectedBrowser, 'listTabs', async () => [
+      { id: 'job', url: 'https://www.zhipin.com/web/geek/jobs' },
+      { id: 'verify', url: 'https://www.zhipin.com/web/passport/zp/security.html' }
+    ]);
+    stub(protectedBrowser, 'pageFor', async tab => { selected = tab.id; return manualPage; });
+    stub(protectedBrowser, 'createPageNow', async url => { assert.ok(url.startsWith('https://www.zhipin.com/web/user/')); created++; return manualPage; });
+    await protectedBrowser.openManualRecovery();
+    assert.equal(selected, 'verify'); assert.equal(focused, 1); assert.equal(created, 0);
+    assert.equal(local.status().blocked, true, '人工打开页面不能解除停止状态');
+    assert.equal(local.status().hold.id, originalId, '人工处理保留原限制记录');
+    stub(protectedBrowser, 'listTabs', async () => []);
+    await protectedBrowser.openManualRecovery();
+    assert.equal(created, 1); assert.equal(focused, 2, '没有现有BOSS页面时打开登录页并置前');
+
     local = new BossAutomationSafety(null);
     const passive = new BrowserService(path.join(dir, 'passive-profile'));
     let activeChecks = 0, reconnects = 0;
@@ -38,6 +55,24 @@ async function main() {
     stub(passive, 'tryReconnectChrome', async () => { reconnects++; return false; });
     assert.equal((await passive.checkLoginStatus({ restore: false })).isLoggedIn, false);
     assert.equal(activeChecks, 0); assert.equal(reconnects, 1, '状态观察只检查本地已有窗口，不启动 Chrome');
+
+    const resumedBrowser = new BrowserService(path.join(dir, 'mock-rest-profile'));
+    let restFocused = 0;
+    stub(resumedBrowser, 'getWorkerPage', async () => ({ bringToFront: async () => { restFocused++; } }));
+    stub(resumedBrowser, 'waitForJobsOrLogin', async () => {});
+    stub(resumedBrowser, 'checkLoginStatus', async () => ({ isLoggedIn: false, isBrowserActive: true, reasonCode: 'login_required' }));
+    const originalReady = CdpPage.assertPagesReady;
+    try {
+      CdpPage.assertPagesReady = async () => {};
+      await assert.rejects(resumedBrowser.resumeAfterRest(), /无法确认/);
+      assert.equal(restFocused, 1, '休息后登录失效必须把人工处理页面置前');
+      assert.equal(local.status().hold.reason, 'login_expired');
+      local = new BossAutomationSafety(null);
+      CdpPage.assertPagesReady = async () => { throw new Error('fixture pending verification'); };
+      await assert.rejects(resumedBrowser.resumeAfterRest(), /pending verification/);
+      assert.equal(restFocused, 2, '休息后出现验证也必须把页面置前');
+    } finally { CdpPage.assertPagesReady = originalReady; }
+    local = new BossAutomationSafety(null);
 
     let clock = 100000, persisted;
     const settings = { intervalMs: 0, burst: 100, restMs: 0, feedbackMs: 0, maxPerMinute: 2, maxPerHour: 3 };
@@ -50,7 +85,7 @@ async function main() {
     recoveredBudget.restore(persisted); const beforeRestart = clock;
     await recoveredBudget.run('control', async () => {});
     assert.equal(clock - beforeRestart, 3600000, '重启不能刷新操作额度');
-    assert.equal(persisted.recentActions.length, 4); assert.deepEqual(Object.keys(persisted.recentActions[0]).sort(), ['kind', 'result', 'time']);
+    assert.equal(persisted.recentActions.length, 4); assert.deepEqual(Object.keys(persisted.recentActions[0]).sort(), ['kind', 'result', 'startedAt', 'time']);
 
     const writes = new BossActionScheduler(() => ({ intervalMs: 2000, burst: 1, restMs: 20000, feedbackMs: 15000, writesPerHour: 1 }), () => clock, async ms => { clock += ms; });
     await writes.run('submit', async () => {}); const firstWrite = clock;
@@ -84,6 +119,9 @@ async function main() {
     } finally { global.document = oldDocument; global.location = oldLocation; }
 
     let bossCalls = 0, automaticResumes = 0;
+    let manualOpens = 0;
+    stub(browserService, 'openManualRecovery', async () => { manualOpens++; });
+    stub(deliveryService, 'stop', () => {});
     stub(browserService, 'promptLogin', async () => { bossCalls++; }); stub(browserService, 'verifyLogin', async () => { bossCalls++; });
     stub(deliveryService, 'resume', () => { automaticResumes++; });
     stub(browserService, 'checkLoginStatus', async options => { assert.equal(options.restore, false); return { isLoggedIn: true, isBrowserActive: true }; });
@@ -97,6 +135,12 @@ async function main() {
     }
     assert.equal(bossCalls, 0);
     assert.equal((await fetch(base + '/browser/status')).status, 200);
+    const beforeManual = local.status().hold.id;
+    const manualResponse = await fetch(base + '/boss/automation-safety/open-browser', { method: 'POST' });
+    assert.equal(manualResponse.status, 200, '停止期间必须保留人工打开浏览器入口');
+    assert.equal(manualOpens, 1); assert.equal(automaticResumes, 0);
+    assert.equal(local.status().hold.id, beforeManual); assert.equal(local.status().blocked, true);
+
     let response = await fetch(base + '/boss/automation-safety/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ holdId: local.status().hold.id }) });
     assert.equal(response.status, 400, '必须明确人工确认恢复');
     response = await fetch(base + '/boss/automation-safety/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ holdId: local.status().hold.id, platformAccessRestored: true }) });

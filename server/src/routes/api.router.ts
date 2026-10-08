@@ -67,6 +67,13 @@ apiRouter.post('/boss/automation-safety/report', (_req, res) => {
   const hold = bossAutomationSafety.halt('user_reported_ban', '你已报告 BOSS 账号受限，自动操作已停止。请先通过平台核实或申诉，账号恢复前不能继续投递。');
   deliveryService.stop(); res.json({ success: true, data: { blocked: true, hold } });
 });
+apiRouter.post('/boss/automation-safety/open-browser', async (_req, res) => {
+  deliveryService.stop();
+  try {
+    await browserService.openManualRecovery();
+    res.json({ success: true, data: bossAutomationSafety.status() });
+  } catch (error) { res.status(409).json({ success: false, message: (error as Error).message }); }
+});
 apiRouter.post('/boss/automation-safety/confirm', async (req, res) => {
   if (req.body?.platformAccessRestored !== true || typeof req.body?.holdId !== 'string') return res.status(400).json({ success: false, message: '请先人工确认 BOSS 账号已恢复正常使用' });
   try {

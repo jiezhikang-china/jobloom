@@ -62,6 +62,7 @@ export class BrowserService {
   private workerPage: CdpPage | null = null;
   private verificationPage: CdpPage | null = null;
   private loginPromise: Promise<void> | null = null;
+  private recoveryPromise: Promise<void> | null = null;
   private workerPromise: Promise<CdpPage> | null = null;
   private lastSessionRecordAt = 0;
   private resting = false;
@@ -107,9 +108,9 @@ export class BrowserService {
     return (await response.json() as ChromeTarget[]).filter((tab) => tab.type === 'page');
   }
 
-  private async ensureChrome(openLogin: boolean): Promise<void> {
+  private async ensureChrome(openLogin: boolean, manualRecovery = false): Promise<void> {
     if (this.resting) throw new Error('BOSS 浏览器正在关闭休息，休息结束前不会重开');
-    if (!this.options.headless) bossAutomationSafety.assertAllowed();
+    if (!this.options.headless && !manualRecovery) bossAutomationSafety.assertAllowed();
     if (this.port) {
       try { await this.listTabs(); return; } catch {
         for (const page of this.pages.values()) page.closeConnection();
@@ -392,6 +393,31 @@ export class BrowserService {
     }
   }
 
+  /** Explicit human handling opens/focuses this profile without enabling any automated task. */
+  public async openManualRecovery(): Promise<void> {
+    if (this.recoveryPromise) return this.recoveryPromise;
+    this.recoveryPromise = this.openManualRecoveryPage();
+    try { await this.recoveryPromise; } finally { this.recoveryPromise = null; }
+  }
+
+  private async openManualRecoveryPage(): Promise<void> {
+    // Manual handling may open the browser after a stopped rest; the durable rest journal is retained.
+    this.releaseRestGate();
+    await this.ensureChrome(true, true);
+    let tabs = await this.listTabs();
+    for (let attempt = 0; !tabs.length && this.chrome && attempt < 10; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 150)); tabs = await this.listTabs();
+    }
+    const bossTabs = tabs.filter(tab => tab.url.startsWith(BOSS_ORIGIN + '/'));
+    const target = bossTabs.find(tab => isSecurityUrl(tab.url))
+      || bossTabs.find(tab => tab.id === this.verificationPage?.id)
+      || bossTabs.find(tab => tab.url.startsWith(BOSS_ORIGIN + '/web/user/'))
+      || bossTabs.find(tab => tab.id === this.workerPage?.id) || bossTabs[0];
+    // Preserve existing restrictions and login dialogs; never navigate away or click through them.
+    const page = target ? await this.pageFor(target) : await this.createPageNow(LOGIN_URL);
+    await page.bringToFront();
+  }
+
   /** 打开并保持普通 Chrome 扫码页，不自动切页。 */
   public async promptLogin(): Promise<void> {
     if (this.loginPromise) return this.loginPromise;
@@ -507,9 +533,13 @@ export class BrowserService {
     signal?.throwIfAborted();
     await this.waitForJobsOrLogin(page);
     signal?.throwIfAborted();
-    if (!this.options.headless) await CdpPage.assertPagesReady();
+    if (!this.options.headless) {
+      try { await CdpPage.assertPagesReady(); }
+      catch (error) { await page.bringToFront().catch(() => {}); throw error; }
+    }
     const login = await this.checkLoginStatus({ restore: false });
     if (!login.isLoggedIn) {
+      await page.bringToFront().catch(() => {});
       if (login.reasonCode === 'login_required' && !this.options.headless) {
         bossAutomationSafety.halt('login_expired', 'BOSS 休息后要求重新登录，自动操作已停止，请人工处理当前页面');
       }
