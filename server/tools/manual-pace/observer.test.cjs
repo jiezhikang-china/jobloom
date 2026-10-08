@@ -34,7 +34,7 @@ async function main() {
     const popup = await popupPromise; await popup.waitForLoadState('domcontentloaded');
     for (let i = 0; i < 30 && !events.some(e => e.kind === 'company_ready'); i++) await new Promise(resolve => setTimeout(resolve, 100));
     for (const kind of ['company', 'company_ready', 'submit', 'confirm']) assert.ok(events.some(e => e.kind === kind), kind);
-    assert.ok(events.every(e => Object.keys(e).sort().join(',') === 'at,kind'));
+    assert.ok(events.every(e => Object.keys(e).sort().join(',') === 'action,at,kind,page,target'));
     assert.doesNotMatch(JSON.stringify(events), /私有文字|离线公司简介|Cookie|负责资料/);
     await page.evaluate(() => window.__manualCleanup());
     const after = events.length; await page.locator('#other').click();

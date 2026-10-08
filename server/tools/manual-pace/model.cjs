@@ -5,7 +5,7 @@ const KINDS = Object.freeze({
   detail_visible: ['回到岗位详情', 'read_detail'], company: ['打开公司页', 'load_company'],
   company_ready: ['公司页已显示', 'read_company'], source: ['切换自选岗位', 'browse'],
   list: ['回到职位列表', 'browse'], scroll: ['滚动阅读', null], control: ['其他控件', null],
-  input: ['输入筛选条件', null], submit: ['点击沟通', 'submit'], confirm: ['点击继续沟通', 'after_submit'],
+  input: ['输入操作', null], click: ['点击页面元素', null], focus: ['聚焦控件', null], navigate: ['页面切换', null], submit: ['点击沟通', 'submit'], confirm: ['点击继续沟通', 'after_submit'],
   feedback: ['点击不合适', 'feedback'], round: ['完成这一轮', 'browse'],
   pause: ['暂停计时', null], resume: ['继续计时', null], finish: ['结束采样', null],
 });
@@ -29,12 +29,18 @@ class PaceSession {
     if (this.status !== 'ready' && this.status !== 'finished') throw new Error('已有采样，请先结束');
     this.reset(); this.startedAt = this.now(); this.status = 'recording';
   }
-  record(kind, at = this.now()) {
+  record(kind, at = this.now(), meta = {}) {
     if (this.status !== 'recording' || !Object.hasOwn(KINDS, kind) || ['pause', 'resume', 'finish'].includes(kind)) return false;
     const received = this.now();
     if (!Number.isFinite(at) || Math.abs(at - received) > 5000) at = received;
     const elapsedMs = Math.max(this.events.at(-1)?.elapsedMs || 0, this.elapsed(at));
-    this.events.push({ n: this.events.length + 1, kind, label: KINDS[kind][0], at: new Date(at).toISOString(), elapsedMs });
+    const event = { n: this.events.length + 1, kind, label: KINDS[kind][0], at: new Date(at).toISOString(), elapsedMs };
+    if (meta && typeof meta === 'object') {
+      if (typeof meta.target === 'string' && /^(?:document|[a-z][a-z0-9-]*(?:\.[A-Za-z_-][A-Za-z0-9_-]{0,39}){0,3})$/.test(meta.target) && meta.target.length <= 150) event.target = meta.target;
+      if (['list', 'detail', 'company', 'chat', 'other', 'login'].includes(meta.page)) event.page = meta.page;
+      if (['click', 'scroll', 'input', 'focus', 'navigation', 'ready'].includes(meta.action)) event.action = meta.action;
+    }
+    this.events.push(event);
     return true;
   }
   pause(reason = '手动暂停') {

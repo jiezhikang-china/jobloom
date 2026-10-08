@@ -42,4 +42,14 @@ test('重新采样使用新编号，未完成轮不作为完整样本', () => {
 test('中位数和四分位数用于呈现分布，未采样不编造间隔', () => {
   assert.equal(percentile([], .5), null); assert.equal(percentile([60, 10, 20], .5), 20);
   assert.equal(new PaceSession().view().summary.rounds.medianMs, null);
+});test('DOM 元信息只保存结构与类型，拒绝正文、链接和值', () => {
+  const s = new PaceSession(() => 1700000000000); s.start();
+  s.record('click', 1700000000000, { target: 'button.other-control', page: 'chat', action: 'click',
+    text: '私有正文', href: 'https://example.com', value: '密码' });
+  assert.equal(s.events[0].target, 'button.other-control'); assert.equal(s.events[0].page, 'chat');
+  assert.equal(s.events[0].action, 'click');
+  s.record('input', 1700000000000, { target: 'input[value="密码"]', page: 'https://example.com', action: '私有正文' });
+  assert.equal(s.events[1].target, undefined); assert.equal(s.events[1].page, undefined);
+  assert.equal(s.events[1].action, undefined);
+  assert.doesNotMatch(JSON.stringify(s.events), /私有正文|example|密码/);
 });
