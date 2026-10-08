@@ -7,8 +7,8 @@ import { bossAutomationSafety } from './boss-automation-safety.js';
 
 export type BossActionKind = 'control' | 'input' | 'navigation' | 'route' | 'feedback' | 'submit' | 'confirm' | 'detail' | 'source' | 'list';
 interface ActionScope { managedBusinessRest?: boolean; signal?: AbortSignal; beforeAction?: () => Promise<void>; onWait?: (seconds: number, kind: BossActionKind) => void; }
-interface Settings { kindIntervalsMs?: Partial<Record<BossActionKind, number>>; submitIntervalMs?: number; businessBurst?: number; intervalMs: number; burst: number; restMs: number; feedbackMs: number; maxPerMinute?: number; maxPerHour?: number; writesPerHour?: number; }
-interface ActionState { counterVersion?: number; businessSequenceCount?: number; lastBusinessAt?: number; blockedUntil: number; level: number; lastLimitAt: number; sequenceCount?: number; actionTimes?: number[]; writeTimes?: number[]; recentActions?: Array<{ time: number; kind: BossActionKind; result: 'ok' | 'error' }>; }
+interface Settings { intervalsFromStart?: boolean; confirmIntervalMs?: number; kindStartIntervalsMs?: Partial<Record<BossActionKind, readonly number[]>>; kindIntervalsMs?: Partial<Record<BossActionKind, number>>; submitIntervalMs?: number; businessBurst?: number; intervalMs: number; burst: number; restMs: number; feedbackMs: number; maxPerMinute?: number; maxPerHour?: number; writesPerHour?: number; }
+interface ActionState { kindActionCounts?: Partial<Record<BossActionKind, number>>; counterVersion?: number; businessSequenceCount?: number; lastBusinessAt?: number; blockedUntil: number; level: number; lastLimitAt: number; sequenceCount?: number; actionTimes?: number[]; writeTimes?: number[]; recentActions?: Array<{ time: number; startedAt?: number; kind: BossActionKind; result: 'ok' | 'error' }>; }
 const scopes = new AsyncLocalStorage<ActionScope>();
 const statePath = path.resolve(__dirname, '../../../data/boss-operation-state.json');
 
@@ -16,6 +16,9 @@ const statePath = path.resolve(__dirname, '../../../data/boss-operation-state.js
 export class BossActionScheduler {
   private tail: Promise<void> = Promise.resolve();
   private lastAt = 0;
+  private lastStartedAt = 0;
+  private lastKindStartedAt = new Map<BossActionKind, number>();
+  private kindActionCounts = new Map<BossActionKind, number>();
   private lastKindAt = new Map<BossActionKind, number>();
   private lastWriteAt = 0;
   private count = 0;
@@ -42,7 +45,16 @@ export class BossActionScheduler {
     this.recentActions = Array.isArray(state?.recentActions) ? state.recentActions.filter((item: any) => Number.isFinite(item?.time)
       && ['control', 'input', 'navigation', 'route', 'feedback', 'submit', 'confirm', 'detail', 'source', 'list'].includes(item.kind)
       && ['ok', 'error'].includes(item.result)).slice(-1000) : [];
-    for (const item of this.recentActions) this.lastKindAt.set(item.kind, item.time);
+    for (const item of this.recentActions) {
+      const startedAt = Number.isFinite(item.startedAt) && item.startedAt! <= item.time && item.startedAt! > 0 ? item.startedAt! : item.time;
+      this.lastKindAt.set(item.kind, item.time); this.lastKindStartedAt.set(item.kind, startedAt);
+      this.kindActionCounts.set(item.kind, (this.kindActionCounts.get(item.kind) || 0) + 1);
+    }
+    const last = this.recentActions.at(-1);
+    this.lastStartedAt = last ? this.lastKindStartedAt.get(last.kind)! : this.lastAt;
+    for (const [kind, count] of Object.entries(state?.kindActionCounts || {})) {
+      if (this.lastKindAt.has(kind as BossActionKind) && Number.isSafeInteger(count) && Number(count) >= 0) this.kindActionCounts.set(kind as BossActionKind, Number(count));
+    }
     const restMs = this.settings().restMs;
     if (this.lastAt && this.now() - this.lastAt < restMs) {
       if (Number.isInteger(state?.sequenceCount) && state.sequenceCount >= 0) this.count = Math.min(1000, state.sequenceCount);
@@ -72,7 +84,7 @@ export class BossActionScheduler {
     this.blockedUntil = Math.max(this.blockedUntil, now + Math.max(Math.min(900000, 60000 * 2 ** (this.level - 1)), Math.min(86400000, retryAfterMs)));
     this.save(); this.onLimit?.(this.blockedUntil, this.level);
   }
-  private save(): void { this.persist?.({ counterVersion: 2, businessSequenceCount: this.businessCount, lastBusinessAt: this.lastBusinessAt, blockedUntil: this.blockedUntil, level: this.level, lastLimitAt: this.lastLimitAt, sequenceCount: this.count, actionTimes: this.actionTimes, writeTimes: this.writeTimes, recentActions: this.recentActions }); }
+  private save(): void { this.persist?.({ kindActionCounts: Object.fromEntries(this.kindActionCounts), counterVersion: 2, businessSequenceCount: this.businessCount, lastBusinessAt: this.lastBusinessAt, blockedUntil: this.blockedUntil, level: this.level, lastLimitAt: this.lastLimitAt, sequenceCount: this.count, actionTimes: this.actionTimes, writeTimes: this.writeTimes, recentActions: this.recentActions }); }
   private budgetUntil(times: number[], limit: number | undefined, window: number, now: number): number {
     if (!limit || limit < 1) return 0;
     const recent = times.filter(time => time > now - window);
@@ -82,16 +94,21 @@ export class BossActionScheduler {
   private waitMs(kind: BossActionKind): number {
     const now = this.now(), settings = this.settings();
     const writes = kind === 'feedback' || kind === 'submit';
-    const kindGap = settings.kindIntervalsMs?.[kind]
+    const samples = settings.kindStartIntervalsMs?.[kind];
+    const measuredGap = samples?.length ? samples[Math.max(0, (this.kindActionCounts.get(kind) || 1) - 1) % samples.length] : undefined;
+    const kindAt = measuredGap !== undefined || settings.intervalsFromStart
+      ? this.lastKindStartedAt.get(kind) ?? this.lastKindAt.get(kind) : this.lastKindAt.get(kind);
+    const kindGap = measuredGap ?? settings.kindIntervalsMs?.[kind]
       ?? (['navigation', 'source', 'list'].includes(kind) ? settings.intervalMs * 3 : kind === 'route' ? settings.intervalMs * 5 : 0);
     const writeGap = kind === 'submit' ? settings.submitIntervalMs ?? settings.feedbackMs : settings.feedbackMs;
-    const globalGap = kind === 'confirm' ? Math.min(600, settings.intervalMs) : settings.intervalMs;
+    const globalGap = kind === 'confirm' ? settings.confirmIntervalMs ?? Math.min(600, settings.intervalMs) : settings.intervalMs;
+    const globalAt = settings.intervalsFromStart ? this.lastStartedAt : this.lastAt;
     const budget = kind === 'confirm' ? 0 : Math.max(this.budgetUntil(this.actionTimes, settings.maxPerMinute, 60000, now),
       this.budgetUntil(this.actionTimes, settings.maxPerHour, 3600000, now),
       writes ? this.budgetUntil(this.writeTimes, settings.writesPerHour, 3600000, now) : 0);
     const consecutive = this.lastAt && now - this.lastAt >= settings.restMs ? 0 : this.count;
-    return Math.max(0, Math.max(this.blockedUntil, this.lastAt ? this.lastAt + globalGap : 0,
-      this.lastKindAt.has(kind) ? this.lastKindAt.get(kind)! + kindGap : 0,
+    return Math.max(0, Math.max(this.blockedUntil, globalAt ? globalAt + globalGap : 0,
+      kindAt ? kindAt + kindGap : 0,
       writes && this.lastWriteAt ? this.lastWriteAt + writeGap : 0,
       kind !== 'confirm' && settings.burst > 0 && consecutive >= settings.burst && this.lastAt ? this.lastAt + settings.restMs : 0,
       kind !== 'confirm' && !scopes.getStore()?.managedBusinessRest && settings.businessBurst && this.businessCount >= settings.businessBurst && this.lastBusinessAt
@@ -133,14 +150,17 @@ export class BossActionScheduler {
         await this.sleep(Math.min(wait, 500), scope?.signal);
       }
       scope?.signal?.throwIfAborted(); await scope?.beforeAction?.();
+      const startedAt = this.now();
       let result: 'ok' | 'error' = 'ok';
       try { return await action(); }
       catch (error) { result = 'error'; throw error; }
       finally {
         this.lastAt = this.now(); this.lastKindAt.set(kind, this.lastAt); this.count++;
+        this.lastStartedAt = startedAt; this.lastKindStartedAt.set(kind, startedAt);
+        this.kindActionCounts.set(kind, (this.kindActionCounts.get(kind) || 0) + 1);
         if (['source', 'list', 'detail', 'feedback', 'submit'].includes(kind)) { this.businessCount++; this.lastBusinessAt = this.lastAt; }
         this.actionTimes.push(this.lastAt);
-        this.recentActions.push({ time: this.lastAt, kind, result }); this.recentActions = this.recentActions.slice(-1000);
+        this.recentActions.push({ time: this.lastAt, startedAt, kind, result }); this.recentActions = this.recentActions.slice(-1000);
         if (kind === 'feedback' || kind === 'submit') { this.lastWriteAt = this.lastAt; this.writeTimes.push(this.lastAt); }
         this.save();
       }

@@ -1,4 +1,5 @@
 const WebSocket = require('ws') as any;
+import { bossOperationPolicy } from './boss-operation-policy.js';
 import { bossActionScheduler, type BossActionKind } from './boss-action-scheduler.js';
 import { bossAutomationSafety, visibleBossRestriction, BossAutomationBlockedError, type BossAutomationSafety } from './boss-automation-safety.js';
 
@@ -326,6 +327,9 @@ export class CdpPage {
     return result.cookies || [];
   }
 
+  async waitAfterPointerDown(): Promise<void> {
+    if (this.paceActions && this.currentUrl.startsWith('https://www.zhipin.com/')) await this.waitForTimeout(bossOperationPolicy.pointerHoldMs);
+  }
   async input(method: string, params: Record<string, unknown>): Promise<void> {
     await this.connection.send(method, params);
   }
@@ -411,7 +415,10 @@ export class CdpLocator {
     const { x, y } = await this.point();
     await this.owner.input('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     await this.owner.input('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1, pointerType: 'mouse' });
-    await this.owner.input('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1, pointerType: 'mouse' });
+    try { await this.owner.waitAfterPointerDown(); }
+    finally {
+      await this.owner.input('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1, pointerType: 'mouse' });
+    }
   }
   async fill(value: string): Promise<void> {
     await this.owner.action('input', async () => {

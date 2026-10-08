@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { CdpPage, type CdpConnection } from '../src/services/cdp.page.js';
 import { BossActionScheduler, bossActionScheduler, runBossAction } from '../src/services/boss-action-scheduler.js';
+import { bossOperationPolicy } from '../src/services/boss-operation-policy.js';
 import { BossAutomationSafety } from '../src/services/boss-automation-safety.js';
 
 class Connection {
@@ -35,8 +36,11 @@ async function main() {
   const safety = new BossAutomationSafety(null);
   const first = await new CdpPage('first', firstConnection as unknown as CdpConnection, '', true, safety).initialize();
   const second = await new CdpPage('second', secondConnection as unknown as CdpConnection, '', true, safety).initialize();
+  const holds: number[] = [];
+  first.waitForTimeout = second.waitForTimeout = async ms => { holds.push(ms); };
   try {
     await first.locator('button').click();
+    assert.deepEqual(holds, [bossOperationPolicy.pointerHoldMs], '原生按下与释放之间使用实际104ms样本');
     assert.deepEqual(firstConnection.inputs.filter(item => item.method === 'Input.dispatchMouseEvent').map(item => item.type), ['mouseMoved', 'mousePressed', 'mouseReleased']);
     assert.equal(clock, 100000, '鼠标按下和释放是一个完整动作');
     await second.locator('input').fill('中文内容');
@@ -58,6 +62,18 @@ async function main() {
     let checkedAt = 0;
     await second.locator('button').clickAs('feedback', async () => { checkedAt = clock; });
     assert.equal(checkedAt, clock, '等候结束后再核对提交目标');
+    let entered!: () => void, release!: () => void;
+    const pressed = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    first.waitForTimeout = async () => { entered(); await held; };
+    const pendingClick = first.locator('button').click();
+    await pressed;
+    assert.equal(firstConnection.inputs.at(-1).type, 'mousePressed', '等待期间不能提前释放鼠标');
+    release(); await pendingClick;
+    assert.equal(firstConnection.inputs.at(-1).type, 'mouseReleased');
+    first.waitForTimeout = async () => { throw new Error('停止测试点击'); };
+    await assert.rejects(first.locator('button').click(), /停止测试点击/);
+    assert.equal(firstConnection.inputs.at(-1).type, 'mouseReleased', '等待被取消或失败也必须释放鼠标');
     console.log('PASS | 原生鼠标事件原子性、输入无嵌套死锁、文件选择节流、路线回调、跨页验证、429 来源、提交前再次核对');
   } finally {
     first.closeConnection(); second.closeConnection(); bossActionScheduler.run = originalRun; bossActionScheduler.limit = originalLimit;

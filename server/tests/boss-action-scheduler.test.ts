@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { BossActionScheduler } from '../src/services/boss-action-scheduler.js';
 import { bossOperationPolicy } from '../src/services/boss-operation-policy.js';
+import { bossRecordedPace } from '../src/services/boss-recorded-pace.js';
 
 async function main() {
   let clock = 100000;
@@ -79,27 +80,45 @@ async function main() {
   let stageClock = 20000000, stageState: any;
   const stage = new BossActionScheduler(() => bossOperationPolicy, () => stageClock,
     async ms => { stageClock += ms; }, state => { stageState = structuredClone(state); });
-  await stage.run('detail', async () => {}); const detailAt = stageClock;
-  for (let i = 0; i < 5; i++) await stage.run('control', async () => {});
-  assert.equal(stageClock - detailAt, 5000, '普通控件至少1秒，不叠加长阅读等待');
-  await stage.run('detail', async () => {});
-  assert.equal(stageClock - detailAt, 6000, '控件/读取耗时计入详情间隔，但下一次动作仍有1秒间隔');
+  const measured = bossRecordedPace.selectionIntervalsMs;
+  const selectedAt: number[] = [];
+  for (let i = 0; i <= measured.length; i++) {
+    const preview = stage.waitSeconds('detail'); assert.equal(stage.waitSeconds('detail'), preview, '预览不能消耗样本序列');
+    await stage.run('detail', async () => { selectedAt.push(stageClock); stageClock += bossOperationPolicy.pointerHoldMs; });
+  }
+  assert.deepEqual(selectedAt.slice(1).map((at, i) => at - selectedAt[i]), [...measured],
+    '所有14个相邻选岗间隔均按开始到开始执行，104ms鼠标动作不能叠加到间隔上');
+  const restartedStage = new BossActionScheduler(() => bossOperationPolicy, () => stageClock, async ms => { stageClock += ms; });
+  restartedStage.restore(stageState);
+  const lastStart = selectedAt.at(-1)!;
+  await restartedStage.run('detail', async () => {});
+  assert.equal(stageClock - lastStart, measured[0], '重启保留开始时间和样本进度，循环后从第一段继续');
+  let migrationClock = 30000000;
+  const migratedStage = new BossActionScheduler(() => bossOperationPolicy, () => migrationClock, async ms => { migrationClock += ms; });
+  migratedStage.restore({ actionTimes: [migrationClock], writeTimes: [],
+    recentActions: [{ time: migrationClock, kind: 'detail', result: 'ok' }] });
+  const oldCompletedAt = migrationClock;
+  await migratedStage.run('detail', async () => {});
+  assert.equal(migrationClock - oldCompletedAt, measured[0], '旧记录没有开始时间或样本计数时，以完成时间与已有动作重建间隔');
   stageClock += 10000; const alreadyRead = stageClock;
   await stage.run('detail', async () => {});
-  assert.equal(stageClock, alreadyRead, '已经阅读10秒不能额外等待下一岗位');
-  const afterRead = stageClock;
-  for (let i = 0; i < 20; i++) await stage.run('control', async () => {});
-  assert.equal(stageClock - afterRead, 20000, '普通动作保持1秒间隔，不制造整分钟停顿');
+  assert.equal(stageClock, alreadyRead, 'DOM加载或分析已用10秒，不能额外补一段选岗等待');
+  await stage.run('detail', async () => { stageClock += 5000; });
+  const afterSlowAction = stageClock;
+  await stage.run('control', async () => {});
+  assert.equal(stageClock, afterSlowAction, '动作执行耗时计入全局间隔，完成后不重复等待');
+  const controls: number[] = [];
+  for (let i = 0; i < 5; i++) await stage.run('control', async () => { controls.push(stageClock); stageClock += 104; });
+  assert.deepEqual(controls.slice(1).map((at, i) => at - controls[i]), [1000, 1000, 1000, 1000],
+    '未采到充分样本的普通控件仍保持1秒开始间隔，不采用无延迟操作');
   await stage.run('list', async () => {}); const listAt = stageClock;
-  await stage.run('list', async () => {}); assert.equal(stageClock - listAt, 5000);
-  await stage.run('detail', async () => {});
-  const restartedStage = new BossActionScheduler(() => bossOperationPolicy, () => stageClock, async ms => { stageClock += ms; });
-  restartedStage.restore(stageState); const beforeRestart = stageClock;
-  await restartedStage.run('detail', async () => {});
-  assert.equal(stageClock - beforeRestart, 3500, '同类业务间隔跨重启仍保留');
+  await stage.run('list', async () => {}); assert.equal(stageClock - listAt, 5000, '列表切换保持原策略');
   await stage.run('feedback', async () => {}); const feedbackAt = stageClock;
   await stage.run('submit', async () => {});
-  assert.equal(stageClock - feedbackAt, 2500, '提交保持2.5秒写入间隔，确认动作不额外长等');
+  assert.equal(stageClock - feedbackAt, 2500, '登录弹窗中的沟通点击不拿来缩短写入间隔');
+  const submitAt = stageClock;
+  await stage.run('confirm', async () => {});
+  assert.equal(stageClock - submitAt, 600, '没有确认样本时继续沟通保持原来的短确认间隔');
   stage.limit(120000);
   assert.equal(stage.canStartFeedback(), false);
   let managedClock = 40000000, managedState: any;
