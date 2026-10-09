@@ -372,3 +372,6 @@ progress { accent-color: var(--brand-accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.desktop-brand > img { object-fit: contain; }

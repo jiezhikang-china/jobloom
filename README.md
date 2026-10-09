@@ -1,4 +1,6 @@
-# BOSS Job Agent
+# 拾职 · Jobloom
+
+<img src="assets/brand/jobloom-icon.png" alt="Jobloom 应用图标" width="96" height="96">
 
 基于 Electron 的 Windows 求职辅助工具，通过独立 Chrome 窗口读取 BOSS 直聘网页，结合本地规则和 AI 评估筛选岗位，提供待确认岗位管理与投递辅助。
 

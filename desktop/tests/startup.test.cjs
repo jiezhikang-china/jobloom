@@ -9,7 +9,7 @@ const { APP_ORIGIN, isAppUrl, createAppProtocol } = require('../app-protocol.cjs
 
 const entry = path.resolve(__dirname, '..', 'electron-main.cjs');
 const source = fs.readFileSync(entry, 'utf8');
-const health = { app: 'boss-job-agent', integrationVersion: 31, desktopManaged: true, status: 'ok' };
+const health = { app: 'jobloom', integrationVersion: 31, desktopManaged: true, status: 'ok' };
 
 function desktop(options = {}) {
   const windows = [];
@@ -336,7 +336,7 @@ test('隔离 preload、内部协议和受限窗口命令', async () => {
   assert.equal(window.settings.webPreferences.contextIsolation, true);
   assert.equal(window.settings.webPreferences.sandbox, true);
   assert.match(window.settings.webPreferences.preload, /preload\.cjs$/);
-  assert.ok(run.protocols.has('boss-app'));
+  assert.ok(run.protocols.has('jobloom-app'));
   const command = run.ipcHandlers.get('desktop:window');
   const sender = { sender: window.webContents, senderFrame: window.webContents.mainFrame };
   command(sender, 'minimize'); assert.equal(window.minimized, true);

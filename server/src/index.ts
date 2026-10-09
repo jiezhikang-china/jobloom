@@ -34,7 +34,7 @@ app.use('/api', (_req, res) => {
 
 // 健康检查
 app.get('/health', (_req, res) => {
-  res.json({ app: 'boss-job-agent', integrationVersion: 31, desktopManaged: !!process.env.BOSS_DESKTOP_TOKEN, status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ app: 'jobloom', integrationVersion: 31, desktopManaged: !!process.env.BOSS_DESKTOP_TOKEN, status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // 静态托管前端生产页面 (开箱即用)
@@ -48,7 +48,7 @@ if (fs.existsSync(clientDistPath)) {
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`====================================================`);
-  console.log(`🚀 BOSS Job Agent 后端服务已成功启动！`);
+  console.log(`🚀 Jobloom 后端服务已成功启动！`);
   console.log(`📡 服务地址: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`📄 健康检查: http://localhost:${PORT}/health`);
   console.log(`🔒 监听地址: ${HOST}（如需局域网访问请设置环境变量 HOST=0.0.0.0）`);

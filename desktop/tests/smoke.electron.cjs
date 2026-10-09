@@ -9,7 +9,7 @@ const base = path.resolve(__dirname, '../../data');
 const dir = fs.mkdtempSync(path.join(base, 'electron-smoke-'));
 app.setPath('userData', path.join(dir, 'profile'));
 app.disableHardwareAcceleration();
-protocol.registerSchemesAsPrivileged([{ scheme: 'boss-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
+protocol.registerSchemesAsPrivileged([{ scheme: 'jobloom-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
 let server, window;
 const seen = [];
 const resultFile = path.join(base, 'electron-smoke-result.json');
@@ -37,13 +37,13 @@ async function main() {
       : req.url === '/api/boss/positions' ? { categories: [], source: 'fixture', fetchedAt: new Date().toISOString() }
       : req.url === '/api/browser/status' ? { isLoggedIn: false, isBrowserActive: false, reasonCode: 'automation_blocked', reason: '模拟账号停止' }
       : req.url === '/api/boss/automation-safety' ? { blocked: true, hold: { id: 'fixture-hold', reason: 'user_reported_ban', message: '模拟账号停止，等待人工确认', detectedAt: new Date().toISOString() } }
-      : req.url === '/health' ? { app: 'boss-job-agent', integrationVersion: 31, status: 'ok' } : [];
+      : req.url === '/health' ? { app: 'jobloom', integrationVersion: 31, status: 'ok' } : [];
     res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ success: true, data }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   await app.whenReady();
   const url = 'http://127.0.0.1:' + server.address().port;
-  protocol.handle('boss-app', createAppProtocol({ clientDir: path.resolve(__dirname, '../../client/dist'), getService: () => ({ url, token: 'fixture-private-token' }) }));
+  protocol.handle('jobloom-app', createAppProtocol({ clientDir: path.resolve(__dirname, '../../client/dist'), getService: () => ({ url, token: 'fixture-private-token' }) }));
   session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (_details, callback) => callback({ cancel: true }));
   window = new BrowserWindow({ show: false, width: 1320, height: 860, frame: false,
     webPreferences: { preload: path.resolve(__dirname, '../preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false } });
@@ -59,11 +59,11 @@ async function main() {
       const timeout = setTimeout(() => { events.close(); reject(new Error('SSE timed out')); }, 4000);
       events.onmessage = event => { clearTimeout(timeout); events.close(); resolve(JSON.parse(event.data).type); };
     });
-    return { protocol: location.protocol, desktop: window.bossDesktop?.platform, hasNode: typeof window.require !== 'undefined',
+    return { protocol: location.protocol, desktop: window.jobloomDesktop?.platform, hasNode: typeof window.require !== 'undefined',
       titlebar: !!document.querySelector('.desktop-titlebar'), safety: !!document.querySelector('.boss-safety-panel.blocked'),
       upload, binary, stream, text: document.body.innerText };
   })()`);
-  assert.equal(result.protocol, 'boss-app:'); assert.equal(result.desktop, 'windows'); assert.equal(result.hasNode, false);
+  assert.equal(result.protocol, 'jobloom-app:'); assert.equal(result.desktop, 'windows'); assert.equal(result.hasNode, false);
   assert.equal(result.titlebar, true); assert.equal(result.safety, true); assert.equal(result.stream, 'init');
   assert.equal(result.upload.chinese, true); assert.equal(result.upload.multipart, true); assert.deepEqual(result.binary, [1, 2, 255]);
   const downloaded = new Promise((resolve, reject) => {

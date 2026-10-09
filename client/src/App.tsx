@@ -582,8 +582,8 @@ export default function App() {
         <aside className="app-sidebar" aria-label="工作台侧栏">
           <a className="skip-link" href="#workspace-content">跳到页面内容</a>
           <div className="sidebar-brand">
-            <span className="brand-mark"><Compass size={24} strokeWidth={1.6} /></span>
-            <div><strong>求职工作台</strong><span>BOSS 求职助手</span></div>
+            <span className="brand-mark"><img src="/jobloom-icon.png" width="38" height="38" alt="" /></span>
+            <div><strong>拾职</strong><span>Jobloom · 求职工作台</span></div>
           </div>
           <nav className="sidebar-nav" aria-label="工作台导航">
             {navigationItems.map(tab => {

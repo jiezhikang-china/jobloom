@@ -1,6 +1,6 @@
 # GitHub 上传准备
 
-更新日期：2026-10-09。本轮只准备文件，不创建远端仓库或执行推送。
+更新日期：2026-10-09。计划使用公开仓库，仓库名 jobloom；应用名“拾职 · Jobloom”。实际推送状态以 Git remote 与远端记录为准。
 
 ## 已准备
 
@@ -32,7 +32,7 @@ docs 中含有历史调试与平台测试记录，发布前应人工确认其中
 将下列地址替换为实际仓库地址后执行：
 
 ~~~powershell
-git remote add origin https://github.com/YOUR_NAME/boss-job-agent.git
+git remote add origin https://github.com/YOUR_NAME/jobloom.git
 git push -u origin main
 ~~~
 

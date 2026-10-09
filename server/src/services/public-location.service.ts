@@ -42,7 +42,7 @@ export class PublicLocationService {
       url.search = new URLSearchParams({ q: query.includes(cityName) ? query.trim() : cityName.trim() + ' ' + query.trim(),
         format: 'jsonv2', limit: '8', addressdetails: '1', countrycodes: 'cn', 'accept-language': 'zh-CN,zh' }).toString();
       let response: Response;
-      try { response = await this.request(url, { headers: { 'User-Agent': 'BossJobAgent/1.0 (Windows desktop; user-initiated commute setup)',
+      try { response = await this.request(url, { headers: { 'User-Agent': 'Jobloom/1.0 (Windows desktop; user-initiated commute setup)',
         Accept: 'application/json' }, signal: AbortSignal.timeout(15000) }); }
       catch { throw new Error('公共地址搜索连接失败，可切换 BOSS 地址搜索或直接在地图选点'); }
       if (!response.ok) {

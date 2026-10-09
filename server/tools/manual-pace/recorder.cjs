@@ -114,7 +114,7 @@ async function assertDesktopClosed() {
   try { desktop = JSON.parse(fs.readFileSync(path.join(root, 'data/desktop-port.json'), 'utf8')); } catch {}
   if (desktop && Number.isInteger(desktop.port)) {
     let health = null; try { health = await json('http://127.0.0.1:' + desktop.port + '/health'); } catch {}
-    if (health?.app === 'boss-job-agent') throw new Error('请先关闭自动投递桌面助手，避免自动任务混入你的操作记录。');
+    if (health?.app === 'jobloom') throw new Error('请先关闭自动投递桌面助手，避免自动任务混入你的操作记录。');
   }
 }
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };

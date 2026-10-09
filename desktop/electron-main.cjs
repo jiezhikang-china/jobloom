@@ -7,9 +7,12 @@ const { randomUUID } = require('node:crypto');
 const { profileDirectory } = require('./user-profile.cjs');
 const { APP_ORIGIN, isAppUrl, createAppProtocol } = require('./app-protocol.cjs');
 
-protocol.registerSchemesAsPrivileged([{ scheme: 'boss-app', privileges: {
+protocol.registerSchemesAsPrivileged([{ scheme: 'jobloom-app', privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
 } }]);
+
+app.setName?.('Jobloom');
+if (process.platform === 'win32') app.setAppUserModelId?.('jobloom.desktop');
 
 const root = path.resolve(__dirname, '..');
 const dataDir = path.join(root, 'data');
@@ -71,7 +74,7 @@ async function readJson(url, timeout = 1500) {
 async function isOurService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
-    if (health.app !== 'boss-job-agent' || health.integrationVersion !== 31 || health.status !== 'ok' || health.desktopManaged !== true) return false;
+    if (health.app !== 'jobloom' || health.integrationVersion !== 31 || health.status !== 'ok' || health.desktopManaged !== true) return false;
     const safety = await readJson(`${address(port)}/api/boss/automation-safety`);
     return safety.success === true;
   } catch {
@@ -82,7 +85,7 @@ async function isOurService(port) {
 async function isActivePreviousService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
-    if (health.app !== 'boss-job-agent' || health.status !== 'ok' || !Number.isInteger(health.integrationVersion)
+    if (health.app !== 'jobloom' || health.status !== 'ok' || !Number.isInteger(health.integrationVersion)
       || health.integrationVersion < 22 || health.integrationVersion >= 31) return false;
     const result = await readJson(`${address(port)}/api/delivery/status`, 2500);
     return activeStatuses.has(result?.data?.stats?.status);
@@ -216,13 +219,14 @@ async function recoverRenderer(target, details) {
     return;
   }
   presentWindow(target);
-  dialog.showErrorBox('BOSS 求职助手页面无法显示', '桌面页面进程意外退出。请关闭窗口后重新打开；详细原因已记录在 data/desktop-electron.log。');
+  dialog.showErrorBox('拾职 · Jobloom页面无法显示', '桌面页面进程意外退出。请关闭窗口后重新打开；详细原因已记录在 data/desktop-electron.log。');
 }
 
 function createWindow() {
   log('creating browser window');
   const target = new BrowserWindow({
-    title: 'BOSS 求职助手',
+    title: '拾职 · Jobloom',
+    icon: path.join(__dirname, 'assets', process.platform === 'win32' ? 'jobloom.ico' : 'jobloom-icon.png'),
     width: 1320,
     height: 860,
     minWidth: 900,
@@ -242,7 +246,7 @@ function createWindow() {
   window = target;
   // Identify this map viewer to public tile services while retaining the browser's normal user agent.
   if (target.webContents.setUserAgent && target.webContents.getUserAgent) {
-    target.webContents.setUserAgent(target.webContents.getUserAgent() + ' BossJobAgent/1.0');
+    target.webContents.setUserAgent(target.webContents.getUserAgent() + ' Jobloom/1.0');
   }
 
   target.once('ready-to-show', () => { log('ready to show'); presentWindow(target); });
@@ -283,7 +287,7 @@ async function showApp(target) {
     const message = error instanceof Error ? error.message : String(error);
     log(`startup failed: ${message}`);
     presentWindow(target);
-    dialog.showErrorBox('BOSS 求职助手启动失败', message);
+    dialog.showErrorBox('拾职 · Jobloom启动失败', message);
   }
 }
 
@@ -315,7 +319,7 @@ async function shutDown() {
 if (hasLock) {
   app.whenReady().then(() => {
     log('app ready');
-    protocol.handle('boss-app', createAppProtocol({ clientDir: path.dirname(clientEntry), getService: () => ({ url: serverUrl, token: serviceToken }) }));
+    protocol.handle('jobloom-app', createAppProtocol({ clientDir: path.dirname(clientEntry), getService: () => ({ url: serverUrl, token: serviceToken }) }));
     ipcMain.handle('desktop:window', (event, action) => {
       if (!window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || !isAppUrl(event.senderFrame.url)) throw new Error('Invalid desktop sender');
       if (action === 'minimize') window.minimize();

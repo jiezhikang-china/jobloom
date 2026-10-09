@@ -1,7 +1,7 @@
 {
-  "name": "boss-job-agent-server",
+  "name": "jobloom-server",
   "version": "1.0.0",
-  "description": "BOSS Job Agent 后端核心与浏览器代理服务",
+  "description": "Jobloom 后端核心与浏览器代理服务",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",

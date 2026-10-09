@@ -1,12 +1,12 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-const APP_ORIGIN = 'boss-app://desktop';
+const APP_ORIGIN = 'jobloom-app://desktop';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.json': 'application/json' };
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'";
 
 function isAppUrl(value) {
-  try { const url = new URL(value); return url.protocol === 'boss-app:' && url.host === 'desktop' && !url.username && !url.password; } catch { return false; }
+  try { const url = new URL(value); return url.protocol === 'jobloom-app:' && url.host === 'desktop' && !url.username && !url.password; } catch { return false; }
 }
 
 /** The renderer loads bundled assets; only this main-process adapter knows the worker address/token. */

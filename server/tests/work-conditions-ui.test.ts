@@ -82,7 +82,7 @@ async function main() {
     return { longitude: 121.4702, latitude: 31.2283, coordinateSystem: 'wgs84', accuracyMeters: 150, timestamp: new Date().toISOString() };
   });
   app.use(express.json()); app.use('/api', apiRouter);
-  app.get('/health', (_req, res) => res.json({ app: 'boss-job-agent', integrationVersion: 31, status: 'ok' }));
+  app.get('/health', (_req, res) => res.json({ app: 'jobloom', integrationVersion: 31, status: 'ok' }));
   app.use(express.static(path.resolve(process.cwd(), '../client/dist')));
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));

@@ -1,13 +1,13 @@
-import { Minus, Square, X, Compass } from 'lucide-react';
+import { Minus, Square, X } from 'lucide-react';
 
 declare global {
-  interface Window { bossDesktop?: { platform: string; minimize(): Promise<void>; toggleMaximize(): Promise<void>; close(): Promise<void> }; }
+  interface Window { jobloomDesktop?: { platform: string; minimize(): Promise<void>; toggleMaximize(): Promise<void>; close(): Promise<void> }; }
 }
 export default function DesktopTitleBar() {
-  const desktop = window.bossDesktop;
+  const desktop = window.jobloomDesktop;
   if (!desktop) return null;
   return <div className="desktop-titlebar" onDoubleClick={() => void desktop.toggleMaximize()}>
-    <span className="desktop-brand"><Compass size={15} /> BOSS 求职助手 <span>工作台</span></span>
+    <span className="desktop-brand"><img src="/jobloom-icon.png" width="20" height="20" alt="" /> 拾职 · Jobloom <span>工作台</span></span>
     <div className="desktop-window-controls" onDoubleClick={event => event.stopPropagation()}>
       <button title="最小化" aria-label="最小化" onClick={() => void desktop.minimize()}><Minus size={16} /></button>
       <button title="最大化／还原" aria-label="最大化或还原" onClick={() => void desktop.toggleMaximize()}><Square size={13} /></button>

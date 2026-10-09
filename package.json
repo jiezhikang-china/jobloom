@@ -1,7 +1,7 @@
 {
-  "name": "boss-job-agent",
+  "name": "jobloom",
   "version": "1.0.0",
-  "description": "BOSS直聘智能求职与投递助手",
+  "description": "拾职 Jobloom — Windows 求职筛选与投递工作台",
   "main": "desktop/electron-main.cjs",
   "scripts": {
     "setup:pdf": "node server/scripts/setup-pdf.cjs",
@@ -27,5 +27,6 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "38.8.6"
-  }
+  },
+  "productName": "拾职 Jobloom"
 }

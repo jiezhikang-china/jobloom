@@ -19,7 +19,7 @@ test('Electron bundled assets, API streams, multipart uploads and origin restric
     const page = await handler(new Request(APP_ORIGIN + '/'));
     assert.match(await page.text(), /工作台/); assert.match(page.headers.get('Content-Security-Policy'), /object-src 'none'/);
     assert.equal((await handler(new Request(APP_ORIGIN + '/missing.js'))).status, 404);
-    assert.equal(isAppUrl('boss-app://other/'), false);
+    assert.equal(isAppUrl('jobloom-app://other/'), false);
     assert.equal((await handler(new Request('https://example.com/api/config'))).status, 403);
     assert.equal((await handler(new Request(APP_ORIGIN + '/%2e%2e%5csecret'))).status, 403);
     const form = new FormData(); form.append('resume', new Blob(['中文简历']), '简历.pdf');

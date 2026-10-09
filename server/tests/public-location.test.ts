@@ -19,7 +19,7 @@ async function main() {
     const url = new URL(String(raw));
     assert.equal(url.hostname, 'nominatim.openstreetmap.org');
     assert.equal(url.searchParams.get('countrycodes'), 'cn');
-    assert.match(options.headers['User-Agent'], /BossJobAgent/);
+    assert.match(options.headers['User-Agent'], /Jobloom/);
     assert.equal(url.searchParams.has('key'), false); assert.equal(url.searchParams.has('ak'), false);
     return response.clone();
   }) as typeof fetch;

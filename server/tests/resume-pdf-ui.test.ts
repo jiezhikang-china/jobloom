@@ -55,7 +55,7 @@ async function main() {
     result!.pdf!.bossUpload = { attachmentId: 'saved_123456', fileName: result!.pdf!.fileName, uploadedAt: new Date().toISOString() };
     return { id: 'saved_123456', name: result!.pdf!.fileName, description: '已保存', canReplace: true };
   });
-  app.use(express.json()); app.use('/api', apiRouter); app.get('/health', (_req, res) => res.json({ app: 'boss-job-agent', integrationVersion: 26, status: 'ok' }));
+  app.use(express.json()); app.use('/api', apiRouter); app.get('/health', (_req, res) => res.json({ app: 'jobloom', integrationVersion: 26, status: 'ok' }));
   app.use(express.static(path.join(root, 'client/dist')));
   const server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
   const base = 'http://127.0.0.1:' + (server.address() as { port: number }).port;
