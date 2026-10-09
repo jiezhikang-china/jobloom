@@ -76,7 +76,11 @@ async function main() {
     assert.equal(cookies.find(c => c.name === 'wt2')?.value, 'offline-fixture-cookie', '正常关闭并重开同一 profile 后保留 Cookie');
     assert.equal((await service.checkLoginStatus({ restore: false })).isLoggedIn, true);
     assert.ok(blockedRequests >= 2, '所有 BOSS 地址都由离线 fixture 拦截，无真实网站请求');
-    await service.suspendForRest();
+    assert.equal(await service.closeAfterTask(), true, '任务结束也关闭重连的原生 Chrome');
+    await assert.rejects(fetch('http://127.0.0.1:' + port + '/json/version', { signal: AbortSignal.timeout(1500) }));
+    assert.equal((service as any).resting, false, '任务结束不留下休息门控');
+    assert.equal(await unrelatedPage.innerText('body'), 'other browser');
+    assert.equal(await service.closeAfterTask(), false, '重复清理不会启动浏览器');
     console.log('PASS | 真实 Chrome 关闭重连实例、完整退出、新实例与页面、Cookie持久化、休息入口门控、其他浏览器保留；全部网站请求离线拦截');
   } finally {
     await context?.close().catch(() => {});

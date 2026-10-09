@@ -506,8 +506,19 @@ export class BrowserService {
   /** Gracefully close this profile's exact Chrome instance, including one reattached after a desktop restart. */
   public async suspendForRest(): Promise<boolean> {
     if (!this.options.headless) { bossAutomationSafety.assertAllowed(); await CdpPage.assertPagesReady(); }
-    if (!this.port) await this.tryReconnectChrome();
     this.resting = true;
+    return this.closeProfileBrowser();
+  }
+
+  /** Close the owned instance after a task without starting a rest or launching Chrome. */
+  public async closeAfterTask(): Promise<boolean> {
+    this.resting = true;
+    try { return await this.closeProfileBrowser(); }
+    finally { this.resting = false; }
+  }
+
+  private async closeProfileBrowser(): Promise<boolean> {
+    if (!this.port) await this.tryReconnectChrome();
     if (!this.port) return false;
     const port = this.port;
     const runtimePath = path.join(this.profileDir, 'boss-browser-runtime.json');

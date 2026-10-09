@@ -58,7 +58,8 @@ export class DeliveryService {
   private evaluationAbort?: AbortController;
   private operationAbort?: AbortController;
 
-  constructor(private readonly sessionRest: Pick<BossSessionRest, 'runIfDue'> = bossSessionRest) {
+  constructor(private readonly sessionRest: Pick<BossSessionRest, 'runIfDue'> = bossSessionRest,
+    private readonly taskBrowser: Pick<typeof browserService, 'closeAfterTask' | 'releaseRestGate'> = browserService) {
     // 启动即恢复"今日已投递"计数（跨自然日会自动归零，避免隔天仍被判定配额已满）
     const quota = stateManager.loadQuota();
     this.stats.todayAppliedCount = quota.count;
@@ -71,7 +72,7 @@ export class DeliveryService {
   }
 
   public isActive(): boolean {
-    return this.isTaskActive;
+    return this.isTaskActive || Boolean(this.operationAbort);
   }
 
   public getLogs(): DeliveryLogItem[] {
@@ -225,7 +226,7 @@ export class DeliveryService {
     return this.withOperations(() => this.runReviewDelivery(reviews));
   }
   private async withOperations(task: () => Promise<void>): Promise<void> {
-    if (this.isTaskActive) throw new Error('投递任务已经在运行中');
+    if (this.isActive()) throw new Error('投递任务已经在运行中');
     bossAutomationSafety.assertAllowed();
     const controller = new AbortController(); this.operationAbort = controller;
     let lastWaitLogAt = 0;
@@ -242,7 +243,21 @@ export class DeliveryService {
             : '[页面操作间隔] 等待 ' + seconds + ' 秒后继续' + (kind === 'route' ? '查询路线' : ''));
         }
       } }, task);
-    } finally { browserService.releaseRestGate(); this.stats.sageTimeRemainingSeconds = undefined; if (this.operationAbort === controller) this.operationAbort = undefined; }
+    } finally {
+      try {
+        // Keep verification pages and incomplete chat dialogs available for manual handling.
+        if (!bossAutomationSafety.status().blocked && !this.stats.isPaused
+          && (this.stats.status === 'finished' || this.isStopRequested)) {
+          if (await this.taskBrowser.closeAfterTask()) this.log('info', '[浏览器已关闭] 投递任务结束，登录资料已保留');
+        }
+      } catch (error) {
+        this.log('error', '[浏览器关闭失败] ' + (error as Error).message + '；请手动关闭 BOSS 专用浏览器');
+      } finally {
+        this.taskBrowser.releaseRestGate(); this.stats.sageTimeRemainingSeconds = undefined;
+        if (this.operationAbort === controller) this.operationAbort = undefined;
+        this.emit();
+      }
+    }
   }
   private async runReviewDelivery(reviews: WorkConditionReview[]): Promise<void> {
     if (this.isTaskActive) throw new Error('投递任务已经在运行中');

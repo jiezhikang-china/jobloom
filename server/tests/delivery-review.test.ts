@@ -33,6 +33,7 @@ let records: WorkConditionReview[] = []; const sends: string[] = []; const opene
 let active = false; let loggedIn = true; let sendResult: any = { success: true, verified: true, platformGreeting: true, continued: true };
 let detailFor: (review: WorkConditionReview) => any = review => ({ job: job(review), jobDetailText: review.screening!.jobDetail, alreadyChatted: false, chatButtonLocator: {} });
 async function main() {
+  stub(browserService, 'closeAfterTask', async () => false);
   restores.push(isolateBossSafety());
   stub(configManager, 'getConfig', () => config);
   stub(stateManager, 'loadQuota', () => ({ date: todayStr(), count: 0 })); stub(stateManager, 'saveQuota', () => {});

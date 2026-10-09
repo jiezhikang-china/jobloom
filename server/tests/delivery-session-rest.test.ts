@@ -1,3 +1,4 @@
+import { browserService } from '../src/services/browser.service.js';
 import './fixtures/activate-isolated-safety.js';
 import assert from 'node:assert/strict';
 import { llmService } from '../src/services/llm.service.js';
@@ -13,6 +14,7 @@ const stub = (object: any, key: string, value: any) => {
   const original = object[key]; object[key] = value; restores.push(() => object[key] = original);
 };
 async function main() {
+  stub(browserService, 'closeAfterTask', async () => false);
   const original = configManager.getConfig();
   const config = { ...original, delivery: { ...original.delivery, jobSource: 'search' as const, dailyMaxQuota: 5 },
     filter: { ...original.filter, companyBlacklist: [] as string[], requiredKeywords: [], workRequirements: [{ id: 'hours', text: '每天工作不超过八小时', enabled: true }], commute: {},
