@@ -4,6 +4,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { CdpConnection, CdpPage } from './cdp.page.js';
 import { bossActionScheduler } from './boss-action-scheduler.js';
+import { bossOperationPolicy } from './boss-operation-policy.js';
 import { bossAutomationSafety, visibleBossRestriction } from './boss-automation-safety.js';
 
 const BOSS_ORIGIN = 'https://www.zhipin.com';
@@ -205,7 +206,7 @@ export class BrowserService {
   }
 
   public async withCompanyInspection<T>(href: string, read: (page: CdpPage) => Promise<T>): Promise<T> {
-    return this.withBossInspection(href, /^\/gongsi\/[^/]+\.html$/, read);
+    return this.withBossInspection(href, /^\/gongsi\/[^/]+\.html$/, read, bossOperationPolicy.companyInspectionMs);
   }
 
   public async withExpectationEditor<T>(edit: (page: CdpPage) => Promise<T>): Promise<T> {
@@ -215,7 +216,7 @@ export class BrowserService {
     return this.withBossInspection(`${BOSS_ORIGIN}/web/geek/resume/`, /^\/web\/geek\/resume\/$/, edit);
   }
 
-  private async withBossInspection<T>(href: string, allowedPath: RegExp, read: (page: CdpPage) => Promise<T>): Promise<T> {
+  private async withBossInspection<T>(href: string, allowedPath: RegExp, read: (page: CdpPage) => Promise<T>, minimumOpenMs = 0): Promise<T> {
     const url = new URL(href, BOSS_ORIGIN);
     if (url.protocol !== 'https:' || url.hostname !== 'www.zhipin.com' || url.port || url.username || url.password
       || !allowedPath.test(url.pathname)) throw new Error('公司业务核对链接无效');
@@ -223,6 +224,7 @@ export class BrowserService {
       throw new Error('CAPTCHA_REQUIRED: 公司行业核对页需要安全验证');
     }
     const page = await this.createPage(url.href, true);
+    const openedAt = Date.now();
     try {
       await page.waitForFunction((target) => {
         const expected = new URL(target), current = new URL(location.href);
@@ -232,15 +234,27 @@ export class BrowserService {
       }, url.href, { timeout: 15000 });
       return await read(page);
     } finally {
-      const currentUrl = await page.refreshUrl();
-      const verifying = await page.evaluate(() => /请完成安全验证|请进行安全验证/.test(document.body?.innerText || '')).catch(() => false);
-      if (isSecurityUrl(currentUrl) || currentUrl.includes('/web/user/') || verifying) {
-        this.verificationPage = page;
-        await page.bringToFront().catch(() => {});
-      } else {
-        await fetch(`http://127.0.0.1:${this.port}/json/close/${page.id}`, { signal: AbortSignal.timeout(2000) }).catch(() => {});
-        page.closeConnection();
-        this.pages.delete(page.id);
+      const preserveIfRestricted = async () => {
+        const currentUrl = await page.refreshUrl();
+        const restriction = await page.evaluate(visibleBossRestriction).catch(() => null);
+        if (isSecurityUrl(currentUrl) || currentUrl.includes('/web/user/') || restriction) {
+          this.verificationPage = page;
+          await page.bringToFront().catch(() => {});
+          return true;
+        }
+        return false;
+      };
+      if (!(await preserveIfRestricted())) {
+        if (minimumOpenMs > 0 && !this.options.headless) await bossActionScheduler.waitForElapsed(openedAt, minimumOpenMs);
+        if (!(await preserveIfRestricted())) {
+          await page.action('navigation', async () => {
+            if (await preserveIfRestricted()) return;
+            const response = await fetch('http://127.0.0.1:' + this.port + '/json/close/' + page.id, { signal: AbortSignal.timeout(2000) });
+            if (!response.ok) throw new Error('公司核对页面关闭失败，已保留页面');
+            page.closeConnection();
+            this.pages.delete(page.id);
+          });
+        }
       }
     }
   }

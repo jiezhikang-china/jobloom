@@ -114,6 +114,16 @@ export class BossActionScheduler {
       kind !== 'confirm' && !scopes.getStore()?.managedBusinessRest && settings.businessBurst && this.businessCount >= settings.businessBurst && this.lastBusinessAt
         ? this.lastBusinessAt + settings.restMs : 0, budget) - now);
   }
+  /** Passive dwell counts actual load/read time and remains interruptible by the task scope. */
+  public async waitForElapsed(startedAt: number, minimumMs: number): Promise<void> {
+    const scope = scopes.getStore();
+    while (true) {
+      scope?.signal?.throwIfAborted(); await scope?.beforeAction?.();
+      const remaining = startedAt + minimumMs - this.now();
+      if (remaining <= 0) return;
+      await this.sleep(Math.min(remaining, 500), scope?.signal);
+    }
+  }
   public waitSeconds(kind: BossActionKind): number { return Math.ceil(this.waitMs(kind) / 1000); }
   /** Flush already collected candidates before the next selection can reach the rest checkpoint. */
   public isBusinessRestImminent(): boolean {

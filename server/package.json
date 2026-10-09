@@ -37,6 +37,7 @@
     "test:location": "tsx tests/public-location.test.ts && tsx tests/location-coordinates.test.ts && tsx tests/commute-dom.test.ts",
     "test:resume-pdf": "python -X utf8 tests/resume-pdf.test.py && tsx tests/resume-pdf-service.test.ts && tsx tests/resume-boss-upload.test.ts",
     "test:resume-pdf-ui": "tsx tests/resume-pdf-ui.test.ts",
+    "test:company-pacing": "npm run build && node tests/company-pacing.test.cjs",
     "test:dom-interactions": "tsx tests/cdp-browser.test.ts && tsx tests/boss-expectation-editor.test.ts",
     "test:pace-calibration": "node --test tools/manual-pace/calibrate.test.cjs && npm run test:operation-pacing",
     "test:operation-pacing": "tsx tests/boss-action-scheduler.test.ts && tsx tests/cdp-actions.test.ts",
