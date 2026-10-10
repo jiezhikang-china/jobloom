@@ -30,7 +30,7 @@ const tailored = { targetRole: target.name, rewrittenResumeMarkdown: '', topHigh
     changes: [{ id: 'paragraph', page: 1, before: '负责内容', after: '参与内容策划与发布，并根据用户反馈调整内容。' }] } };
 const diagnosis = { summary: '你有内容制作和活动协作经验，可以从运营助理或新媒体运营方向开始，积累实际项目经验。', coreSkills: ['内容制作', '活动协作', '沟通表达'], recommendations: [{ roleTitle: target.name, positionCode: target.code, matchScore: 84, recommendedReason: '已有经历与内容、运营协作相关，适合从执行岗位积累经验。', advantages: ['有内容制作经历', '能根据反馈改进工作'], gapAdvice: ['准备一份作品示例'], keywords: ['内容运营', '新媒体运营'] }] };
 const requests = [];
-const blocked = false;
+const blocked = true;
 const app = express();
 app.use(express.json());
 app.use('/api', (req, res) => {
@@ -138,6 +138,8 @@ async function main() {
     assert.ok(!requests.some(item => item.path === '/delivery/start' || item.path === '/resume/boss/upload'), 'Reviewing UI must not deliver jobs or upload resumes');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, 'claude-ui-verification.json'), JSON.stringify({ passed: true, pages: 6, widths: [1320, 900, 390], startVisible: true, stickyAction: true, summaryUpdates: true, pageErrors: errors }, null, 2));
+    assert.equal(await page.getByRole('heading', { name: 'BOSS 自动操作已停止', exact: true }).count(), 0);
+    assert.equal(requests.some(request => request.path === '/boss/automation-safety'), false, '界面不轮询全局停止状态');
     console.log('PASS | Claude workspace: six pages, three widths, sticky start, live summary, Chinese and salary rendering.');
   } finally { await browser?.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }

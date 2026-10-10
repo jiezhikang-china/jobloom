@@ -7,7 +7,6 @@ import DelimitedListTextArea from './DelimitedListTextArea.js';
 import LocationFilterOptions from './LocationFilterOptions.js';
 import ResumePdfPanel from './ResumePdfPanel.js';
 import DesktopTitleBar from './DesktopTitleBar.js';
-import BossAutomationSafetyPanel from './BossAutomationSafetyPanel.js';
 import NotSuitablePanel from './NotSuitablePanel.js';
 import {
   FileText,
@@ -53,7 +52,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('launch');
   const mainRef = useRef<HTMLElement>(null);
   useEffect(() => { mainRef.current?.scrollTo({ top: 0 }); }, [activeTab]);
-  
+
   // 状态管理
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [presets, setPresets] = useState<ModelPreset[]>([]);
@@ -67,7 +66,7 @@ export default function App() {
   const [isStarting, setIsStarting] = useState(false);
   const [isTestingModel, setIsTestingModel] = useState(false);
   const [modelTestMessage, setModelTestMessage] = useState('');
-  
+
   // 简历与分析数据
   const [resumeFileName, setResumeFileName] = useState('');
   const [resumeSourceId, setResumeSourceId] = useState('');
@@ -76,7 +75,7 @@ export default function App() {
   const [resumeText, setResumeText] = useState('');
   const [isDiagnosing, setIsDiagnosing] = useState(false);
   const [diagnosis, setDiagnosis] = useState<ResumeAnalysisResult | null>(null);
-  
+
   // 改写数据
   const [selectedRole, setSelectedRole] = useState<string>('');
   const [bossPositions, setBossPositions] = useState<BossPositionCatalog | null>(null);
@@ -121,7 +120,6 @@ export default function App() {
     skippedByLlmErrorCount: 0,
   });
   const [logs, setLogs] = useState<DeliveryLogItem[]>([]);
-  const [bossAutomationBlocked, setBossAutomationBlocked] = useState(true);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // 初始化加载配置与状态
@@ -468,7 +466,6 @@ export default function App() {
 
   const handleStartDelivery = async () => {
     setStartMessage('');
-    if (bossAutomationBlocked) { setStartMessage('BOSS 自动操作已停止，请先查看账号状态。'); return; }
     if (!config) {
       setStartMessage('设置尚未载入，请稍后重试。');
       return;
@@ -623,7 +620,6 @@ export default function App() {
             </div>
           </header>
           <main className="workspace-main" id="workspace-content" ref={mainRef} tabIndex={-1}>
-            <BossAutomationSafetyPanel onChange={setBossAutomationBlocked} onRestored={() => void checkLoginStatus()} />
         {activeTab === 'launch' && (
           <div className="launch-shell">
             <section className="launch-hero">
@@ -795,7 +791,7 @@ export default function App() {
                   <button type="button" className="text-button" onClick={() => setActiveTab('rules')}>调整筛选与每日数量</button>
                 </div>
                 {startMessage && <p role="status" className={`launch-message ${startMessage.startsWith('投递任务已启动') ? 'success' : ''}`}>{startMessage}</p>}
-                <button type="button" className="launch-submit" onClick={handleStartDelivery} disabled={isStarting || isTaskRunning || bossAutomationBlocked}>
+                <button type="button" className="launch-submit" onClick={handleStartDelivery} disabled={isStarting || isTaskRunning}>
                   <Play size={16} /> {isStarting ? '正在检查并启动…' : isTaskRunning ? '投递任务运行中' : '开始投递'}
                 </button>
                 <p className="summary-footnote">开始时检查已保存的 BOSS 会话。</p>
@@ -1091,8 +1087,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <ResumePdfPanel key={tailoredResult.pdf?.id || 'legacy'} result={tailoredResult} disabled={isTaskRunning || isRewriting || bossAutomationBlocked}
-                  disabledReason={bossAutomationBlocked ? 'BOSS 自动操作已停止，账号恢复前不能上传附件。' : undefined}
+                <ResumePdfPanel key={tailoredResult.pdf?.id || 'legacy'} result={tailoredResult} disabled={isTaskRunning || isRewriting}
                   onUpdate={setTailoredResult} onUse={() => { setDeliveryMode('resume'); setActiveTab('launch'); }} />
               </div>
             )}
@@ -1440,7 +1435,7 @@ export default function App() {
                 </div>
                 <button
                   onClick={handleResumeDelivery}
-                  disabled={bossAutomationBlocked}
+
                   style={{
                     padding: '8px 16px',
                     borderRadius: '8px',
@@ -1571,7 +1566,7 @@ export default function App() {
                 {deliveryStats.isPaused && (
                   <button
                     onClick={handleResumeDelivery}
-                    disabled={bossAutomationBlocked}
+
                     style={{
                       padding: '10px 20px',
                       borderRadius: '8px',
@@ -1961,7 +1956,7 @@ export default function App() {
           </div>
         )}
         {(activeTab === 'delivery' || (activeTab === 'launch' && selectedConditions.length > 0)) && <WorkConditionReviewPanel
-          taskRunning={isTaskRunning || bossAutomationBlocked} onStarted={stats => { setDeliveryStats(stats); setActiveTab('delivery'); }} />}
+          taskRunning={isTaskRunning} onStarted={stats => { setDeliveryStats(stats); setActiveTab('delivery'); }} />}
           </main>
         </div>
       </div>

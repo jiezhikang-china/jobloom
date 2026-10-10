@@ -129,11 +129,13 @@ async function main() {
     const app = express(); app.use(express.json()); app.use('/api', apiRouter);
     server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
     const base = 'http://127.0.0.1:' + server.address().port + '/api';
-    for (const [route, method] of [['/delivery/start','POST'], ['/delivery/resume','POST'], ['/browser/login','POST'], ['/browser/verify','POST'],
+    stub(browserService, 'checkLoginStatus', async () => ({ isLoggedIn: false, isBrowserActive: false }));
+    for (const [route, method] of [['/delivery/start','POST'], ['/delivery/resume','POST'],
       ['/resume/boss/upload','POST'], ['/resume/boss/attachments','GET'], ['/delivery/work-condition-reviews/apply','POST']]) {
       const response = await fetch(base + route, { method }); assert.equal(response.status, 423, route + ' 必须在业务操作前拦截');
     }
     assert.equal(bossCalls, 0);
+    stub(browserService, 'checkLoginStatus', async options => { assert.equal(options.restore, false); return { isLoggedIn: true, isBrowserActive: true }; });
     assert.equal((await fetch(base + '/browser/status')).status, 200);
     const beforeManual = local.status().hold.id;
     const manualResponse = await fetch(base + '/boss/automation-safety/open-browser', { method: 'POST' });
@@ -162,6 +164,27 @@ async function main() {
     stub(browserService, 'checkLoginStatus', async () => ({ isLoggedIn: false, isBrowserActive: false }));
     response = await fetch(base + '/boss/automation-safety/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ holdId: local.status().hold.id, platformAccessRestored: true }) });
     assert.equal(response.status, 409, '关掉仍有限制的页面不能变为纯人工恢复');
+    local = new BossAutomationSafety(null);
+    local.halt('verification', 'fixture previous verification');
+    const normalLogin = await fetch(base + '/browser/login', { method: 'POST' });
+    assert.equal(normalLogin.status, 200, '普通登录按钮可打开人工处理页面');
+    assert.equal(local.status().blocked, true, '打开页面不会自动清除限制');
+    const notReady = await fetch(base + '/browser/verify', { method: 'POST' });
+    assert.equal((await notReady.json()).success, false);
+    stub(browserService, 'checkLoginStatus', async options => { assert.equal(options.restore, false); return { isLoggedIn: true, isBrowserActive: true }; });
+    stub(browserService, 'checkVisibleRestriction', async () => false);
+    const normalVerify = await fetch(base + '/browser/verify', { method: 'POST' });
+    assert.equal((await normalVerify.json()).success, true);
+    assert.equal(local.status().blocked, false, '普通验证登录直接解除过期记录');
+    assert.equal(automaticResumes, 0, '验证登录不自动投递');
+    local.halt('verification', 'fixture earlier verification');
+    await fetch(base + '/browser/status');
+    assert.equal(local.status().blocked, true, '状态轮询不自动恢复任务');
+    stub(deliveryService, 'getStats', () => ({ status: 'paused', needsCaptchaVerification: false }));
+    const explicitResume = await fetch(base + '/delivery/resume', { method: 'POST' });
+    assert.equal(explicitResume.status, 200);
+    assert.equal(local.status().blocked, false);
+    assert.equal(automaticResumes, 1, '主动恢复在页面正常后可以直接执行');
     const cooldownFile = path.join(dir, 'cooldown.json'); let time = Date.now();
     const cooling = new BossAutomationSafety(cooldownFile, () => time);
     cooling.halt('rate_limit', 'rate limited', time + 60000); const coolingId = cooling.status().hold.id;

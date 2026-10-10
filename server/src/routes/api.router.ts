@@ -54,12 +54,22 @@ const upload = multer({
 });
 
 export const apiRouter = Router();
-const bossOperationRoutes = new Set(['/browser/login', '/browser/verify', '/browser/page-state', '/resume/boss/attachments', '/resume/boss/upload',
+const bossOperationRoutes = new Set(['/browser/page-state', '/resume/boss/attachments', '/resume/boss/upload',
   '/delivery/start', '/delivery/resume', '/delivery/work-condition-reviews/apply']);
-apiRouter.use((req, res, next) => {
-  const status = bossAutomationSafety.status();
-  if (bossOperationRoutes.has(req.path) && status.blocked) return res.status(423).json({ success: false,
-    code: 'BOSS_AUTOMATION_BLOCKED', message: status.hold!.message, data: status });
+// Explicit login verification or task start replaces the separate recovery panel.
+async function verifyBossRecovery() {
+  const hold = bossAutomationSafety.status().hold;
+  const login = await browserService.checkLoginStatus({ restore: false, observeBlocked: true });
+  if (!login.isLoggedIn) throw new Error(login.reason || '请打开 BOSS 完成登录或验证，再点击验证登录');
+  if (await browserService.checkVisibleRestriction()) throw new Error('当前 BOSS 页面仍需要人工处理，请先完成登录或验证');
+  if (hold) bossAutomationSafety.confirmRecovery(hold.id);
+  return login;
+}
+apiRouter.use(async (req, res, next) => {
+  if (bossOperationRoutes.has(req.path) && bossAutomationSafety.status().blocked) {
+    try { await verifyBossRecovery(); }
+    catch (error) { return res.status(423).json({ success: false, message: (error as Error).message }); }
+  }
   next();
 });
 apiRouter.get('/boss/automation-safety', (_req, res) => res.json({ success: true, data: bossAutomationSafety.status() }));
@@ -342,7 +352,7 @@ apiRouter.post('/resume/rewrite', async (req: Request, res: Response) => {
 // 5. 浏览器与登录状态
 apiRouter.get('/browser/status', async (_req: Request, res: Response) => {
   try {
-    const status = await browserService.checkLoginStatus({ restore: false });
+    const status = await browserService.checkLoginStatus({ restore: false, observeBlocked: true });
     res.json({ success: true, data: status });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -364,7 +374,8 @@ apiRouter.get('/browser/page-state', async (_req: Request, res: Response) => {
 apiRouter.post('/browser/login', async (_req: Request, res: Response) => {
   if (resumeBossUploadService.isBusy()) return res.status(409).json({ success: false, message: '请等待简历上传完成' });
   try {
-    await browserService.promptLogin();
+    if (bossAutomationSafety.status().blocked) await browserService.openManualRecovery();
+    else await browserService.promptLogin();
     res.json({ success: true, message: '登录页面已打开，请在 Chrome 中扫码，然后点击“验证登录”' });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -374,7 +385,7 @@ apiRouter.post('/browser/login', async (_req: Request, res: Response) => {
 apiRouter.post('/browser/verify', async (_req: Request, res: Response) => {
   if (resumeBossUploadService.isBusy()) return res.status(409).json({ success: false, message: '请等待简历上传完成' });
   try {
-    const status = await browserService.verifyLogin();
+    const status = bossAutomationSafety.status().blocked ? await verifyBossRecovery() : await browserService.verifyLogin();
     res.json({ success: status.isLoggedIn, data: status, message: status.isLoggedIn ? '登录已确认' : status.reason });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });

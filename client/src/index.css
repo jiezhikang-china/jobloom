@@ -293,13 +293,6 @@ progress { accent-color: var(--brand-accent); }
 .resume-pdf-changes div p:last-child { color: var(--success); margin-top: 6px; }
 .resume-pdf-changes pre { white-space: pre-wrap; padding: 14px; font: inherit; font-size: 13px; line-height: 1.7; }
 .resume-use { justify-content: flex-end; margin-top: 20px; }
-.boss-safety-panel { max-width: 1120px; margin: 0 auto 22px; padding: 16px 18px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--surface-subtle); color: var(--text-secondary); font-size: 12px; }
-.boss-safety-panel.blocked { border-color: #d4a294; background: var(--danger-bg); color: #7f352c; }
-.boss-safety-panel h2 { margin-bottom: 8px; font-size: 16px; }
-.boss-safety-panel p { margin: 8px 0; line-height: 1.7; }
-.boss-safety-panel label { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0; }
-.boss-safety-panel input { margin-top: 3px; }
-.boss-safety-panel button { padding: 7px 12px; }
 @keyframes indicator-spin { to { transform: rotate(360deg); } }
 .spinning-indicator, .pulsing-indicator { animation: indicator-spin 1.4s linear infinite; }
 @media (max-width: 1150px) {
