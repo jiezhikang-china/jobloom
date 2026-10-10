@@ -118,6 +118,7 @@ async function main() {
       assert.equal(visibleBossRestriction(), null, '隐藏旧通知不能触发停止');
     } finally { global.document = oldDocument; global.location = oldLocation; }
 
+    stub(browserService, 'verifyManualSession', () => browserService.checkLoginStatus({ restore: false, observeBlocked: true }));
     let bossCalls = 0, automaticResumes = 0;
     let manualOpens = 0;
     stub(browserService, 'openManualRecovery', async () => { manualOpens++; });

@@ -64,6 +64,7 @@ export class BrowserService {
   private verificationPage: CdpPage | null = null;
   private loginPromise: Promise<void> | null = null;
   private recoveryPromise: Promise<void> | null = null;
+  private manualVerificationPromise: Promise<LoginStatus> | null = null;
   private workerPromise: Promise<CdpPage> | null = null;
   private lastSessionRecordAt = 0;
   private resting = false;
@@ -430,6 +431,33 @@ export class BrowserService {
     // Preserve existing restrictions and login dialogs; never navigate away or click through them.
     const page = target ? await this.pageFor(target) : await this.createPageNow(LOGIN_URL);
     await page.bringToFront();
+  }
+
+  /** Explicit verification can inspect saved cookies without navigating away from the login tab. */
+  public async verifyManualSession(): Promise<LoginStatus> {
+    if (this.manualVerificationPromise) return this.manualVerificationPromise;
+    this.manualVerificationPromise = this.verifyManualSessionPage();
+    try { return await this.manualVerificationPromise; }
+    finally { this.manualVerificationPromise = null; }
+  }
+
+  private async verifyManualSessionPage(): Promise<LoginStatus> {
+    await this.ensureChrome(false, true);
+    const options = { restore: false, observeBlocked: true };
+    const current = await this.checkLoginStatus(options);
+    const tabs = await this.listTabs();
+    if (tabs.some(tab => isSecurityUrl(tab.url)) || await this.checkVisibleRestriction()) {
+      return { isLoggedIn: false, isBrowserActive: true, reasonCode: 'verification_required', reason: '当前 BOSS 页面需要人工完成登录或安全验证' };
+    }
+    if (current.isLoggedIn || !(await this.hasSessionCookie())) return current;
+    const existing = tabs.find(tab => tab.url.startsWith(JOBS_URL));
+    // A new job tab leaves the QR/login page intact and uses the same persistent profile.
+    const worker = existing ? await this.pageFor(existing) : await this.createPageNow(JOBS_URL);
+    this.workerPage = worker;
+    await this.waitForJobsOrLogin(worker);
+    const verified = await this.checkLoginStatus(options);
+    if (!verified.isLoggedIn) await worker.bringToFront().catch(() => {});
+    return verified;
   }
 
   /** 打开并保持普通 Chrome 扫码页，不自动切页。 */

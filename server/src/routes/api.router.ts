@@ -59,7 +59,7 @@ const bossOperationRoutes = new Set(['/browser/page-state', '/resume/boss/attach
 // Explicit login verification or task start replaces the separate recovery panel.
 async function verifyBossRecovery() {
   const hold = bossAutomationSafety.status().hold;
-  const login = await browserService.checkLoginStatus({ restore: false, observeBlocked: true });
+  const login = await browserService.verifyManualSession();
   if (!login.isLoggedIn) throw new Error(login.reason || '请打开 BOSS 完成登录或验证，再点击验证登录');
   if (await browserService.checkVisibleRestriction()) throw new Error('当前 BOSS 页面仍需要人工处理，请先完成登录或验证');
   if (hold) bossAutomationSafety.confirmRecovery(hold.id);

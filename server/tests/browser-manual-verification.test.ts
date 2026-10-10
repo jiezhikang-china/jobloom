@@ -1,0 +1,30 @@
+import './fixtures/activate-isolated-safety.js';
+import assert from 'node:assert/strict';
+import { BrowserService } from '../src/services/browser.service.js';
+async function main() {
+  const service = new BrowserService('unused-offline-profile') as any;
+  let cookies = true, restricted = false, verified = false, created = 0, waited = 0, existing = false;
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const page = { bringToFront: async () => {}, goto: async () => { throw new Error('不得导航登录页'); } };
+  service.ensureChrome = async (openLogin: boolean, manual: boolean) => { assert.equal(openLogin, false); assert.equal(manual, true); };
+  service.checkLoginStatus = async (options: any) => { assert.deepEqual(options, { restore: false, observeBlocked: true }); return { isLoggedIn: verified, isBrowserActive: true, reasonCode: 'unverified' }; };
+  service.listTabs = async () => [{ id: 'login', url: 'https://www.zhipin.com/web/user/' }, ...(existing ? [{ id: 'job', url: 'https://www.zhipin.com/web/geek/jobs' }] : [])];
+  service.hasSessionCookie = async () => cookies;
+  service.checkVisibleRestriction = async () => restricted;
+  service.createPageNow = async (url: string) => { assert.equal(url, 'https://www.zhipin.com/web/geek/jobs'); created++; return page; };
+  service.pageFor = async (tab: any) => { assert.equal(tab.id, 'job'); return page; };
+  service.waitForJobsOrLogin = async () => { waited++; await gate; verified = true; };
+  const first = service.verifyManualSession(), second = service.verifyManualSession();
+  release(); assert.equal((await first).isLoggedIn, true); assert.equal((await second).isLoggedIn, true);
+  assert.equal(created, 1, '重复点击只开一个职位页，登录页保留');
+  await service.verifyManualSession(); assert.equal(created, 1, '已连接不重开');
+  verified = false; existing = true; await service.verifyManualSession();
+  assert.equal(created, 1); assert.equal(waited, 2, '已有职位页只等待复核');
+  verified = false; existing = false; cookies = false;
+  assert.equal((await service.verifyManualSession()).isLoggedIn, false); assert.equal(created, 1);
+  cookies = true; restricted = true;
+  assert.equal((await service.verifyManualSession()).reasonCode, 'verification_required'); assert.equal(created, 1, '真实限制保留原页');
+  console.log('PASS | 有Cookie未进职位页可验证、原登录页保留、重复点击合并、已有页面复用、未扫码不跳页、限制页面保留');
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

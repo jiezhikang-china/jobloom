@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test:dom": "tsx tests/dom-batch.test.ts && tsx tests/delivery-detail-source.test.ts",
     "test:navigation": "tsx tests/cdp-navigation.test.ts",
-    "test:session": "tsx tests/browser-session.test.ts",
+    "test:session": "tsx tests/browser-session.test.ts && tsx tests/browser-manual-verification.test.ts",
     "test:session-rest": "tsx tests/delivery-browser-cleanup.test.ts && tsx tests/boss-session-rest.test.ts && tsx tests/delivery-session-rest.test.ts && tsx tests/boss-login-signals.test.ts",
     "test:session-rest-browser": "tsx tests/browser-session-rest.test.ts",
     "test:cdp-browser": "tsx tests/cdp-browser.test.ts",
