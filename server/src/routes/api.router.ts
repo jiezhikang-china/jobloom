@@ -22,6 +22,8 @@ import { randomUUID } from 'node:crypto';
 import { resumePdfService } from '../services/resume-pdf.service.js';
 import { ResumeCapacityError, resumeBossUploadService } from '../services/resume-boss-upload.service.js';
 import { bossAutomationSafety } from '../services/boss-automation-safety.js';
+import { followupRouter } from './followup.router.js';
+import { bossTaskOwner } from '../services/boss-task-lock.js';
 
 const uploadDir = path.resolve(process.cwd(), '../data/resumes');
 if (!fs.existsSync(uploadDir)) {
@@ -54,6 +56,7 @@ const upload = multer({
 });
 
 export const apiRouter = Router();
+apiRouter.use('/followup', followupRouter);
 const bossOperationRoutes = new Set(['/browser/page-state', '/resume/boss/attachments', '/resume/boss/upload',
   '/delivery/start', '/delivery/resume', '/delivery/work-condition-reviews/apply']);
 // Explicit login verification or task start replaces the separate recovery panel.
@@ -66,6 +69,9 @@ async function verifyBossRecovery() {
   return login;
 }
 apiRouter.use(async (req, res, next) => {
+  if (bossTaskOwner() === '沟通跟进' && (bossOperationRoutes.has(req.path) || ['/browser/login', '/browser/verify'].includes(req.path))) {
+    return res.status(409).json({ success: false, message: '正在核对沟通记录，请停止监控后再操作 BOSS' });
+  }
   if (bossOperationRoutes.has(req.path) && bossAutomationSafety.status().blocked) {
     try { await verifyBossRecovery(); }
     catch (error) { return res.status(423).json({ success: false, message: (error as Error).message }); }

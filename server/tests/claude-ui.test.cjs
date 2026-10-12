@@ -30,6 +30,9 @@ const tailored = { targetRole: target.name, rewrittenResumeMarkdown: '', topHigh
     changes: [{ id: 'paragraph', page: 1, before: '负责内容', after: '参与内容策划与发布，并根据用户反馈调整内容。' }] } };
 const diagnosis = { summary: '你有内容制作和活动协作经验，可以从运营助理或新媒体运营方向开始，积累实际项目经验。', coreSkills: ['内容制作', '活动协作', '沟通表达'], recommendations: [{ roleTitle: target.name, positionCode: target.code, matchScore: 84, recommendedReason: '已有经历与内容、运营协作相关，适合从执行岗位积累经验。', advantages: ['有内容制作经历', '能根据反馈改进工作'], gapAdvice: ['准备一份作品示例'], keywords: ['内容运营', '新媒体运营'] }] };
 const requests = [];
+const followup = { active: false, busy: false, message: '尚未开始沟通监控', settings: { enabled: false, intervalHours: 48, maxFollowups: 2, dailyMaxMessages: 10,
+  startHour: 9, endHour: 18, pollMinutes: 5, askConditions: true, autoAnswerFacts: false, facts: [], template: '您好，想跟进一下【{job}】岗位目前是否仍在招聘？' },
+  contacts: [{ id: 'ui-followup', jobHref: review.jobHref, jobName: review.jobName, companyName: review.companyName, status: 'waiting', lastOutgoingAt: Date.now(), messages: [{ id: 'greeting', direction: 'outgoing', text: '您好，希望进一步了解这个岗位。' }], actions: [] }] };
 const blocked = true;
 const app = express();
 app.use(express.json());
@@ -46,7 +49,9 @@ app.use('/api', (req, res) => {
     res.type('svg').send('<svg xmlns="http://www.w3.org/2000/svg" width="595" height="842"><rect width="595" height="842" fill="white"/><text x="50" y="90" font-family="Microsoft YaHei" font-size="26" fill="#141413">测试简历 · 内容运营</text><path d="M50 115H545" stroke="#b7b4aa"/><text x="50" y="170" font-family="Microsoft YaHei" font-size="16" fill="#47463f">这是本地界面测试样本，未使用真实简历。</text></svg>'); return;
   }
   if (req.path === '/config' && req.method === 'POST') config = { ...config, ...req.body };
+  if (req.path === '/followup/settings' && req.method === 'POST') followup.settings = req.body;
   const data = req.path === '/config' ? config
+    : req.path === '/followup' || req.path === '/followup/settings' ? followup
     : req.path === '/resume/current' ? { source, tailored }
     : req.path === '/resume/diagnose' ? diagnosis
     : req.path === '/boss/positions' ? catalog
@@ -124,9 +129,25 @@ async function main() {
     await page.screenshot({ path: path.join(output, 'claude-ui-settings.png') });
     await nav.getByRole('button', { name: '筛选规则', exact: true }).click();
     await page.screenshot({ path: path.join(output, 'claude-ui-rules.png') });
+    await nav.getByRole('button', { name: '沟通跟进', exact: true }).click();
+    const communication = main.getByRole('region', { name: '沟通跟进', exact: true });
+    await communication.getByText(followup.message, { exact: true }).waitFor();
+    assert.equal(await communication.getByRole('button', { name: '开始自动跟进', exact: true }).isDisabled(), true);
+    await communication.locator('summary').filter({ hasText: '跟进设置' }).click();
+    await communication.getByLabel('启用自动跟进', { exact: true }).check();
+    await communication.getByRole('button', { name: '添加事实回答', exact: true }).click();
+    const keywords = communication.getByLabel('问题关键词（逗号或换行分隔）', { exact: true });
+    await keywords.fill('学历'); await keywords.press('End'); await keywords.press(','); await keywords.pressSequentially('毕业');
+    assert.match(await keywords.inputValue(), /学历[，,]毕业/);
+    await communication.getByLabel('授权发送的回答', { exact: true }).fill('我的最高学历是本科。');
+    await communication.getByRole('button', { name: '保存设置', exact: true }).click();
+    await communication.getByRole('button', { name: '开始自动跟进', exact: true }).waitFor();
+    await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(b => b.textContent.includes('开始自动跟进'))?.disabled);
+    assert.deepEqual(followup.settings.facts[0].keywords.filter(Boolean), ['学历', '毕业']);
+    await page.screenshot({ path: path.join(output, 'claude-ui-followup.png') });
     for (const width of [900, 390]) {
       await page.setViewportSize({ width, height: 860 });
-      for (const label of ['开始投递', '运行记录', '筛选规则', '简历分析', '简历优化', '设置']) {
+      for (const label of ['开始投递', '运行记录', '沟通跟进', '筛选规则', '简历分析', '简历优化', '设置']) {
         await nav.getByRole('button', { name: label, exact: true }).click();
         await page.waitForTimeout(80);
         const sizes = await page.evaluate(() => ({ body: document.documentElement.scrollWidth, viewport: innerWidth, main: document.querySelector('main').scrollWidth, client: document.querySelector('main').clientWidth }));
@@ -135,12 +156,12 @@ async function main() {
       await nav.getByRole('button', { name: '开始投递', exact: true }).click();
       await page.screenshot({ path: path.join(output, 'claude-ui-' + width + '.png') });
     }
-    assert.ok(!requests.some(item => item.path === '/delivery/start' || item.path === '/resume/boss/upload'), 'Reviewing UI must not deliver jobs or upload resumes');
+    assert.ok(!requests.some(item => item.path === '/delivery/start' || item.path === '/resume/boss/upload' || item.path === '/followup/start'), 'Reviewing UI must not deliver jobs, upload resumes or start automatic messages');
     assert.deepEqual(errors, []);
-    fs.writeFileSync(path.join(output, 'claude-ui-verification.json'), JSON.stringify({ passed: true, pages: 6, widths: [1320, 900, 390], startVisible: true, stickyAction: true, summaryUpdates: true, pageErrors: errors }, null, 2));
+    fs.writeFileSync(path.join(output, 'claude-ui-verification.json'), JSON.stringify({ passed: true, pages: 7, widths: [1320, 900, 390], startVisible: true, stickyAction: true, summaryUpdates: true, followupSettings: true, pageErrors: errors }, null, 2));
     assert.equal(await page.getByRole('heading', { name: 'BOSS 自动操作已停止', exact: true }).count(), 0);
     assert.equal(requests.some(request => request.path === '/boss/automation-safety'), false, '界面不轮询全局停止状态');
-    console.log('PASS | Claude workspace: six pages, three widths, sticky start, live summary, Chinese and salary rendering.');
+    console.log('PASS | Claude workspace: seven pages, three widths, followup controls, comma input, sticky start, live summary, Chinese and salary rendering.');
   } finally { await browser?.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

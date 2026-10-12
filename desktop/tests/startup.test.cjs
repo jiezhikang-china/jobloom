@@ -9,7 +9,7 @@ const { APP_ORIGIN, isAppUrl, createAppProtocol } = require('../app-protocol.cjs
 
 const entry = path.resolve(__dirname, '..', 'electron-main.cjs');
 const source = fs.readFileSync(entry, 'utf8');
-const health = { app: 'jobloom', integrationVersion: 31, desktopManaged: true, status: 'ok' };
+const health = { app: 'jobloom', integrationVersion: 32, desktopManaged: true, status: 'ok' };
 
 function desktop(options = {}) {
   const windows = [];
@@ -150,7 +150,7 @@ function desktop(options = {}) {
         return { ok: true, json: async () => health };
       }
       if (url.endsWith('/api/boss/automation-safety')) return { ok: true, json: async () => ({ success: true, data: { blocked: !!options.automationHold } }) };
-      if (url.endsWith('/api/delivery/stop')) return { ok: true, json: async () => ({ success: true }) };
+      if (url.endsWith('/api/delivery/stop') || url.endsWith('/api/followup/stop')) return { ok: true, json: async () => ({ success: true }) };
       return {
         ok: true,
         json: async () => ({ data: { stats: { status: options.deliveryStatus || 'idle' } } }),
@@ -191,7 +191,7 @@ test('再次启动恢复隐藏或最小化的窗口，并复用同一后台', as
 });
 
 test('升级时先停止旧任务，再启动新版桌面服务', async () => {
-  const run = desktop({ deliveryStatus: 'running', healthRequest: async url => ({ ok: true, json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 31 : 22 }) }) });
+  const run = desktop({ deliveryStatus: 'running', healthRequest: async url => ({ ok: true, json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 32 : 22 }) }) });
   await settled();
   assert.equal(run.windows[0].url, APP_ORIGIN + '/');
   assert.equal(run.children.length, 1); assert.equal(run.errors.length, 0);
@@ -199,14 +199,14 @@ test('升级时先停止旧任务，再启动新版桌面服务', async () => {
 });
 
 test('上一版空闲后台不会阻止新版本启动', async () => {
-  const run = desktop({ healthRequest: async url => ({ ok: true, json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 31 : 25 }) }) });
+  const run = desktop({ healthRequest: async url => ({ ok: true, json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 32 : 25 }) }) });
   await settled();
   assert.equal(run.windows[0].url, APP_ORIGIN + '/');
   assert.equal(run.children.length, 1); assert.equal(run.errors.length, 0);
 });
 test('账号已有停止状态时，停止旧版任务并加载带保护的新版本', async () => {
   const run = desktop({ automationHold: true, deliveryStatus: 'running', healthRequest: async url => ({ ok: true,
-    json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 31 : 25 }) }) });
+    json: async () => ({ ...health, integrationVersion: url.includes(':4567/') ? 32 : 25 }) }) });
   await settled();
   assert.ok(run.requests.some(request => request.url.endsWith('/api/delivery/stop') && request.method === 'POST'));
   assert.equal(run.windows[0].url, APP_ORIGIN + '/');
@@ -311,6 +311,7 @@ test('关闭窗口停止任务，不留下无人管理的投递后台', async ()
   assert.equal(run.removedPort(), true);
   assert.equal(run.app.quitCount, 1);
   assert.ok(run.requests.some(request => request.url.endsWith('/api/delivery/stop') && request.method === 'POST'));
+  assert.ok(run.requests.some(request => request.url.endsWith('/api/followup/stop') && request.method === 'POST'));
 });
 
 test('Windows 账号分别持有桌面启动锁，不共用测试账号的窗口', async () => {

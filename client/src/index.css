@@ -1,4 +1,37 @@
 /* Claude-inspired workspace. Tokens are shared with React styles. */
+.followup-panel { display: grid; gap: 22px; max-width: 1120px; margin: 0 auto; }
+.followup-toolbar, .followup-contact header, .followup-list-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
+.followup-toolbar h2 { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-family: var(--font-display); font-size: 26px; font-weight: 500; }
+.followup-eyebrow { color: var(--primary); margin-bottom: 7px; font-size: 12px; }
+.followup-panel small, .followup-settings > p, .followup-contact header p { color: var(--text-muted); }
+.followup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.followup-actions button { display: inline-flex; align-items: center; gap: 7px; }
+.followup-panel .followup-primary { background: var(--primary); color: white; border-color: var(--primary); }
+.followup-settings, .followup-contact { padding: 22px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--surface); min-width: 0; }
+.followup-settings > summary { font-weight: 600; }
+.followup-settings[open] > summary { margin-bottom: 14px; }
+.followup-settings > p { margin-bottom: 16px; }
+.followup-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+.followup-fields label, .followup-template, .followup-fact label { display: grid; gap: 7px; font-size: 12px; min-width: 0; }
+.followup-fields input, .followup-template textarea, .followup-fact textarea { width: 100%; }
+.followup-check { display: flex; gap: 9px; align-items: center; margin: 14px 0; }
+.followup-fact { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 12px; align-items: center; margin: 14px 0; }
+.followup-contact-list { display: grid; gap: 14px; }
+.followup-contact { display: grid; gap: 14px; overflow-wrap: anywhere; }
+.followup-contact header a { font-size: 17px; font-weight: 600; }
+.followup-badge { padding: 3px 9px; border-radius: 5px; background: var(--surface-subtle); color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.followup-badge.status-replied { background: var(--success-bg); color: var(--success); }
+.followup-badge.status-needs_user, .followup-badge.status-uncertain, .followup-next { background: var(--warning-bg); color: var(--accent-amber); }
+.followup-next { padding: 10px 12px; border-radius: 6px; }
+.followup-contact > button { justify-self: end; }
+.followup-list-head label { display: flex; align-items: center; gap: 9px; }
+.followup-messages { list-style: none; display: grid; gap: 12px; margin-top: 14px; }
+.followup-messages li { background: var(--surface-subtle); border-radius: 7px; padding: 10px 12px; }
+.followup-messages p, .followup-record p { white-space: pre-wrap; }
+.followup-record { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.followup-empty { padding: 35px 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-strong); border-radius: 12px; }
+@media (max-width: 950px) { .followup-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 540px) { .followup-fields, .followup-fact { grid-template-columns: minmax(0, 1fr); } .followup-settings, .followup-contact { padding: 16px; } }
 :root {
   color-scheme: light;
   --primary: #ad4d31;

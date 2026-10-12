@@ -10,7 +10,7 @@ import { bossAutomationSafety, visibleBossRestriction } from './boss-automation-
 const BOSS_ORIGIN = 'https://www.zhipin.com';
 const LOGIN_URL = `${BOSS_ORIGIN}/web/user/?ka=header-login`;
 const JOBS_URL = `${BOSS_ORIGIN}/web/geek/jobs`;
-const DEFAULT_PROFILE_DIR = path.resolve(process.env.BOSS_PROFILE_DIR || path.resolve(process.cwd(), '../data/boss-profile-v3'));
+const DEFAULT_PROFILE_DIR = path.resolve(process.env.BOSS_PROFILE_DIR || path.resolve(__dirname, '../../../data/boss-profile-v3'));
 const SESSION_COOKIES = new Set(['wt2', 'zp_at']);
 
 export interface LoginStatus {
@@ -274,6 +274,13 @@ export class BrowserService {
     if (this.workerPromise) return this.workerPromise;
     this.workerPromise = this.openWorkerPage();
     try { return await this.workerPromise; } finally { this.workerPromise = null; }
+  }
+
+  public async getCommunicationPage(): Promise<CdpPage> {
+    await this.ensureChrome(false);
+    const url = BOSS_ORIGIN + '/web/geek/chat';
+    const tab = (await this.listTabs()).find(tab => tab.url.startsWith(url));
+    return tab ? this.pageFor(tab) : this.createPage(url);
   }
 
   private async openWorkerPage(): Promise<CdpPage> {

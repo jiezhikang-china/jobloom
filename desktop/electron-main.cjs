@@ -74,7 +74,7 @@ async function readJson(url, timeout = 1500) {
 async function isOurService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
-    if (health.app !== 'jobloom' || health.integrationVersion !== 31 || health.status !== 'ok' || health.desktopManaged !== true) return false;
+    if (health.app !== 'jobloom' || health.integrationVersion !== 32 || health.status !== 'ok' || health.desktopManaged !== true) return false;
     const safety = await readJson(`${address(port)}/api/boss/automation-safety`);
     return safety.success === true;
   } catch {
@@ -86,7 +86,7 @@ async function isActivePreviousService(port) {
   try {
     const health = await readJson(`${address(port)}/health`);
     if (health.app !== 'jobloom' || health.status !== 'ok' || !Number.isInteger(health.integrationVersion)
-      || health.integrationVersion < 22 || health.integrationVersion >= 31) return false;
+      || health.integrationVersion < 22 || health.integrationVersion >= 32) return false;
     const result = await readJson(`${address(port)}/api/delivery/status`, 2500);
     return activeStatuses.has(result?.data?.stats?.status);
   } catch { return false; }
@@ -304,6 +304,10 @@ async function shutDown() {
   if (stopping) return;
   stopping = true;
   if (serverUrl) {
+      try {
+        const stopped = await fetch(`${serverUrl}/api/followup/stop`, { method: 'POST', headers: { 'x-boss-desktop-token': serviceToken }, signal: AbortSignal.timeout(2500) });
+        if (!stopped.ok || (await stopped.json()).success !== true) throw new Error('followup stop not acknowledged');
+      } catch (error) { log(`shutdown followup stop failed: ${error.message}`); }
     try {
       const stopped = await fetch(`${serverUrl}/api/delivery/stop`, { method: 'POST', headers: { 'x-boss-desktop-token': serviceToken }, signal: AbortSignal.timeout(4000) });
       if (!stopped.ok || (await stopped.json()).success !== true) throw new Error('stop not acknowledged');

@@ -8,6 +8,7 @@ import LocationFilterOptions from './LocationFilterOptions.js';
 import ResumePdfPanel from './ResumePdfPanel.js';
 import DesktopTitleBar from './DesktopTitleBar.js';
 import NotSuitablePanel from './NotSuitablePanel.js';
+import FollowupPanel from './FollowupPanel.js';
 import {
   FileText,
   Compass,
@@ -27,6 +28,7 @@ import {
   ExternalLink,
   Check,
   MapPin,
+  MessageCircle,
 } from 'lucide-react';
 import {
   AppConfig,
@@ -40,10 +42,11 @@ import {
   BossPositionSelection,
 } from './types.js';
 
-type WorkbenchTab = 'launch' | 'diagnosis' | 'tailor' | 'rules' | 'delivery' | 'settings';
+type WorkbenchTab = 'launch' | 'diagnosis' | 'tailor' | 'rules' | 'delivery' | 'settings' | 'followup';
 const navigationItems = [
   { id: 'launch', label: '开始投递', icon: Play, description: '选择岗位与工作条件，开始新的投递。' },
   { id: 'delivery', label: '运行记录', icon: Activity, description: '查看筛选结果、AI 评估与投递进度。' },
+  { id: 'followup', label: '沟通跟进', icon: MessageCircle, description: '查看招聘方回复，询问工作条件，跟进已经投递的岗位。' },
   { id: 'rules', label: '筛选规则', icon: Sliders, description: '设置工作条件、通勤范围和每日投递数量。' },
   { id: 'diagnosis', label: '简历分析', icon: FileText, description: '从简历了解优势，找到适合你的岗位方向。' },
   { id: 'tailor', label: '简历优化', icon: Compass, description: '按目标岗位润色经历，保留原 PDF 的版式。' },
@@ -1735,6 +1738,7 @@ export default function App() {
         )}
 
         {/* TAB 5: 设置 */}
+        {activeTab === 'followup' && <FollowupPanel />}
         {activeTab === 'settings' && config && (
           <div className="page-column settings-page">
             <div

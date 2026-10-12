@@ -7,6 +7,7 @@ import { browserService } from './services/browser.service.js';
 import { deepseekProxyService } from './services/deepseek.proxy.service.js';
 import { desktopAuth } from './desktop-auth.js';
 import { deliveryService } from './services/delivery.service.js';
+import { followupService } from './services/followup.service.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -34,7 +35,7 @@ app.use('/api', (_req, res) => {
 
 // 健康检查
 app.get('/health', (_req, res) => {
-  res.json({ app: 'jobloom', integrationVersion: 31, desktopManaged: !!process.env.BOSS_DESKTOP_TOKEN, status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ app: 'jobloom', integrationVersion: 32, desktopManaged: !!process.env.BOSS_DESKTOP_TOKEN, status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // 静态托管前端生产页面 (开箱即用)
@@ -69,6 +70,7 @@ const cleanup = async (signal: string) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   deliveryService.stop();
+  followupService.stop();
   console.log(`\n收到 ${signal}，正在优雅关闭服务与释放浏览器资源...`);
   try {
     await browserService.close();

@@ -7,7 +7,7 @@ import { browserService } from './browser.service.js';
 import { workConditionReviews } from './work-condition-reviews.js';
 import { exclusionsFromText, findJobExclusion, needsCompanyIndustry } from './job-exclusions.js';
 import { jobInformationIssue } from './job-information.js';
-import { configuredWorkRequirements, hasEntryLevelRequirement } from './work-requirements.js';
+import { assessWorkRequirements, configuredWorkRequirements, hasEntryLevelRequirement } from './work-requirements.js';
 import { bossExpectationsService } from './boss-expectations.js';
 import { planTargetPositions } from './target-planner.js';
 import { languageQualificationIssue, candidateLanguageEvidence } from './language-qualification.js';
@@ -16,10 +16,12 @@ import { commuteDecision } from './commute.js';
 import { evaluationRetrySeconds } from './ai-retry.js';
 import { bossJobId, sameJobLink } from './job-identity.js';
 import { notSuitableStore } from './not-suitable-store.js';
-import { DeliveryStats, DeliveryLogItem, BossJobItem, BossPositionSelection, WorkConditionReview, AppConfig } from '../types.js';
+import { DeliveryStats, DeliveryLogItem, BossJobItem, BossPositionSelection, WorkConditionReview, AppConfig, WorkRequirementAssessment } from '../types.js';
 import { bossActionScheduler } from './boss-action-scheduler.js';
 import { bossAutomationSafety } from './boss-automation-safety.js';
 import { bossOperationPolicy } from './boss-operation-policy.js';
+import { followupStore } from './followup-store.js';
+import { acquireBossTask } from './boss-task-lock.js';
 
 const COOL_DOWN_SECONDS = 15 * 60;
 
@@ -176,9 +178,11 @@ export class DeliveryService {
     while (this.stats.isPaused && !this.isStopRequested) await new Promise(resolve => setTimeout(resolve, 250));
     return !this.isStopRequested;
   }
-  private recordConfirmedChat(target: { jobHref: string; jobName: string; companyName: string }, result: ChatResult): void {
+  private recordConfirmedChat(target: { jobHref: string; jobName: string; companyName: string }, result: ChatResult, assessment: WorkRequirementAssessment[] = []): void {
     this.stats.todayAppliedCount++;
     this.persistQuota();
+    try { followupStore.recordContact(target, configuredWorkRequirements(configManager.getConfig().filter), assessment); }
+    catch (error) { this.log('warn', '已沟通，但跟进台账保存失败：' + (error as Error).message); }
     try { workConditionReviews.removeForJob(target.jobHref); }
     catch { this.log('warn', '已沟通，但移除旧的待确认记录失败，请刷新列表。'); }
     if (result.continued) this.log('info', '[已继续沟通] ' + target.companyName + ' - ' + target.jobName);
@@ -228,6 +232,7 @@ export class DeliveryService {
   private async withOperations(task: () => Promise<void>): Promise<void> {
     if (this.isActive()) throw new Error('投递任务已经在运行中');
     bossAutomationSafety.assertAllowed();
+    const releaseTask = acquireBossTask('投递');
     const controller = new AbortController(); this.operationAbort = controller;
     let lastWaitLogAt = 0;
     try {
@@ -255,6 +260,7 @@ export class DeliveryService {
       } finally {
         this.taskBrowser.releaseRestGate(); this.stats.sageTimeRemainingSeconds = undefined;
         if (this.operationAbort === controller) this.operationAbort = undefined;
+        releaseTask();
         this.emit();
       }
     }
@@ -329,7 +335,7 @@ export class DeliveryService {
             const result = await bossPageService.executeChatClick(detail.chatButtonLocator,
               '您好，我关注贵司的【' + actualTarget.jobName + '】岗位，希望与您交流岗位详情。', actualTarget);
             if (result.success) {
-              this.recordConfirmedChat(actualTarget, result);
+              this.recordConfirmedChat(actualTarget, result, assessWorkRequirements(detail.job, detail.jobDetailText, configuredWorkRequirements(cfg.filter), review.assessment));
               this.log('success', '✅ 投递成功：' + actualTarget.companyName + ' - ' + actualTarget.jobName + '，今日累计 ' + this.stats.todayAppliedCount + ' 家');
             } else if (result.uncertain) throw new Error('已触发沟通，但尚未确认发送结果；请查看平台会话后继续，勿重复投递');
             else if (result.loginRequired) {
@@ -749,7 +755,7 @@ export class DeliveryService {
           }
 
           if (chatResult.success) {
-            this.recordConfirmedChat(jobCard, chatResult);
+            this.recordConfirmedChat(jobCard, chatResult, evaluation.requirementAssessment);
             if (finalGreeting && !chatResult.greetingSent && !chatResult.platformGreeting) {
               this.log('warn', `[自荐语未注入] 平台未显示打招呼输入框，沟通已建立但定制首语可能没有发送: ${jobCard.companyName} - ${jobCard.jobName}`);
             }
