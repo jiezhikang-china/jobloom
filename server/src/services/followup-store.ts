@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import { careerStore } from './career-store.js';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { writeJsonAtomic } from './atomic-json.js';
@@ -64,7 +63,6 @@ export class FollowupStore {
       state.contacts.unshift({ id, jobHref, jobName: target.jobName, companyName: target.companyName, contactedAt: now, lastOutgoingAt: now,
         status: 'waiting', requirements: structuredClone(requirements.filter(r => r.enabled)), assessment: structuredClone(assessment), messages: [], actions: [], updatedAt: now });
     });
-    if (this.file) careerStore.ensure({ ...target, jobHref });
     return id;
   }
   update(id: string, fn: (contact: FollowupContact, state: FollowupState) => void): void {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { careerStore } from '../src/services/career-store.js';
 import { FollowupStore } from '../src/services/followup-store.js';
 import { FollowupEngine, type FollowupDependencies } from '../src/services/followup-engine.js';
 import { normalizeFollowupSettings, FollowupNotSubmittedError, type ChatSnapshot } from '../src/services/followup-types.js';
@@ -82,13 +83,15 @@ async function main() {
   });
   test('原子台账跨重启保存，职位链接查询参数不制造重复联系人', () => {
     const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'jobloom-followup-')); const file = path.join(folder, 'ledger.json');
+    const originalEnsure = careerStore.ensure; let crossTableWrites = 0; careerStore.ensure = () => { crossTableWrites++; };
     try { const store = new FollowupStore(file); store.settings(enabled); store.recordContact(target, [], [], now);
       store.recordContact({ ...target, jobHref: target.jobHref + '?ka=test' }, [], [], now);
+      assert.equal(crossTableWrites, 0, '临时沟通台账不得写入实际求职进度');
       const restored = new FollowupStore(file); assert.equal(restored.snapshot().contacts.length, 1); assert.equal(restored.snapshot().settings.enabled, true);
       const badState = restored.snapshot(); badState.contacts[0].status = 'invalid' as any; fs.writeFileSync(file, JSON.stringify(badState)); assert.match(new FollowupStore(file).error(), /格式错误/);
       fs.writeFileSync(file, '{broken'); const broken = new FollowupStore(file); assert.match(broken.error(), /无法读取/);
       assert.throws(() => broken.recordContact(target), /无法读取/); assert.equal(fs.readFileSync(file, 'utf8'), '{broken');
-    } finally { assert.equal(path.dirname(path.resolve(folder)), path.resolve(os.tmpdir())); assert.ok(path.basename(folder).startsWith('jobloom-followup-')); fs.rmSync(folder, { recursive: true, force: true }); }
+    } finally { careerStore.ensure = originalEnsure; assert.equal(path.dirname(path.resolve(folder)), path.resolve(os.tmpdir())); assert.ok(path.basename(folder).startsWith('jobloom-followup-')); fs.rmSync(folder, { recursive: true, force: true }); }
   });
   await testAsync('只读核对不发送；开启后发送一次；下一轮和重启不重复', async () => {
     const { store } = contact(); store.settings(enabled); const h = harness(store);
