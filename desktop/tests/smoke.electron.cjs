@@ -37,7 +37,7 @@ async function main() {
       : req.url === '/api/boss/positions' ? { categories: [], source: 'fixture', fetchedAt: new Date().toISOString() }
       : req.url === '/api/browser/status' ? { isLoggedIn: false, isBrowserActive: false, reasonCode: 'automation_blocked', reason: '模拟账号停止' }
       : req.url === '/api/boss/automation-safety' ? { blocked: true, hold: { id: 'fixture-hold', reason: 'user_reported_ban', message: '模拟账号停止，等待人工确认', detectedAt: new Date().toISOString() } }
-      : req.url === '/health' ? { app: 'jobloom', integrationVersion: 34, status: 'ok' } : [];
+      : req.url === '/health' ? { app: 'jobloom', integrationVersion: 35, status: 'ok' } : [];
     res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ success: true, data }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

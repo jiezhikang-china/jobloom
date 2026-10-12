@@ -207,7 +207,7 @@ export class FilterService {
       return { passed: false, score: 0, customGreeting: '', needsReview: true, requirementAssessment: assessment, evaluationSource: 'rules',
         reason: localMissing.length ? '需确认：' + localMissing.map((item) => item.text).join('、') : '岗位与公司资料过长，需确认完整要求' };
     }
-    if (rulesOnly && !summary.missing.length) {
+    if (rulesOnly && requirements.length && !summary.missing.length) {
       return { passed: true, score: 0, reason: '全部已启用工作条件有明确依据，本地筛选通过',
         customGreeting: `您好，我关注贵司的【${job.jobName}】岗位，希望与您交流岗位详情。`,
         requirementAssessment: assessment, evaluationSource: 'rules' };
@@ -320,17 +320,17 @@ export class FilterService {
     const base = { score, customGreeting: '', evaluationSource: 'ai' as const, ...(assessment ? { requirementAssessment: assessment } : {}) };
     const qualification = this.assessQualification(job, jobDetail, result, candidateText);
     if (qualification) return { ...base, passed: false, ...(qualification.status === 'unknown' ? { needsReview: true, needsQualificationConfirmation: true, requirementAssessment: assessment || [] } : {}), reason: qualification.reason };
-    if (assessment) {
-      const summary = summarizeWorkRequirements(assessment, requirements);
-      if (summary.failed.length) return { ...base, passed: false, reason: summary.failed.map((item) => item.text + '不符合：' + item.evidence).join('；') };
-      if (summary.missing.length) return { ...base, passed: false, needsReview: true, reason: '需确认：' + summary.missing.map((item) => item.text).join('、') };
-    }
     const reason = typeof result.reason === 'string' ? result.reason.trim() : '';
     // A sparse resume is not affirmative evidence that a candidate cannot do the work.
     const missingEvidenceOnly = result.missingEvidenceOnly === true
       || (result.missingEvidenceOnly === undefined
         && /未提供|未体现|未展示|未提及|没有.{0,15}(?:证明|佐证)|缺少.{0,25}(?:证明|佐证|作品|经验|经历)/.test(reason));
     const passed = missingEvidenceOnly || (score >= (filterCfg.minLlmMatchScore ?? 75) && result.passed !== false);
+    if (assessment) {
+      const summary = summarizeWorkRequirements(assessment, requirements);
+      if (summary.failed.length) return { ...base, passed: false, reason: summary.failed.map((item) => item.text + '不符合：' + item.evidence).join('；') };
+      if (passed && summary.missing.length) return { ...base, passed: false, needsReview: true, reason: '需确认：' + summary.missing.map((item) => item.text).join('、') };
+    }
     const greeting = typeof result.customGreeting === 'string' ? result.customGreeting.trim() : '';
     return { ...base, passed, customGreeting: passed ? greeting || `您好，我对贵司的【${job.jobName}】岗位很感兴趣，希望能与您交流岗位详情。` : '',
       reason: missingEvidenceOnly ? '简历未提及不作为淘汰依据，继续投递。' + (reason ? 'AI 参考：' + reason : '') : reason || (passed ? '语义匹配达标' : '大模型判定为不匹配') };

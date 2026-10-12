@@ -11,6 +11,8 @@ export type CandidateStatus = 'discovered' | 'read_retry' | 'evaluation_retry' |
 export interface CandidateRecord {
   jobHref: string; jobName: string; companyName: string; salary: string;
   context: string; sources: string[]; status: CandidateStatus; reason: string;
+  /** Context in which this job was actually found in a live target list, never guessed during migration. */
+  listContext?: string;
   discoveredAt: number; updatedAt: number; retryAt: number; attempts: number;
   job?: BossJobItem; description?: string; rulesVersion: string;
   history: Array<{ at: number; status: CandidateStatus; reason: string }>;
@@ -61,7 +63,10 @@ export class CandidateLedger {
     if (this.file) writeJsonAtomic(this.file, next);
     this.state = next;
   }
-  discover(target: { jobHref: string; jobName: string; companyName: string; salary: string }, context: string, rulesVersion: string, source: string): CandidateRecord {
+  private belongsToList(c: CandidateRecord, context: string): boolean {
+    return c.context === context && (c.listContext === context || (!c.listContext && !c.legacyReview));
+  }
+  discover(target: { jobHref: string; jobName: string; companyName: string; salary: string }, context: string, rulesVersion: string, source: string, seenInList = true): CandidateRecord {
     const jobHref = canonicalFollowupJob(target.jobHref), now = Date.now();
     this.change(state => {
       let c = state.candidates.find(c => c.jobHref === jobHref);
@@ -69,12 +74,14 @@ export class CandidateLedger {
         c = { jobHref, jobName: target.jobName, companyName: target.companyName, salary: target.salary, context, rulesVersion, sources: [], status: 'discovered', reason: '', discoveredAt: now, updatedAt: now, retryAt: 0, attempts: 0, history: [] };
         state.candidates.push(c);
       }
+      if (seenInList && c.context !== context && !['sent', 'sending', 'send_unknown'].includes(c.status)) c.sources = [];
       if (!c.sources.includes(source)) c.sources.push(source);
       // Sending and unknown acknowledgements are never made retryable by a settings change.
-      if (!['sent', 'sending', 'send_unknown'].includes(c.status) && (c.context !== context || c.rulesVersion !== rulesVersion)) {
+      if (!['sent', 'sending', 'send_unknown'].includes(c.status) && (c.context !== context || c.rulesVersion !== rulesVersion || (seenInList && !this.belongsToList(c, context)))) {
         c.context = context; c.rulesVersion = rulesVersion; c.status = 'discovered'; c.retryAt = 0; c.attempts = 0; delete c.evaluation;
         c.history.push({ at: now, status: c.status, reason: '求职资料或条件变化，重新读取评估' });
       }
+      if (seenInList && c.context === context) c.listContext = context;
       c.jobName = target.jobName; c.companyName = target.companyName; c.salary = target.salary;
     });
     return this.get(jobHref)!;
@@ -112,15 +119,15 @@ export class CandidateLedger {
     return c.updatedAt + 24 * 60 * 60 * 1000 <= now;
   }
   recoverable(context: string, rulesVersion: string, source: string, now = Date.now()): CandidateRecord[] {
-    const changed = this.state.candidates.some(c => c.context === context && c.rulesVersion !== rulesVersion && !['sent', 'sending', 'send_unknown'].includes(c.status));
+    const changed = this.state.candidates.some(c => this.belongsToList(c, context) && c.rulesVersion !== rulesVersion && !['sent', 'sending', 'send_unknown'].includes(c.status));
     if (changed) this.change(state => { for (const c of state.candidates) {
-      if (c.context === context && c.rulesVersion !== rulesVersion && !['sent', 'sending', 'send_unknown'].includes(c.status)) {
+      if (this.belongsToList(c, context) && c.rulesVersion !== rulesVersion && !['sent', 'sending', 'send_unknown'].includes(c.status)) {
         c.rulesVersion = rulesVersion; c.status = 'discovered'; c.retryAt = 0; c.attempts = 0; delete c.evaluation;
         c.history.push({ at: now, status: c.status, reason: '条件变化，按当前规则恢复评估' });
       }
     } });
     if (this.loadError) throw new Error(this.loadError);
-    return structuredClone(this.state.candidates.filter(c => c.context === context && c.rulesVersion === rulesVersion && c.sources.includes(source)
+    return structuredClone(this.state.candidates.filter(c => this.belongsToList(c, context) && c.rulesVersion === rulesVersion && c.sources.includes(source)
       && pendingStates.includes(c.status) && c.retryAt <= now));
   }
   migrateTechnical(reviews: WorkConditionReview[], context: string, rulesVersion: string, source: string, currentRequirements?: WorkRequirement[]): string[] {
@@ -129,13 +136,14 @@ export class CandidateLedger {
       const requirementsChanged = currentRequirements && candidateFingerprint(normalizeWorkRequirements(r.requirements).filter(r => r.enabled))
         !== candidateFingerprint(normalizeWorkRequirements(currentRequirements).filter(r => r.enabled));
       if (!r.screening?.needsDetailConfirmation && !r.screening?.needsEvaluationConfirmation && !requirementsChanged) continue;
-      // Archived reviews lack reliable candidate provenance; explicitly mark them for current-rule reevaluation.
+      // A global shortlist does not prove which target or resume found a job. Preserve unscoped reviews.
       const existing = this.get(r.jobHref);
+      if (!existing || !this.belongsToList(existing, context) || !existing.sources.includes(source)) continue;
       if (existing && ['sent', 'sending', 'send_unknown'].includes(existing.status)) {
         this.change(state => { state.candidates.find(c => c.jobHref === canonicalFollowupJob(r.jobHref))!.legacyReview = structuredClone(r); });
         moved.push(r.id); continue;
       }
-      this.discover({ ...r, salary: r.salary }, context, rulesVersion, source);
+      this.discover({ ...r, salary: r.salary }, context, rulesVersion, source, false);
       this.change(state => { const c = state.candidates.find(c => c.jobHref === canonicalFollowupJob(r.jobHref))!; c.legacyReview = structuredClone(r); });
       this.transition(r.jobHref, 'read_retry', requirementsChanged ? '条件已变化；保存旧记录，按当前条件重新读取' : '从旧技术待确认记录恢复；保留原记录，按当前条件重新读取');
       moved.push(r.id);
@@ -145,14 +153,14 @@ export class CandidateLedger {
   sourceMetrics(context: string, sources: string[]) {
     if (this.loadError) throw new Error(this.loadError);
     return sources.map(source => {
-      const rows = this.state.candidates.filter(c => c.context === context && c.sources.includes(source));
+      const rows = this.state.candidates.filter(c => this.belongsToList(c, context) && c.sources.includes(source));
       const detail = rows.filter(c => c.job);
-      const passed = rows.filter(c => c.history.some(e => e.status === 'ready'));
+      const passed = rows.filter(c => c.status === 'ready' || c.status === 'sent');
       const sent = rows.filter(c => c.status === 'sent');
       return { source, unique: rows.length, details: detail.length, passed: passed.length, sent: sent.length,
-        rejected: rows.filter(c => c.status === 'rejected').length, recovery: rows.filter(c => pendingStates.includes(c.status)).length,
+        rejected: rows.filter(c => c.status === 'rejected').length, recovery: rows.filter(c => pendingStates.includes(c.status) && this.belongsToList(c, c.context)).length,
         decisions: rows.filter(c => c.status === 'decision').length,
-        yield: (passed.length + sent.length + 2) / (rows.length + 10) };
+        yield: (passed.length + 2) / (rows.length + 10) };
     });
   }
   summary() {
@@ -160,7 +168,7 @@ export class CandidateLedger {
     const rows = this.state.candidates;
     return { unique: rows.length, details: rows.filter(c => c.job).length,
       passed: rows.filter(c => c.history.some(e => e.status === 'ready')).length,
-      sent: rows.filter(c => c.status === 'sent').length, recovery: rows.filter(c => pendingStates.includes(c.status)).length,
+      sent: rows.filter(c => c.status === 'sent').length, recovery: rows.filter(c => pendingStates.includes(c.status) && this.belongsToList(c, c.context)).length,
       decisions: rows.filter(c => c.status === 'decision').length,
       uncertain: rows.filter(c => ['sending', 'send_unknown'].includes(c.status)).length };
   }

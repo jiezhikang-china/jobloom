@@ -26,7 +26,8 @@ careerRouter.get('/', endpoint(() => {
     careerStore.recordResume({ id, fileName: id, format: path.extname(id).slice(1) });
   }
   const contacts = followupStore.snapshot().contacts;
-  return { ...careerStore.snapshot(), candidates: candidateLedger.list().map(({ jobHref, jobName, companyName, status, reason, attempts, updatedAt, history }) => ({ jobHref, jobName, companyName, status, reason, attempts, updatedAt, history })), summary: candidateLedger.summary(),
+  return { ...careerStore.snapshot(), candidates: candidateLedger.list().map(({ jobHref, jobName, companyName, status, reason, attempts, updatedAt, history, legacyReview, listContext, context }) => ({ jobHref, jobName, companyName, status, reason, attempts, updatedAt, history,
+      legacyUnscoped: Boolean(legacyReview && listContext !== context) })), summary: candidateLedger.summary(),
     replies: contacts.filter(c => c.lastIncomingAt).length, nextSteps: contacts.filter(c => c.nextStep).map(c => ({ jobHref: c.jobHref, text: c.nextStep })) };
 }));
 careerRouter.post('/entries/:id', endpoint(req => { careerStore.update(req.params.id, req.body); return careerStore.snapshot(); }));

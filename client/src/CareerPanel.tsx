@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink, RefreshCw } from 'lucide-react';
-interface Candidate { jobHref: string; jobName: string; companyName: string; status: string; reason: string; attempts: number; updatedAt: number; history: Array<{ at: number; status: string; reason: string }>; }
+interface Candidate { legacyUnscoped?: boolean; jobHref: string; jobName: string; companyName: string; status: string; reason: string; attempts: number; updatedAt: number; history: Array<{ at: number; status: string; reason: string }>; }
 interface Entry { id: string; jobHref: string; jobName: string; companyName: string; stage: string; interviewAt?: string; interviewPlace: string; notes: string; offerSalary: string; offerHours: string; offerRest: string; offerBenefits: string; offerDeadline?: string; resumeVersionId?: string; }
 interface Resume { id: string; fileName: string; label: string; targetRole: string; createdAt: number; }
 interface State { entries: Entry[]; resumes: Resume[]; candidates: Candidate[]; summary: { unique: number; details: number; passed: number; sent: number; recovery: number; decisions: number; uncertain: number }; replies: number; nextSteps: Array<{ jobHref: string; text: string }>; }
@@ -56,7 +56,7 @@ export default function CareerPanel({ onResumeSelected }: { onResumeSelected: (s
     catch (e) { setError((e as Error).message); }
   }
   if (!data) return <p role={error ? 'alert' : 'status'}>{error || '正在读取求职进度…'}</p>;
-  const candidates = data.candidates.filter(c => candidateFilter === 'all' || (candidateFilter === 'recovery' ? ['discovered', 'read_retry', 'evaluation_retry', 'ready'].includes(c.status)
+  const candidates = data.candidates.filter(c => candidateFilter === 'all' || (candidateFilter === 'historical' ? c.legacyUnscoped : candidateFilter === 'recovery' ? !c.legacyUnscoped && ['discovered', 'read_retry', 'evaluation_retry', 'ready'].includes(c.status)
     : candidateFilter === 'uncertain' ? ['sending', 'send_unknown'].includes(c.status) : c.status === candidateFilter)).sort((a, b) => b.updatedAt - a.updatedAt);
   const offers = data.entries.filter(e => ['offer', 'accepted'].includes(e.stage));
   const upcoming = data.entries.filter(e => e.stage === 'interview' && e.interviewAt && Date.parse(e.interviewAt) >= Date.now()).sort((a, b) => Date.parse(a.interviewAt!) - Date.parse(b.interviewAt!));
@@ -67,9 +67,9 @@ export default function CareerPanel({ onResumeSelected }: { onResumeSelected: (s
     <p className="career-help">以上是台账累计的去重岗位数，不是本轮重读次数；“通过”包含后来资料发生变化的历史通过记录，最终是否投递以确认沟通为准。</p>
     {upcoming.length > 0 && <section className="career-upcoming"><h3>即将面试</h3>{upcoming.map(e => <p key={e.id}>{new Date(e.interviewAt!).toLocaleString('zh-CN')} · {e.companyName} · {e.jobName} · {e.interviewPlace || '地点未记录'}</p>)}</section>}
     <details className="followup-settings" open><summary>候选处理记录 · {candidates.length}</summary>
-      <label>显示<select aria-label="候选状态筛选" value={candidateFilter} onChange={e => { setCandidateFilter(e.target.value); setLimit(30); }}><option value="recovery">系统待恢复</option><option value="decision">需要决定</option><option value="uncertain">发送待核对</option><option value="all">全部</option></select></label>
+      <label>显示<select aria-label="候选状态筛选" value={candidateFilter} onChange={e => { setCandidateFilter(e.target.value); setLimit(30); }}><option value="recovery">系统待恢复</option><option value="decision">需要决定</option><option value="uncertain">发送待核对</option><option value="historical">历史来源待核实</option><option value="all">全部</option></select></label>
       {!candidates.length && <p>这里没有对应的岗位。读取或 AI 格式失败会保留到系统恢复，不进入人工条件队列。</p>}
-      {candidates.slice(0, limit).map(c => <article className="career-candidate" key={c.jobHref}><a href={c.jobHref} target="_blank" rel="noreferrer">{c.companyName} · {c.jobName}</a><span>{candidateLabels[c.status]}</span><p>{c.reason}</p>
+      {candidates.slice(0, limit).map(c => <article className="career-candidate" key={c.jobHref}><a href={c.jobHref} target="_blank" rel="noreferrer">{c.companyName} · {c.jobName}</a><span>{c.legacyUnscoped ? '历史岗位 · 来源未核实' : candidateLabels[c.status]}</span><p>{c.legacyUnscoped ? '保留历史记录；在当前目标列表重新发现前，不进入自动恢复或当前来源统计。' : c.reason}</p>
         {['sending', 'send_unknown'].includes(c.status) && <div className="followup-actions"><button onClick={() => void save('candidates/resolve', { jobHref: c.jobHref, sent: true })}>我已核对：已沟通</button><button onClick={() => void save('candidates/resolve', { jobHref: c.jobHref, sent: false })}>我已核对：未发送</button></div>}
         <details><summary>处理经过</summary>{c.history.map((h, i) => <p key={i}>{date(h.at)} · {candidateLabels[h.status]} · {h.reason}</p>)}</details></article>)}
       {candidates.length > limit && <button onClick={() => setLimit(limit + 30)}>再显示30条</button>}

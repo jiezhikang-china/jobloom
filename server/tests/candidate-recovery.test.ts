@@ -69,16 +69,33 @@ async function main() {
   const migration = new CandidateLedger(null);
   const legacy = { ...target, id: 'legacy', updatedAt: new Date().toISOString(), reason: '列表变化', question: '',
     requirements: [], assessment: [], screening: { industry: '', jobDetail: '', skills: [], needsDetailConfirmation: true } };
+  assert.deepEqual(migration.migrateTechnical([legacy], 'current', 'current-rules', '当前目标'), [], '来源不明的历史记录不能冒充当前目标岗位');
+  migration.discover(target, 'current', 'current-rules', '当前目标');
   assert.deepEqual(migration.migrateTechnical([legacy], 'current', 'current-rules', '当前目标'), ['legacy']);
   assert.deepEqual(migration.get(target.jobHref)?.legacyReview, legacy);
   assert.equal(migration.summary().decisions, 0);
   const oldDecision = { ...legacy, id: 'old-condition', jobHref: 'https://www.zhipin.com/job_detail/changed-condition.html',
     screening: undefined, requirements: [{ id: 'rest', text: '每周双休', enabled: true }], assessment: [] };
+  migration.discover(oldDecision, 'current', 'current-rules', '当前目标');
   assert.deepEqual(migration.migrateTechnical([oldDecision], 'current', 'current-rules', '当前目标', []), ['old-condition'], '条件改变后的旧人工记录由系统重新评估');
   assert.equal(migration.get(oldDecision.jobHref)?.legacyReview?.id, 'old-condition');
+  const importedFile = path.join(dir, 'unscoped-legacy.json');
+  const imported = migration.list().map(c => { const { listContext, ...old } = c; return old; });
+  fs.writeFileSync(importedFile, JSON.stringify({ version: 1, candidates: imported }));
+  const unscoped = new CandidateLedger(importedFile);
+  assert.equal(unscoped.list().length, 2, '保留已迁移的历史原件');
+  assert.equal(unscoped.recoverable('current', 'current-rules', '当前目标').length, 0, '旧版本误绑来源的记录不继续自动恢复');
+  assert.equal(unscoped.sourceMetrics('current', ['当前目标'])[0].unique, 0);
+  unscoped.discover(target, 'current', 'current-rules', '当前目标');
+  assert.equal(unscoped.recoverable('current', 'current-rules', '当前目标').length, 1, '在当前列表重新发现后才恢复当前来源归属');
+  const yieldLedger = new CandidateLedger(null); yieldLedger.discover(target, 'ctx', 'old', '来源');
+  yieldLedger.transition(target.jobHref, 'ready', '旧条件通过'); yieldLedger.recoverable('ctx', 'new', '来源');
+  assert.equal(yieldLedger.sourceMetrics('ctx', ['来源'])[0].passed, 0, '旧条件的通过不能继续驱动当前来源预算');
 
   const filter = { ...configManager.getConfig().filter, salaryMin: 0, salaryMax: 0, cityName: '', experience: [], degree: [], candidateLanguages: '',
     companyBlacklist: [], requiredKeywords: [], commute: {}, skipMissingCompanyIntro: false, skipVagueJobDescription: false };
+  assert.equal(filterService.evaluateLocally(job, description, true, { ...filter, workRequirements: [] }), undefined,
+    '没有启用工作条件的规则模式仍需判断目标岗位适配，不可直接通过');
   const required = normalizeWorkRequirements([{ id: 'hours', text: '每天工作不超过八小时', builtin: 'eightHours', enabled: true }]);
   assert.equal(required[0].policy, 'required', '旧条件不被静默放宽');
   assert.equal(summarizeWorkRequirements(assessWorkRequirements(job, description, required), required).missing.length, 1);
