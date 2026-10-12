@@ -20,7 +20,7 @@ export function normalizeWorkRequirements(input: unknown, legacy?: Partial<WorkC
     const text = item.text.trim().slice(0, 500);
     const builtin = CONDITION_KEYS.includes(item.builtin) && text === WORK_CONDITION_LABELS[item.builtin as keyof WorkConditions]
       ? item.builtin as keyof WorkConditions : undefined;
-    return [{ id, text, enabled: item.enabled === true, ...(builtin ? { builtin } : {}) }];
+    return [{ id, text, enabled: item.enabled === true, policy: ['required', 'ask', 'preference'].includes(item.policy) ? item.policy : 'required', ...(builtin ? { builtin } : {}) }];
   });
 }
 
@@ -30,7 +30,8 @@ export function validateWorkRequirements(input: unknown): boolean {
   return input.every((item) => {
     if (!item || typeof item !== 'object' || typeof item.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(item.id)
       || ids.has(item.id) || typeof item.enabled !== 'boolean' || typeof item.text !== 'string'
-      || item.text.trim().length < 2 || item.text.length > 500) return false;
+      || item.text.trim().length < 2 || item.text.length > 500
+      || (item.policy !== undefined && !['required', 'ask', 'preference'].includes(item.policy))) return false;
     ids.add(item.id); return true;
   });
 }
@@ -76,6 +77,9 @@ export function assessWorkRequirements(
   });
 }
 
-export function summarizeWorkRequirements(assessment: WorkRequirementAssessment[]) {
-  return { failed: assessment.filter((item) => item.status === 'not_met'), missing: assessment.filter((item) => item.status === 'unknown') };
+export function summarizeWorkRequirements(assessment: WorkRequirementAssessment[], requirements?: WorkRequirement[]) {
+  const policy = (id: string) => requirements?.find(r => r.id === id)?.policy || 'required';
+  return { failed: assessment.filter(item => item.status === 'not_met' && policy(item.requirementId) !== 'preference'),
+    missing: assessment.filter(item => item.status === 'unknown' && policy(item.requirementId) === 'required'),
+    ask: assessment.filter(item => item.status === 'unknown' && policy(item.requirementId) === 'ask') };
 }

@@ -1,5 +1,6 @@
 import { browserService } from '../src/services/browser.service.js';
 import './fixtures/activate-isolated-safety.js';
+import { resetOfflineCandidates } from './fixtures/safety.js';
 import assert from 'node:assert/strict';
 import { llmService } from '../src/services/llm.service.js';
 import { DeliveryService } from '../src/services/delivery.service.js';
@@ -55,6 +56,7 @@ async function main() {
   const rest = { runIfDue: async () => {
     if (!rested && loaded.length >= restAfter) { rested = true; generation++; return true; } return false;
   } };
+  resetOfflineCandidates();
   const service = new DeliveryService(rest);
   await service.startDelivery({ targetRole: '客服', keywords: ['客服'], resumeText: '希望客服工作。', candidateSource: 'requirements', rulesOnly: true });
   assert.equal(service.getStats().status, 'finished');
@@ -70,6 +72,7 @@ async function main() {
     const jobs = JSON.parse(messages[1].content.split('【待评估岗位列表（逐个评估）】：\n')[1]);
     return { jobs: jobs.map((job: any) => ({ jobKey: job.jobKey, score: 90, passed: true, customGreeting: '您好' })) };
   });
+  resetOfflineCandidates();
   const batchService = new DeliveryService(rest);
   await batchService.startDelivery({ targetRole: '客服', keywords: ['客服'], resumeText: '虚构离线简历：熟悉客服订单整理。', candidateSource: 'resume' });
   assert.equal(batchService.getStats().status, 'finished');
@@ -85,6 +88,7 @@ async function main() {
     assert.equal(locator.generation, generation, '不合适也不能使用休息前的页面句柄');
     feedbacks++; return true;
   });
+  resetOfflineCandidates();
   const excluded = new DeliveryService(rest);
   await excluded.startDelivery({ targetRole: '客服', keywords: ['客服'], resumeText: '仅本地排除测试。', candidateSource: 'requirements', rulesOnly: true });
   assert.equal(excluded.getStats().status, 'finished');

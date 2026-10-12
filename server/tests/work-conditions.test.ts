@@ -90,7 +90,7 @@ async function main() {
   const selectedRequirements = normalizeWorkRequirements(undefined, selected);
   const config = { ...original, filter: { ...original.filter, workRequirements: selectedRequirements, degree: ['本科'],
     salaryMin: undefined, salaryMax: undefined, experience: ['3-5年'], hrActiveDaysLimit: 0,
-    requiredKeywords: [], companyBlacklist: [], minLlmMatchScore: 75, skipMissingCompanyIntro: false, skipVagueJobDescription: false,
+    commute: {}, requiredKeywords: [], companyBlacklist: [], minLlmMatchScore: 75, skipMissingCompanyIntro: false, skipVagueJobDescription: false,
     experienceMatchMode: 'flexible' as 'flexible' | 'strict' } };
   let calls = 0;
   let response: any = { score: 95, passed: true, customGreeting: '您好，希望了解贵司岗位。' };

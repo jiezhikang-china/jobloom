@@ -610,6 +610,21 @@ export class BossPageService {
     return { job, jobDetailText, alreadyChatted: /继续沟通|已在沟通/.test(label), chatButtonLocator: visible ? button : null };
   }
 
+  /** Reopen a durable candidate by its own link when the list or browser generation changed. */
+  public async loadCandidateJob(target: { jobHref: string; jobName: string; companyName: string; salary: string },
+    filter: AppConfig['filter'], languageEvidence = ''): Promise<Awaited<ReturnType<BossPageService['loadJobDetail']>>> {
+    return browserService.withReviewApplication(target.jobHref, async page => {
+      const review: WorkConditionReview = { ...target, id: '', reason: '', question: '', updatedAt: '',
+        requirements: [], assessment: [], screening: { industry: '', skills: [], jobDetail: '', languageEvidence } };
+      const result = await this.loadReviewJob(page, review, filter);
+      const job = result.job;
+      return { ...result, activeTimeDesc: job.activeTimeDesc, brandIndustry: job.brandIndustry,
+        companyInfo: job.companyInfo, workAddress: job.workAddress,
+        detailData: { jobHref: target.jobHref, jobName: job.jobName, companyName: job.brandName, salary: job.salaryDesc,
+          degree: job.jobDegree, experience: job.jobExperience, cityName: job.cityName, skills: job.skills } };
+    });
+  }
+
   /** Resolve a user-selected starting place using BOSS's existing map search. */
   /** BOSS 自选期望中的“不合适”位于右侧详情；点击前再次核对岗位链接。 */
   public async markJobNotSuit(card: CdpLocator, target: { jobName: string; companyName: string; jobHref: string; sourceHref?: string; scope?: 'job' | 'company' },

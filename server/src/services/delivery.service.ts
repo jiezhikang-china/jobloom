@@ -21,6 +21,7 @@ import { bossActionScheduler } from './boss-action-scheduler.js';
 import { bossAutomationSafety } from './boss-automation-safety.js';
 import { bossOperationPolicy } from './boss-operation-policy.js';
 import { followupStore } from './followup-store.js';
+import { candidateLedger, candidateFingerprint } from './candidate-ledger.js';
 import { acquireBossTask } from './boss-task-lock.js';
 
 const COOL_DOWN_SECONDS = 15 * 60;
@@ -69,8 +70,10 @@ export class DeliveryService {
     this.stats.dailyMaxQuota = configManager.getConfig().delivery.dailyMaxQuota;
   }
 
+  private currentContext = '';
+  private currentSources: string[] = [];
   public getStats(): DeliveryStats {
-    return { ...this.stats };
+    return { ...this.stats, ...(this.currentContext && this.currentSources.length ? { sourceMetrics: candidateLedger.sourceMetrics(this.currentContext, this.currentSources) } : {}) };
   }
 
   public isActive(): boolean {
@@ -89,6 +92,7 @@ export class DeliveryService {
   }
 
   private emit(log?: DeliveryLogItem): void {
+    if (this.currentContext && this.currentSources.length) this.stats.sourceMetrics = candidateLedger.sourceMetrics(this.currentContext, this.currentSources);
     for (const listener of this.listeners) {
       try {
         listener(this.stats, log);
@@ -179,6 +183,7 @@ export class DeliveryService {
     return !this.isStopRequested;
   }
   private recordConfirmedChat(target: { jobHref: string; jobName: string; companyName: string }, result: ChatResult, assessment: WorkRequirementAssessment[] = []): void {
+    if (candidateLedger.get(target.jobHref)) candidateLedger.transition(target.jobHref, 'sent', '平台确认已建立沟通');
     this.stats.todayAppliedCount++;
     this.persistQuota();
     try { followupStore.recordContact(target, configuredWorkRequirements(configManager.getConfig().filter), assessment); }
@@ -266,6 +271,7 @@ export class DeliveryService {
     }
   }
   private async runReviewDelivery(reviews: WorkConditionReview[]): Promise<void> {
+    this.currentContext = ''; this.currentSources = [];
     if (this.isTaskActive) throw new Error('投递任务已经在运行中');
     this.isTaskActive = true;
     this.isStopRequested = false;
@@ -407,6 +413,13 @@ export class DeliveryService {
 
     const processedJobKeys = new Set<string>();
     const readFailures = new Map<string, number>();
+    const scannedUnique = new Set<string>();
+    const passedUnique = new Set<string>();
+    const contextKey = candidateFingerprint({ text: params.resumeText, source: params.candidateSource, role: params.targetRole,
+      keywords: params.keywords, positions: params.targetPositions, rulesOnly: params.rulesOnly });
+    const rulesVersion = candidateFingerprint({ filter: cfg.filter, policy: 2 });
+    let recoveryCount = 0;
+    this.currentContext = contextKey; this.currentSources = [];
     let stoppedByUser = false;
 
     try {
@@ -465,7 +478,22 @@ export class DeliveryService {
         ? bossPageService.initJobPage(undefined, cfg.filter.cityCode, undefined, { expectationName: source })
         : bossPageService.initJobPage(source, cfg.filter.cityCode, params.positionCode);
       if (useSavedExpectations) this.log('info', 'BOSS 自选求职期望：' + sources.join('、'));
-      for (const keyword of sources) {
+      this.currentSources = [...sources];
+      // Explore every source before spending the rest of the quota on historically productive sources.
+      const sourceQueue = [...sources].sort((a, b) => {
+        const metrics = candidateLedger.sourceMetrics(contextKey, [a, b]);
+        return metrics[1].yield - metrics[0].yield;
+      });
+      const sourceRounds = new Map<string, number>();
+      const moved = candidateLedger.migrateTechnical(workConditionReviews.list(), contextKey, rulesVersion, sourceQueue[0] || params.targetRole, configuredWorkRequirements(cfg.filter));
+      for (const id of moved) workConditionReviews.remove(id);
+      if (moved.length) this.log('info', '[系统恢复] ' + moved.length + ' 条旧技术记录或条件已变更记录已保存到候选台账，按当前条件重新处理');
+      for (let sourceIndex = 0; sourceIndex < sourceQueue.length; sourceIndex++) {
+        const keyword = sourceQueue[sourceIndex];
+        sourceRounds.set(keyword, (sourceRounds.get(keyword) || 0) + 1);
+        const metric = candidateLedger.sourceMetrics(contextKey, [keyword])[0];
+        const sourceBudget = Math.max(12, Math.min(30, Math.round(12 + 18 * metric.yield)));
+        let sourceUnique = 0;
         if (this.isStopRequested) {
           stoppedByUser = true;
           break;
@@ -497,13 +525,11 @@ export class DeliveryService {
         const candidateContext = { text: params.resumeText, source: params.candidateSource || 'resume' as const };
         const detailOptions = { readIndustry: cfg.filter.skipMissingCompanyIntro === true || needsCompanyIndustry(cfg.filter, exclusionText), filter: cfg.filter, exclusionText, candidateContext };
         const retainDetail = (card: DOMJobCardInfo, reason: string, detail?: PendingCandidate['detail']) => {
-          try {
-            workConditionReviews.add({ jobHref: card.jobHref, jobName: card.jobName, companyName: card.companyName,
-              salary: card.salary, reason: '详情待确认，已保留：' + reason, requirements: configuredWorkRequirements(cfg.filter), assessment: [],
-              screening: { industry: detail?.brandIndustry || '', jobDetail: detail?.jobDetailText || '', skills: card.skills,
-                needsDetailConfirmation: true, companyInfo: detail?.companyInfo,
-                taskExclusions: exclusionsFromText(exclusionText), languageEvidence: candidateLanguageEvidence(cfg.filter.candidateLanguages, candidateContext) } });
-          } catch (error) { this.log('warn', '详情待确认记录保存失败：' + (error as Error).message); }
+          candidateLedger.discover(card, contextKey, rulesVersion, keyword);
+          candidateLedger.transition(card.jobHref, 'read_retry', reason, undefined, 30000);
+          recoveryCount++;
+          this.stats.recoveryCount = recoveryCount;
+          this.log('info', '[系统恢复·未投递] ' + card.companyName + ' - ' + card.jobName + '：' + reason);
         };
         const revisitDetail = (href: string, sourceHref?: string) => {
           processedJobKeys.delete(new URL(href, 'https://www.zhipin.com').pathname);
@@ -546,10 +572,14 @@ export class DeliveryService {
           if (evaluation.evaluationSource === 'rules') this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
           if (evaluation.evaluationSource === 'cache') this.stats.cachedEvaluationCount = (this.stats.cachedEvaluationCount || 0) + 1;
           // Failed evaluations are retained and retried by flushEvaluations.
-          if (evaluation.llmError) {
+          if (evaluation.llmError || evaluation.responseIssue) {
             return;
           }
 
+          candidateLedger.discover(jobCard, contextKey, rulesVersion, keyword);
+          candidateLedger.saveEvaluation(jobCard.jobHref, evaluation, { job: mockJobItem, description: candidate.jobDetail });
+          candidateLedger.transition(jobCard.jobHref, evaluation.passed ? 'ready' : evaluation.needsReview ? 'decision' : 'rejected',
+            evaluation.reason, { job: mockJobItem, description: candidate.jobDetail });
           if (evaluation.needsReview && evaluation.requirementAssessment) {
             try {
               workConditionReviews.add({
@@ -560,6 +590,7 @@ export class DeliveryService {
                 screening: { industry: mockJobItem.brandIndustry, jobDetail: candidate.jobDetail, skills: mockJobItem.skills,
                   ...(mockJobItem.companyInfo ? { companyInfo: mockJobItem.companyInfo } : {}),
                   ...(evaluation.needsCompanyConfirmation ? { needsCompanyConfirmation: true } : {}),
+                  ...(evaluation.needsQualificationConfirmation ? { needsQualificationConfirmation: true } : {}),
                   ...(evaluation.responseIssue ? { needsEvaluationConfirmation: true } : {}),
                   ...(evaluation.needsCommuteConfirmation ? { needsCommuteConfirmation: true } : {}),
                   ...(mockJobItem.workAddress ? { workAddress: mockJobItem.workAddress } : {}),
@@ -586,38 +617,45 @@ export class DeliveryService {
             const currentCards = await bossPageService.getVisibleJobCards();
             const freshCard = currentCards.find(card => sameJobLink(card.jobHref, jobCard.jobHref))
               || (candidate.sourceHref ? currentCards.find(card => sameJobLink(card.jobHref, candidate.sourceHref!)) : undefined);
-            if (!freshCard) { retainDetail(jobCard, '列表已变化，需从原岗位链接重新核对'); return; }
-            cardLocator = freshCard.cardLocator;
-            try { detailRes = await bossPageService.loadJobDetail(cardLocator, freshCard.jobName, freshCard.companyName, freshCard.jobHref,
-              { ...detailOptions, refreshCompany: true }); }
+            if (freshCard) cardLocator = freshCard.cardLocator;
+            try { detailRes = freshCard
+              ? await bossPageService.loadJobDetail(cardLocator, freshCard.jobName, freshCard.companyName, freshCard.jobHref, { ...detailOptions, refreshCompany: true })
+              : await bossPageService.loadCandidateJob(jobCard, cfg.filter, candidateLanguageEvidence(cfg.filter.candidateLanguages, candidateContext)); }
             catch (error) {
               if (/CAPTCHA_REQUIRED/.test((error as Error).message)) { await this.handleCaptcha(); return; }
               if (/登录/.test((error as Error).message)) throw error;
               retainDetail(jobCard, '无法重新读取原岗位详情'); return;
             }
-            const actualCard = { ...freshCard };
+            const actualCard = { ...(freshCard || jobCard) };
             applyDetailData(actualCard, detailRes);
+            candidateLedger.discover(actualCard, contextKey, rulesVersion, keyword);
             const normalize = (text: string) => text.normalize('NFKC').replace(/\s+/g, '');
             const metadataChanged = !sameJobLink(actualCard.jobHref, jobCard.jobHref)
               || (['salary', 'degree', 'experience', 'cityName'] as const).some(field => normalize(actualCard[field]) !== normalize(jobCard[field]))
               || JSON.stringify(actualCard.skills.map(normalize).sort()) !== JSON.stringify(jobCard.skills.map(normalize).sort());
             if (metadataChanged) {
               this.log('warn', '[详情已更新] 最新岗位资料需要重新评估：' + actualCard.jobName);
-              retainDetail(actualCard, '岗位详情已更新，需要重新评估', detailRes);
-              revisitDetail(jobCard.jobHref, candidate.sourceHref); return;
+              const updatedJob = { ...mockJobItem, jobName: actualCard.jobName, brandName: actualCard.companyName,
+                salaryDesc: actualCard.salary, jobDegree: actualCard.degree, jobExperience: actualCard.experience, cityName: actualCard.cityName,
+                skills: actualCard.skills, brandIndustry: detailRes.brandIndustry, companyInfo: detailRes.companyInfo, workAddress: detailRes.workAddress };
+              candidateLedger.transition(actualCard.jobHref, 'evaluation_retry', '岗位字段更新，重新评估', { job: updatedJob, description: detailRes.jobDetailText });
+              pending.push({ ...candidate, queuedAt: Date.now(), jobCard: actualCard, job: updatedJob, jobDetail: detailRes.jobDetailText, detail: detailRes });
+              return;
             }
             if (detailRes.jobDetailText.replace(/\s+/g, '') !== candidate.jobDetail.replace(/\s+/g, '')
               || !(await bossPageService.isDetailStillTarget(jobCard.jobName, jobCard.companyName, jobCard.jobHref))) {
-              revisitDetail(jobCard.jobHref, candidate.sourceHref);
-              retainDetail(actualCard, '岗位描述已更新，需要重新评估', detailRes); return;
+              candidateLedger.transition(actualCard.jobHref, 'evaluation_retry', '岗位描述更新，重新评估');
+              pending.push({ ...candidate, queuedAt: Date.now(), jobCard: actualCard,
+                job: { ...mockJobItem, companyInfo: detailRes.companyInfo, brandIndustry: detailRes.brandIndustry, workAddress: detailRes.workAddress },
+                jobDetail: detailRes.jobDetailText, detail: detailRes }); return;
             }
-            if (detailRes.alreadyChatted) { try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {} return; }
-            if (!detailRes.chatButtonLocator) return;
+            if (detailRes.alreadyChatted) { candidateLedger.transition(jobCard.jobHref, 'sent', '重新读取确认已沟通'); try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {} return; }
+            if (!detailRes.chatButtonLocator) { retainDetail(jobCard, '重新读取未找到沟通按钮'); return; }
             const freshJob = { ...mockJobItem, jobName: actualCard.jobName, brandName: actualCard.companyName,
               salaryDesc: actualCard.salary, jobDegree: actualCard.degree, jobExperience: actualCard.experience,
               cityName: actualCard.cityName, skills: actualCard.skills, brandIndustry: detailRes.brandIndustry,
               companyInfo: detailRes.companyInfo,
-              workAddress: detailRes.workAddress, activeTimeDesc: detailRes.activeTimeDesc || freshCard.activeTimeDesc };
+              workAddress: detailRes.workAddress, activeTimeDesc: detailRes.activeTimeDesc || actualCard.activeTimeDesc };
             await jobCommuteService.enrich(freshJob, cfg.filter);
             const freshLocation = commuteDecision(freshJob, cfg.filter);
             if (freshLocation.status === 'unknown') {
@@ -626,8 +664,13 @@ export class DeliveryService {
                 requirementAssessment: evaluation.requirementAssessment || [] }, false);
               return;
             }
+            if (freshLocation.status === 'failed') {
+              await processEvaluation({ ...candidate, jobCard: actualCard, job: freshJob, detail: detailRes }, { ...evaluation,
+                passed: false, needsReview: false, reason: freshLocation.reason }, false); return;
+            }
             const recheck = filterService.evaluateStage1(freshJob, detailRes.jobDetailText, cfg.filter, exclusionText, candidateContext);
             if (!recheck.passed) {
+              candidateLedger.transition(jobCard.jobHref, 'rejected', recheck.reason || '最新规则不通过', { job: freshJob, description: detailRes.jobDetailText });
               this.log('warn', '[暂存淘汰] 最新岗位已不符合筛选：' + recheck.reason);
               try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
               if (await this.markExplicitExclusion(cardLocator, actualCard, freshJob, detailRes.jobDetailText, cfg.filter, exclusionText)) this.stats.markedNotSuitCount++;
@@ -638,8 +681,8 @@ export class DeliveryService {
               return { industry: normalize(info.industry), introduction: normalize(info.introduction), businessScope: normalize(info.businessScope) };
             };
             if (JSON.stringify(companyFacts(mockJobItem.companyInfo)) !== JSON.stringify(companyFacts(detailRes.companyInfo))) {
-              revisitDetail(jobCard.jobHref, candidate.sourceHref);
-              retainDetail(actualCard, '公司业务资料已变化，需要重新评估', detailRes); return;
+              candidateLedger.transition(actualCard.jobHref, 'evaluation_retry', '公司资料更新，重新评估', { job: freshJob, description: detailRes.jobDetailText });
+              pending.push({ ...candidate, queuedAt: Date.now(), jobCard: actualCard, job: freshJob, jobDetail: detailRes.jobDetailText, detail: detailRes }); return;
             }
             Object.assign(jobCard, actualCard);
             Object.assign(mockJobItem, freshJob);
@@ -674,7 +717,7 @@ export class DeliveryService {
           }
 
           // 匹配达标！
-          this.stats.passedFilterCount++;
+          if (!passedUnique.has(jobCard.jobHref)) { passedUnique.add(jobCard.jobHref); this.stats.passedFilterCount++; }
           this.stats.phase = 'delivering'; this.emit();
           const finalGreeting = evaluation.customGreeting || params.defaultGreeting;
           this.log('success', `🎯 [${sourceLabel}通过${scoreLabel}] ${mockJobItem.brandName} - ${jobCard.jobName}，准备发起沟通...`, {
@@ -704,6 +747,7 @@ export class DeliveryService {
 
           // 执行沟通点击与自适应弹窗注入
           if (!detailRes.chatButtonLocator) { retainDetail(jobCard, '岗位暂时没有可用沟通按钮', detailRes); return; }
+          candidateLedger.transition(jobCard.jobHref, 'sending', '即将提交沟通；中断后须先核对实际会话');
           const chatResult = await bossPageService.executeChatClick(detailRes.chatButtonLocator, finalGreeting, {
             jobName: jobCard.jobName,
             companyName: jobCard.companyName,
@@ -715,6 +759,7 @@ export class DeliveryService {
             return;
           }
           if (chatResult.uncertain) {
+            candidateLedger.transition(jobCard.jobHref, 'send_unknown', '平台未确认发送结果，不自动重发');
             throw new Error(`岗位「${jobCard.companyName} - ${jobCard.jobName}」已触发沟通操作，但页面未确认结果；请人工检查会话后再启动新批次`);
           }
 
@@ -766,6 +811,7 @@ export class DeliveryService {
             });
 
           } else {
+            candidateLedger.transition(jobCard.jobHref, 'send_unknown', '未确认沟通结果，须核对会话');
             this.log('warn', `❌ 未能确认沟通成功（未取得页面确认信号，不计入今日配额，请留意平台会话）: ${mockJobItem.brandName} - ${jobCard.jobName}`);
           }
 
@@ -780,7 +826,9 @@ export class DeliveryService {
           while (this.stats.isPaused && !this.isStopRequested) await new Promise((resolve) => setTimeout(resolve, 1000));
           if (this.isStopRequested) return;
           await this.restAtBoundary(() => openList(keyword));
-          const candidates = pending.splice(0);
+          const preferences = configuredWorkRequirements(cfg.filter).filter(r => r.policy === 'preference');
+          const preferenceMatches = (item: PendingCandidate) => assessWorkRequirements(item.job, item.jobDetail, preferences).filter(a => a.status === 'met').length;
+          const candidates = pending.splice(0).sort((a, b) => preferenceMatches(b) - preferenceMatches(a));
           this.stats.pendingEvaluationCount = candidates.length;
           this.stats.phase = 'evaluating';
           this.log('info', '[AI 批量评估] 已攒齐 ' + candidates.length + ' 个初筛岗位，正在评估职责、资格与工作条件');
@@ -806,7 +854,12 @@ export class DeliveryService {
             const failed: PendingCandidate[] = [];
             for (let index = 0; index < remaining.length; index++) {
               if (this.isStopRequested || this.getStats().status === 'finished') break;
-              if (evaluations[index].llmError) failed.push(remaining[index]);
+              if (evaluations[index].llmError || evaluations[index].responseIssue) {
+                const item = remaining[index];
+                candidateLedger.transition(item.jobCard.jobHref, 'evaluation_retry', evaluations[index].reason,
+                  { job: item.job, description: item.jobDetail }, 30000);
+                failed.push(item);
+              }
               else await processEvaluation(remaining[index], evaluations[index], true);
               this.stats.pendingEvaluationCount = remaining.length - index - 1 + failed.length;
               this.emit();
@@ -814,6 +867,12 @@ export class DeliveryService {
             remaining = failed;
             if (remaining.length && !this.isStopRequested && this.getStats().status !== 'finished') {
               const seconds = evaluationRetrySeconds(++retryAttempt, configManager.getConfig().llm.minRequestIntervalSeconds);
+              // Bounded retries; afterwards persist the batch and let other candidates progress.
+              if (retryAttempt >= 3) {
+                this.log('warn', '[AI 系统恢复] 评估仍未完成，已保存 ' + remaining.length + ' 个岗位；继续处理其他岗位，下次主动运行会重试');
+                recoveryCount += remaining.length; this.stats.recoveryCount = recoveryCount;
+                break;
+              }
               this.stats.phase = 'evaluating'; this.stats.pendingEvaluationCount = remaining.length;
               const reason = evaluations.find(item => item.llmError)?.reason || '请求失败';
               this.log('warn', '[AI 等待重试] ' + remaining.length + ' 个岗位已保留，第 ' + retryAttempt + ' 次重试将在 '
@@ -822,11 +881,46 @@ export class DeliveryService {
             }
           }
           this.stats.pendingEvaluationCount = 0;
+          if (!this.isStopRequested && this.stats.status !== 'finished' && !(await bossPageService.isJobListPage())) await openList(keyword);
           this.stats.phase = 'screening'; this.emit();
         };
 
 
-        scanJobs: while (!this.isStopRequested && noNewJobScrollAttempts < 6) {
+        // Restart recovery does not depend on a candidate remaining in the currently visible list.
+        for (const saved of candidateLedger.recoverable(contextKey, rulesVersion, keyword).slice(0, sourceBudget)) {
+          if (this.isStopRequested || this.stats.todayAppliedCount >= this.stats.dailyMaxQuota) break;
+          await this.restAtBoundary();
+          try {
+            const detail = await bossPageService.loadCandidateJob(saved, cfg.filter, candidateLanguageEvidence(cfg.filter.candidateLanguages, candidateContext));
+            const data = detail.detailData;
+            if (!data || !detail.chatButtonLocator) { candidateLedger.transition(saved.jobHref, detail.alreadyChatted ? 'sent' : 'read_retry', '恢复读取未找到可沟通按钮', undefined, 30000); continue; }
+            const card: DOMJobCardInfo = { ...data, index: 0, activeTimeDesc: detail.activeTimeDesc, cardLocator: detail.chatButtonLocator };
+            const job: BossJobItem = { securityId: '', jobId: bossJobId(saved.jobHref), lid: '', jobName: data.jobName, brandName: data.companyName,
+              salaryDesc: data.salary, jobDegree: data.degree, jobExperience: data.experience, cityName: data.cityName, skills: data.skills,
+              brandIndustry: detail.brandIndustry, companyInfo: detail.companyInfo, workAddress: detail.workAddress, activeTimeDesc: detail.activeTimeDesc,
+              areaDistrict: '', brandScaleName: '', bossName: '', bossTitle: '', welfareList: [] };
+            const missing = ((cfg.filter.salaryMin || cfg.filter.salaryMax) && !job.salaryDesc) || (cfg.filter.degree.length && !job.jobDegree)
+              || (cfg.filter.cityName && !job.cityName) || !job.jobName || !job.brandName
+              || (cfg.filter.experienceMatchMode === 'strict' && cfg.filter.experience.length && !hasEntryLevelRequirement(cfg.filter) && !job.jobExperience);
+            if (missing) { candidateLedger.transition(saved.jobHref, 'read_retry', '关键字段尚未读取，继续保留恢复', undefined, 60000); continue; }
+            const first = filterService.evaluateStage1(job, detail.jobDetailText, cfg.filter, exclusionText, candidateContext);
+            if (detail.alreadyChatted) { candidateLedger.transition(saved.jobHref, 'sent', '页面确认已沟通'); workConditionReviews.removeForJob(saved.jobHref); continue; }
+            await jobCommuteService.enrich(job, cfg.filter);
+            const item: PendingCandidate = { jobCard: card, job, jobDetail: detail.jobDetailText, detail, queuedAt: Date.now() };
+            const local = first.passed ? filterService.evaluateLocally(job, item.jobDetail, params.rulesOnly === true && params.candidateSource === 'requirements', cfg.filter, exclusionText, candidateContext)
+              || candidateLedger.cachedEvaluation(saved.jobHref, { job, description: item.jobDetail })
+              : { passed: false, score: 0, reason: first.reason || '当前规则未通过', customGreeting: '', evaluationSource: 'rules' as const };
+            if (local) await processEvaluation(item, local, false);
+            else { candidateLedger.transition(saved.jobHref, 'evaluation_retry', '恢复岗位等待评估', { job, description: item.jobDetail }); pending.push(item); }
+            processedJobKeys.add(new URL(saved.jobHref).pathname);
+          } catch (error) {
+            if (/CAPTCHA_REQUIRED|登录|限制|账号/.test((error as Error).message)) throw error;
+            candidateLedger.transition(saved.jobHref, 'read_retry', (error as Error).message, undefined, 60000);
+          }
+        }
+        await flushEvaluations();
+        await openList(keyword);
+        scanJobs: while (!this.isStopRequested && noNewJobScrollAttempts < 3 && sourceUnique < sourceBudget) {
           this.ensureQuotaFresh();
 
           // 检查每日配额
@@ -853,6 +947,7 @@ export class DeliveryService {
           let newlyFoundInThisBatch = 0;
 
           for (const previewCard of cards) {
+            if (sourceUnique >= sourceBudget) break;
             if (pending.length && (Date.now() - pending[0].queuedAt >= bossOperationPolicy.aiBatchMaxWaitMs
               || bossActionScheduler.isBusinessRestImminent() || bossActionScheduler.waitSeconds('control') >= 30)) {
               this.log('info', '[AI 提前合并] 候选已等待较久或即将休息，先评估 ' + pending.length + ' 个岗位');
@@ -890,9 +985,10 @@ export class DeliveryService {
               continue;
             }
             processedJobKeys.add(jobKey);
+            const record = candidateLedger.discover(jobCard, contextKey, rulesVersion, keyword);
+            if (!candidateLedger.shouldProcess(record)) continue;
             newlyFoundInThisBatch++;
-
-            this.stats.totalScanned++;
+            if (!scannedUnique.has(jobKey)) { scannedUnique.add(jobKey); sourceUnique++; this.stats.totalScanned++; }
             this.stats.currentProcessingJob = `${jobCard.companyName} - ${jobCard.jobName}`;
             this.emit();
 
@@ -932,6 +1028,7 @@ export class DeliveryService {
             }
 
             applyDetailData(jobCard, detailRes);
+            candidateLedger.discover(jobCard, contextKey, rulesVersion, keyword);
             const actualKey = new URL(jobCard.jobHref, 'https://www.zhipin.com').pathname;
             if (actualKey !== jobKey && processedJobKeys.has(actualKey)) continue;
             processedJobKeys.add(actualKey); jobKey = actualKey;
@@ -946,17 +1043,11 @@ export class DeliveryService {
               (cfg.filter.degree.length && !jobCard.degree) && '学历', (cfg.filter.cityName && !jobCard.cityName) && '城市',
               (cfg.filter.experienceMatchMode === 'strict' && cfg.filter.experience.length && !hasEntryLevelRequirement(cfg.filter) && !jobCard.experience) && '经验'].filter(Boolean);
             if (missingFields.length) {
-              const reason = '平台未提供可核对的' + missingFields.join('、') + '，已保留待确认';
-              this.log('warn', '[资料待确认·未投递] ' + jobCard.companyName + ' - ' + jobCard.jobName + '：' + reason);
-              try { workConditionReviews.add({ jobHref: jobCard.jobHref, jobName: jobCard.jobName, companyName: jobCard.companyName,
-                salary: jobCard.salary, reason, requirements: configuredWorkRequirements(cfg.filter), assessment: [],
-                screening: { industry: detailRes.brandIndustry, jobDetail: detailRes.jobDetailText, skills: jobCard.skills, needsDetailConfirmation: true,
-                  companyInfo: detailRes.companyInfo, taskExclusions: exclusionsFromText(exclusionText),
-                  languageEvidence: candidateLanguageEvidence(cfg.filter.candidateLanguages, candidateContext) } }); }
-              catch (error) { this.log('warn', '待确认记录保存失败：' + (error as Error).message); }
+              retainDetail(jobCard, '平台暂未提供可核对的' + missingFields.join('、'), detailRes);
               continue;
             }
             if (cfg.filter.cityName && jobCard.cityName !== cfg.filter.cityName) {
+              candidateLedger.transition(jobCard.jobHref, 'rejected', '岗位城市与目标城市不符');
               this.log('info', '[初筛淘汰] ' + jobCard.jobName + '：岗位城市与目标城市不符');
               continue;
             }
@@ -984,6 +1075,7 @@ export class DeliveryService {
               welfareList: [],
             };
 
+            candidateLedger.transition(jobCard.jobHref, 'discovered', '完整详情已读取', { job: mockJobItem, description: detailRes.jobDetailText });
             if (cfg.filter.hrActiveDaysLimit > 0 && !mockJobItem.activeTimeDesc) {
               this.log('info', `[活跃度未知] 平台未提供招聘者活跃时间，继续核对岗位：${jobCard.companyName} - ${jobCard.jobName}`);
             }
@@ -991,6 +1083,7 @@ export class DeliveryService {
             // 阶段一：硬规则过滤
             const stage1 = filterService.evaluateStage1(mockJobItem, detailRes.jobDetailText, cfg.filter, exclusionText, candidateContext);
             if (!stage1.passed) {
+              candidateLedger.transition(jobCard.jobHref, 'rejected', stage1.reason || '规则不通过');
               try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
               this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
               this.log('info', `[初筛淘汰] ${mockJobItem.brandName} - ${jobCard.jobName}: ${stage1.reason}`);
@@ -1001,12 +1094,14 @@ export class DeliveryService {
             }
 
             if (detailRes.alreadyChatted) {
+              candidateLedger.transition(jobCard.jobHref, 'sent', '页面确认已沟通');
               try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
               this.log('info', `[已沟通跳过] 该岗位此前已在沟通中: ${mockJobItem.brandName} - ${jobCard.jobName}`);
               continue;
             }
 
             if (!detailRes.chatButtonLocator) {
+              candidateLedger.transition(jobCard.jobHref, 'read_retry', '未找到沟通按钮', undefined, 60000);
               this.log('warn', `[无法开聊] 未找到有效沟通按钮: ${mockJobItem.brandName} - ${jobCard.jobName}`);
               continue;
             }
@@ -1022,10 +1117,12 @@ export class DeliveryService {
                   || '直线约 ' + mockJobItem.commute.distanceKm?.toFixed(1) + ' 公里'));
               }
             }
-            const local = filterService.evaluateLocally(mockJobItem, detailRes.jobDetailText, params.rulesOnly === true && params.candidateSource === 'requirements', cfg.filter, exclusionText, candidateContext);
+            const local = filterService.evaluateLocally(mockJobItem, detailRes.jobDetailText, params.rulesOnly === true && params.candidateSource === 'requirements', cfg.filter, exclusionText, candidateContext)
+              || candidateLedger.cachedEvaluation(jobCard.jobHref, { job: mockJobItem, description: detailRes.jobDetailText });
             if (local) {
               await processEvaluation(candidate, local, false);
             } else {
+              candidateLedger.transition(jobCard.jobHref, 'evaluation_retry', '等待批量评估', { job: mockJobItem, description: candidate.jobDetail });
               pending.push(candidate);
               this.stats.pendingEvaluationCount = pending.length;
               this.log('info', '[初筛暂存 ' + pending.length + '/' + aiBatchSize + '] ' + jobCard.companyName + ' - ' + jobCard.jobName);
@@ -1049,6 +1146,18 @@ export class DeliveryService {
             noNewJobScrollAttempts = 0;
           }
         }
+        this.stats.sourceMetrics = candidateLedger.sourceMetrics(contextKey, sources);
+        this.emit();
+        if ((sourceUnique >= sourceBudget || candidateLedger.recoverable(contextKey, rulesVersion, keyword).length > 0)
+          && (sourceRounds.get(keyword) || 0) < 8 && !this.isStopRequested) {
+          sourceQueue.push(keyword);
+          if (sourceIndex >= sources.length - 1) {
+            const remaining = sourceQueue.splice(sourceIndex + 1);
+            const metrics = candidateLedger.sourceMetrics(contextKey, remaining);
+            remaining.sort((a, b) => metrics.find(m => m.source === b)!.yield - metrics.find(m => m.source === a)!.yield);
+            sourceQueue.push(...remaining);
+          }
+        }
       }
 
       if (stoppedByUser || this.isStopRequested) {
@@ -1057,7 +1166,8 @@ export class DeliveryService {
         this.log('info', `🛑 投递任务已按你的要求停止（今日累计已开聊 ${this.stats.todayAppliedCount} 家）`);
       } else {
         this.stats.currentProcessingJob = undefined;
-        this.log('success', `🎉 本轮所有指定关键词与岗位扫描已顺利完成！`);
+        const unfinished = candidateLedger.summary().recovery;
+        this.log('success', '本轮扫描结束' + (unfinished ? '；台账中仍有 ' + unfinished + ' 个岗位等待系统恢复，下次主动开始会继续处理符合当前资料与条件的岗位' : '，候选处理已完成'));
         this.stats.status = 'finished';
       }
       this.emit();

@@ -43,6 +43,7 @@ export interface WorkRequirement {
   text: string;
   enabled: boolean;
   builtin?: 'eightHours' | 'doubleRest' | 'noExperience';
+  policy?: 'required' | 'ask' | 'preference';
 }
 export interface ConditionEvidence { status: 'met' | 'not_met' | 'unknown'; evidence: string; }
 export interface WorkRequirementAssessment extends ConditionEvidence { requirementId: string; text: string; }
@@ -63,6 +64,7 @@ export interface WorkConditionReview {
     needsCompanyConfirmation?: boolean;
     needsDetailConfirmation?: boolean;
     needsEvaluationConfirmation?: boolean;
+    needsQualificationConfirmation?: boolean;
     taskExclusions?: Array<{ term: string; literal: boolean }>;
     languageEvidence?: string;
     workAddress?: BossWorkAddress;
@@ -175,6 +177,8 @@ export interface DeliveryStats {
   dailyMaxQuota: number;
   quotaDate?: string;
   totalScanned: number;
+  recoveryCount?: number;
+  sourceMetrics?: Array<{ source: string; unique: number; details: number; passed: number; sent: number; rejected: number; recovery: number; decisions: number; yield: number }>;
   passedFilterCount: number;
   markedNotSuitCount: number;
   skippedByLlmErrorCount: number;

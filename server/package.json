@@ -48,7 +48,8 @@
     "test:entry": "tsx tests/delivery-entry.test.ts",
     "test:deepseek": "tsx tests/deepseek-web.test.ts",
     "test:deepseek-ui": "tsx tests/deepseek-ui.test.ts",
-    "selftest": "tsx tests/selftest.ts"
+    "selftest": "tsx tests/selftest.ts",
+    "test:candidates": "tsx tests/candidate-recovery.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

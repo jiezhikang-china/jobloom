@@ -22,10 +22,12 @@ import { randomUUID } from 'node:crypto';
 import { resumePdfService } from '../services/resume-pdf.service.js';
 import { ResumeCapacityError, resumeBossUploadService } from '../services/resume-boss-upload.service.js';
 import { bossAutomationSafety } from '../services/boss-automation-safety.js';
+import { careerRouter } from './career.router.js';
+import { careerStore } from '../services/career-store.js';
 import { followupRouter } from './followup.router.js';
 import { bossTaskOwner } from '../services/boss-task-lock.js';
 
-const uploadDir = path.resolve(process.cwd(), '../data/resumes');
+const uploadDir = path.resolve(__dirname, '../../../data/resumes');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -57,6 +59,7 @@ const upload = multer({
 
 export const apiRouter = Router();
 apiRouter.use('/followup', followupRouter);
+apiRouter.use('/career', careerRouter);
 const bossOperationRoutes = new Set(['/browser/page-state', '/resume/boss/attachments', '/resume/boss/upload',
   '/delivery/start', '/delivery/resume', '/delivery/work-condition-reviews/apply']);
 // Explicit login verification or task start replaces the separate recovery panel.
@@ -274,6 +277,7 @@ apiRouter.post('/resume/upload', (req: Request, res: Response) => {
       const extractedText = await resumeService.extractTextFromFile(req.file.path);
       const originalName = /[\u0080-\u00ff]/.test(req.file.originalname) ? Buffer.from(req.file.originalname, 'latin1').toString('utf8') : req.file.originalname;
       const source = await resumePdfService.saveSource(req.file.path, originalName, extractedText);
+      careerStore.recordResume(source);
       res.json({
         success: true,
         data: {

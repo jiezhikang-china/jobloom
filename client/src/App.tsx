@@ -8,6 +8,7 @@ import LocationFilterOptions from './LocationFilterOptions.js';
 import ResumePdfPanel from './ResumePdfPanel.js';
 import DesktopTitleBar from './DesktopTitleBar.js';
 import NotSuitablePanel from './NotSuitablePanel.js';
+import CareerPanel from './CareerPanel.js';
 import FollowupPanel from './FollowupPanel.js';
 import {
   FileText,
@@ -42,11 +43,12 @@ import {
   BossPositionSelection,
 } from './types.js';
 
-type WorkbenchTab = 'launch' | 'diagnosis' | 'tailor' | 'rules' | 'delivery' | 'settings' | 'followup';
+type WorkbenchTab = 'launch' | 'diagnosis' | 'tailor' | 'rules' | 'delivery' | 'settings' | 'followup' | 'career';
 const navigationItems = [
   { id: 'launch', label: '开始投递', icon: Play, description: '选择岗位与工作条件，开始新的投递。' },
   { id: 'delivery', label: '运行记录', icon: Activity, description: '查看筛选结果、AI 评估与投递进度。' },
   { id: 'followup', label: '沟通跟进', icon: MessageCircle, description: '查看招聘方回复，询问工作条件，跟进已经投递的岗位。' },
+  { id: 'career', label: '求职进度', icon: Compass, description: '查看候选恢复、面试安排、录用条件与简历版本。' },
   { id: 'rules', label: '筛选规则', icon: Sliders, description: '设置工作条件、通勤范围和每日投递数量。' },
   { id: 'diagnosis', label: '简历分析', icon: FileText, description: '从简历了解优势，找到适合你的岗位方向。' },
   { id: 'tailor', label: '简历优化', icon: Compass, description: '按目标岗位润色经历，保留原 PDF 的版式。' },
@@ -1616,7 +1618,7 @@ export default function App() {
               </div>
 
               <div style={{ backgroundColor: 'var(--surface)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>已浏览岗位</span>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>本轮去重浏览</span>
                 <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--text-main)', marginTop: '6px' }}>
                   {deliveryStats.totalScanned}
                 </p>
@@ -1738,7 +1740,12 @@ export default function App() {
         )}
 
         {/* TAB 5: 设置 */}
+        {activeTab === 'career' && <CareerPanel onResumeSelected={source => {
+          setResumeSourceId(source.id); setResumeFormat(source.format); setResumeFileName(source.fileName); setResumeText(source.text);
+          setDiagnosis(null); setTailoredResult(null); setCustomGreeting(''); setDeliveryMode('resume'); setActiveTab('launch');
+        }} />}
         {activeTab === 'followup' && <FollowupPanel />}
+        {activeTab === 'delivery' && deliveryStats.sourceMetrics && <section className="followup-settings"><h3>搜索来源效果</h3><p>各来源累计去重；同一岗位可能来自多个来源。后续轮次按确认结果分配，筛选条件保持生效。</p><div className="career-table-wrap"><table><thead><tr><th>来源</th><th>发现</th><th>详情</th><th>通过</th><th>沟通</th><th>待恢复</th><th>需决定</th></tr></thead><tbody>{deliveryStats.sourceMetrics.map(m => <tr key={m.source}><td>{m.source}</td><td>{m.unique}</td><td>{m.details}</td><td>{m.passed}</td><td>{m.sent}</td><td>{m.recovery}</td><td>{m.decisions}</td></tr>)}</tbody></table></div></section>}
         {activeTab === 'settings' && config && (
           <div className="page-column settings-page">
             <div

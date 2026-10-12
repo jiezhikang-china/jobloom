@@ -23,7 +23,7 @@ const reviewId = (url: string): string => createHash('sha256').update(url).diges
 
 /** Private local shortlist. Never includes a resume, credential or an outbound message. */
 export class WorkConditionReviews {
-  constructor(private readonly file = path.resolve(process.cwd(), '../data/work-condition-reviews.json')) {}
+  constructor(private readonly file = path.resolve(__dirname, '../../../data/work-condition-reviews.json')) {}
 
   list(): WorkConditionReview[] {
     if (!fs.existsSync(this.file)) return [];
@@ -48,7 +48,7 @@ export class WorkConditionReviews {
         ...(Number.isFinite(item.score) && item.score >= 0 && item.score <= 100 ? { score: item.score } : {}),
         ...(item.screening ? { screening: this.cleanScreening(item.screening) } : {}),
       };
-    }).slice(0, 200);
+    });
   }
 
   add(input: Omit<WorkConditionReview, 'id' | 'question' | 'updatedAt'>): WorkConditionReview {
@@ -57,7 +57,7 @@ export class WorkConditionReviews {
     if (!validateWorkRequirements(requirements) || (!requirements.some((item) => item.enabled)
       && !(input.screening?.needsCompanyConfirmation === true && input.screening.companyInfo)
       && input.screening?.needsCommuteConfirmation !== true && input.screening?.needsDetailConfirmation !== true
-      && input.screening?.needsEvaluationConfirmation !== true)) throw new Error('工作条件无效');
+      && input.screening?.needsEvaluationConfirmation !== true && input.screening?.needsQualificationConfirmation !== true)) throw new Error('工作条件无效');
     const labels = requirements.filter((item) => item.enabled).map((item) => item.text);
     const item: WorkConditionReview = {
       id: reviewId(jobHref), jobHref,
@@ -74,7 +74,7 @@ export class WorkConditionReviews {
     const excluded = this.exclusionFor(item, configManager.getConfig().filter);
     if (excluded) throw new Error(typeof excluded === 'string' ? excluded : excluded.reason);
     const existing = this.list().filter((entry) => entry.id !== item.id);
-    this.save([item, ...existing].slice(0, 200));
+    this.save([item, ...existing]);
     return item;
   }
 
@@ -128,6 +128,7 @@ export class WorkConditionReviews {
     if (typeof value.industry !== 'string' || typeof value.jobDetail !== 'string' || value.jobDetail.length > 100000
       || !Array.isArray(value.skills) || value.skills.some((item) => typeof item !== 'string')
       || (value.needsCompanyConfirmation !== undefined && typeof value.needsCompanyConfirmation !== 'boolean')
+      || (value.needsQualificationConfirmation !== undefined && typeof value.needsQualificationConfirmation !== 'boolean')
       || (value.needsDetailConfirmation !== undefined && typeof value.needsDetailConfirmation !== 'boolean')
       || (value.needsEvaluationConfirmation !== undefined && typeof value.needsEvaluationConfirmation !== 'boolean')
       || (value.needsCommuteConfirmation !== undefined && typeof value.needsCommuteConfirmation !== 'boolean')
@@ -155,6 +156,7 @@ export class WorkConditionReviews {
     return { industry: clipped(value.industry, 200), jobDetail: value.jobDetail, ...(companyInfo ? { companyInfo } : {}),
       ...(value.languageEvidence ? { languageEvidence: value.languageEvidence } : {}),
       ...(value.needsCompanyConfirmation ? { needsCompanyConfirmation: true } : {}),
+      ...(value.needsQualificationConfirmation ? { needsQualificationConfirmation: true } : {}),
       ...(value.needsDetailConfirmation ? { needsDetailConfirmation: true } : {}),
       ...(value.needsEvaluationConfirmation ? { needsEvaluationConfirmation: true } : {}),
       ...(value.needsCommuteConfirmation ? { needsCommuteConfirmation: true } : {}),

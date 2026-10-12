@@ -34,7 +34,7 @@ export default function WorkConditionOptions({ value, onChange, disabled = false
   return (
     <section className="work-conditions" aria-label="工作条件">
       <div className="work-condition-head">
-        <div><h3>你想要的工作条件</h3><p>可添加、修改、启用或删除。启用的条件全部有明确依据，才允许自动投递。</p></div>
+        <div><h3>你想要的工作条件</h3><p>每条条件可选择处理方式；明确冲突仍会淘汰，偏好用于排序。</p></div>
         <button type="button" disabled={disabled || conditions.length + missingPresets > 20}
           onClick={() => onChange(withWorkConditionPresets(conditions))}>加入八小时·双休·无经验</button>
       </div>
@@ -51,6 +51,10 @@ export default function WorkConditionOptions({ value, onChange, disabled = false
               <span>启用</span></label>
             <input type="text" aria-label={'工作条件' + (index + 1)} value={item.text} maxLength={500} disabled={disabled}
               onChange={(event) => onChange(conditions.map((row) => row.id === item.id ? { ...row, text: event.target.value, builtin: undefined } : row))} />
+            <select aria-label={'处理方式：' + item.text} value={item.policy || 'required'} disabled={disabled}
+              onChange={event => onChange(conditions.map(row => row.id === item.id ? { ...row, policy: event.target.value as WorkRequirement['policy'] } : row))}>
+              <option value="required">投递前必须确认</option><option value="ask">投递后追问</option><option value="preference">仅作偏好</option>
+            </select>
             <button type="button" aria-label={'删除条件：' + item.text} disabled={disabled}
               onClick={() => onChange(conditions.filter((row) => row.id !== item.id))}>删除</button>
           </div>
@@ -63,7 +67,7 @@ export default function WorkConditionOptions({ value, onChange, disabled = false
           onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); add(draft); } }} />
         <button type="button" disabled={disabled || conditions.length >= 20 || draft.trim().length < 2} onClick={() => add(draft)}>添加条件</button>
       </div>
-      <p>最多20条，每条写一个明确要求。缺少依据或描述冲突时留待确认；预设文字也可修改。</p>
+      <p>最多20条，每条写一个明确要求。“必须确认”缺少证据时保留待决定；“投递后追问”允许未知条件投递并加入跟进台账；“仅作偏好”不单独阻止投递。必备资格和排除条件仍然生效。自动询问需在“沟通跟进”启用并开始自动跟进。</p>
       <p>简单条件先用本地脚本判断，复杂要求合并交给 AI。也可写文本规则，例如“必须包含：React”或“不得包含：劳务派遣”，按原词是否出现筛选。</p>
       <p>城市、学历、薪资和其他筛选条件仍然生效。招聘描述代表招聘方的说法，实际执行需向招聘方核实。</p>
     </section>

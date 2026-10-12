@@ -23,6 +23,7 @@ export interface Stage2Result {
   responseIssue?: boolean;
   needsReview?: boolean;
   needsCompanyConfirmation?: boolean;
+  needsQualificationConfirmation?: boolean;
   needsCommuteConfirmation?: boolean;
   requirementAssessment?: WorkRequirementAssessment[];
   evaluationSource?: 'rules' | 'ai' | 'cache';
@@ -186,7 +187,7 @@ export class FilterService {
     }
     const requirements = configuredWorkRequirements(filterCfg);
     const assessment = assessWorkRequirements(job, jobDetail, requirements, undefined, filterCfg.experienceMatchMode);
-    const summary = summarizeWorkRequirements(assessment);
+    const summary = summarizeWorkRequirements(assessment, requirements);
     if (summary.failed.length) {
       return { passed: false, score: 0, customGreeting: '', requirementAssessment: assessment, evaluationSource: 'rules',
         reason: summary.failed.map((item) => item.text + '不符合：' + item.evidence).join('；') };
@@ -195,7 +196,7 @@ export class FilterService {
     if (commute.status === 'failed') return { passed: false, score: 0, customGreeting: '', evaluationSource: 'rules', reason: commute.reason };
     if (commute.status === 'unknown') return { passed: false, score: 0, customGreeting: '', needsReview: true,
       needsCommuteConfirmation: true, requirementAssessment: assessment, evaluationSource: 'rules', reason: commute.reason };
-    const localMissing = requirements.filter((item) => assessLocalRequirement(job, jobDetail, item, filterCfg.experienceMatchMode)?.status === 'unknown');
+    const localMissing = requirements.filter((item) => (item.policy || 'required') === 'required' && assessLocalRequirement(job, jobDetail, item, filterCfg.experienceMatchMode)?.status === 'unknown');
     const companyUnclear = unresolvedCompanyBusiness(job, filterCfg, exclusionText);
     if (companyUnclear.length) {
       return { passed: false, score: 0, customGreeting: '', needsReview: true, needsCompanyConfirmation: true,
@@ -206,7 +207,7 @@ export class FilterService {
       return { passed: false, score: 0, customGreeting: '', needsReview: true, requirementAssessment: assessment, evaluationSource: 'rules',
         reason: localMissing.length ? '需确认：' + localMissing.map((item) => item.text).join('、') : '岗位与公司资料过长，需确认完整要求' };
     }
-    if (rulesOnly && requirements.length && !summary.missing.length) {
+    if (rulesOnly && !summary.missing.length) {
       return { passed: true, score: 0, reason: '全部已启用工作条件有明确依据，本地筛选通过',
         customGreeting: `您好，我关注贵司的【${job.jobName}】岗位，希望与您交流岗位详情。`,
         requirementAssessment: assessment, evaluationSource: 'rules' };
@@ -318,9 +319,9 @@ export class FilterService {
     const assessment = requirements.length ? assessWorkRequirements(job, jobDetail, requirements, result.workRequirements, filterCfg.experienceMatchMode) : undefined;
     const base = { score, customGreeting: '', evaluationSource: 'ai' as const, ...(assessment ? { requirementAssessment: assessment } : {}) };
     const qualification = this.assessQualification(job, jobDetail, result, candidateText);
-    if (qualification) return { ...base, passed: false, ...(qualification.status === 'unknown' ? { needsReview: true } : {}), reason: qualification.reason };
+    if (qualification) return { ...base, passed: false, ...(qualification.status === 'unknown' ? { needsReview: true, needsQualificationConfirmation: true, requirementAssessment: assessment || [] } : {}), reason: qualification.reason };
     if (assessment) {
-      const summary = summarizeWorkRequirements(assessment);
+      const summary = summarizeWorkRequirements(assessment, requirements);
       if (summary.failed.length) return { ...base, passed: false, reason: summary.failed.map((item) => item.text + '不符合：' + item.evidence).join('；') };
       if (summary.missing.length) return { ...base, passed: false, needsReview: true, reason: '需确认：' + summary.missing.map((item) => item.text).join('、') };
     }
@@ -400,8 +401,9 @@ qualificationFailures 仅返回本岗位真实明确的硬门槛，每条为 {"e
 行业标签或公开公司链接缺失属于平台资料未提供，不能单独视为岗位不匹配、排除行业或扣分理由，应使用实际岗位职责与已提供的公司业务证据继续评估。公司页简介与经营范围用于验证公司行业、业务和性质；经营许可不等于实际主营业务，不能代替本岗位具体职责、工时及经验要求。
 排除金融等行业时须区分公司实际主营与客户/技术应用领域。为金融行业客户提供软件外包，向保险公司、银行等终端客户提供解决方案、IT运维，属于技术服务；客户行业不等于雇主行业。软件、数字化运营或产品工程公司提到金融科技、银行客户、银行系统开发，不足以认定主营金融；同一句并列AI、大数据、金融科技、医疗更不能按单个词淘汰。明确助贷、贷款撮合、实际金融业务或公司本身的金融行业仍按排除条件处理。
 ${checkConditions ? `
-【必须逐项验证的工作条件】
-${JSON.stringify(workRequirements.map((item) => ({ requirementId: item.id, requirement: item.text })))}
+【逐项核对的工作条件】
+required 表示投递前必须证实；ask 表示未知时可投递后追问，明确冲突仍淘汰；preference 仅为偏好，不得仅因未满足偏好而判失败或压低评分到通过线以下。缺少证据始终写 unknown，不得为允许投递而编造符合。
+${JSON.stringify(workRequirements.map((item) => ({ requirementId: item.id, requirement: item.text, policy: item.policy || 'required' })))}
 仅按上方已启用的条件逐条判断，条件的数量和内容由用户决定。只使用本岗位描述及给出的岗位字段作为依据；不得用求职者愿望、其他岗位或联网结果补全。
 缺少信息不等于符合；例如未提到销售不等于“不做销售”，未提到加班不等于“不加班”。应从明确职责、时间安排或政策原文判断。描述冲突时需确认。
 ${workRequirements.some((item) => item.builtin === 'eightHours') ? '八小时按每日实际工作不超过8小时判断；只能扣除明确写出的休息时间，不得假定午休。强制加班不符合；不确定加班和相互矛盾的时段需确认。' : ''}

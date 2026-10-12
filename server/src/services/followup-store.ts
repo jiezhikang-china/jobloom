@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { careerStore } from './career-store.js';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { writeJsonAtomic } from './atomic-json.js';
@@ -21,7 +22,7 @@ function validContact(c: FollowupContact): boolean {
     && (c.lastIncomingAt === undefined || time(c.lastIncomingAt))
     && (c.conversationId === undefined || text(c.conversationId))
     && ['waiting', 'replied', 'needs_user', 'closed', 'uncertain'].includes(c.status)
-    && Array.isArray(c.requirements) && c.requirements.every(r => text(r.id) && text(r.text) && typeof r.enabled === 'boolean')
+    && Array.isArray(c.requirements) && c.requirements.every(r => text(r.id) && text(r.text) && typeof r.enabled === 'boolean' && (r.policy === undefined || ['required', 'ask', 'preference'].includes(r.policy)))
     && Array.isArray(c.assessment) && c.assessment.every(a => text(a.requirementId) && text(a.text) && typeof a.evidence === 'string' && ['met', 'not_met', 'unknown'].includes(a.status))
     && Array.isArray(c.messages) && c.messages.every(m => text(m.id) && typeof m.text === 'string' && ['incoming', 'outgoing'].includes(m.direction)
       && (m.confirmed === undefined || typeof m.confirmed === 'boolean') && (m.timestamp === undefined || time(m.timestamp)))
@@ -63,6 +64,7 @@ export class FollowupStore {
       state.contacts.unshift({ id, jobHref, jobName: target.jobName, companyName: target.companyName, contactedAt: now, lastOutgoingAt: now,
         status: 'waiting', requirements: structuredClone(requirements.filter(r => r.enabled)), assessment: structuredClone(assessment), messages: [], actions: [], updatedAt: now });
     });
+    if (this.file) careerStore.ensure({ ...target, jobHref });
     return id;
   }
   update(id: string, fn: (contact: FollowupContact, state: FollowupState) => void): void {

@@ -33,6 +33,12 @@ const requests = [];
 const followup = { active: false, busy: false, message: '尚未开始沟通监控', settings: { enabled: false, intervalHours: 48, maxFollowups: 2, dailyMaxMessages: 10,
   startHour: 9, endHour: 18, pollMinutes: 5, askConditions: true, autoAnswerFacts: false, facts: [], template: '您好，想跟进一下【{job}】岗位目前是否仍在招聘？' },
   contacts: [{ id: 'ui-followup', jobHref: review.jobHref, jobName: review.jobName, companyName: review.companyName, status: 'waiting', lastOutgoingAt: Date.now(), messages: [{ id: 'greeting', direction: 'outgoing', text: '您好，希望进一步了解这个岗位。' }], actions: [] }] };
+const career = { entries: [{ id: 'career-fixture', jobHref: review.jobHref, jobName: review.jobName, companyName: review.companyName, stage: 'offer', interviewAt: '',
+  interviewPlace: '', notes: '', offerSalary: '6K·13薪', offerHours: '8小时', offerRest: '双休', offerBenefits: '五险一金', offerDeadline: '' }],
+  resumes: [{ id: 'resume_abc-123.pdf', fileName: '原始简历.pdf', label: '运营简历', targetRole: '内容运营', createdAt: Date.now() }],
+  candidates: [{ jobHref: review.jobHref, jobName: review.jobName, companyName: review.companyName, status: 'read_retry', reason: '列表变化，按原链接恢复',
+    attempts: 2, updatedAt: Date.now(), history: [{ at: Date.now(), status: 'read_retry', reason: '正在恢复' }] }],
+  summary: { unique: 18, details: 16, passed: 8, sent: 4, recovery: 1, decisions: 2, uncertain: 0 }, replies: 1, nextSteps: [] };
 const blocked = true;
 const app = express();
 app.use(express.json());
@@ -51,6 +57,7 @@ app.use('/api', (req, res) => {
   if (req.path === '/config' && req.method === 'POST') config = { ...config, ...req.body };
   if (req.path === '/followup/settings' && req.method === 'POST') followup.settings = req.body;
   const data = req.path === '/config' ? config
+    : req.path === '/career' ? career
     : req.path === '/followup' || req.path === '/followup/settings' ? followup
     : req.path === '/resume/current' ? { source, tailored }
     : req.path === '/resume/diagnose' ? diagnosis
@@ -145,9 +152,18 @@ async function main() {
     await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(b => b.textContent.includes('开始自动跟进'))?.disabled);
     assert.deepEqual(followup.settings.facts[0].keywords.filter(Boolean), ['学历', '毕业']);
     await page.screenshot({ path: path.join(output, 'claude-ui-followup.png') });
+    await nav.getByRole('button', { name: '求职进度', exact: true }).click();
+    await main.getByRole('region', { name: '求职进度', exact: true }).waitFor();
+    await main.getByText('列表变化，按原链接恢复', { exact: true }).waitFor();
+    assert.equal(await main.getByLabel('求职阶段', { exact: true }).inputValue(), 'offer');
+    await page.screenshot({ path: path.join(output, 'claude-ui-career.png') });
+    await nav.getByRole('button', { name: '筛选规则', exact: true }).click();
+    const tier = main.getByLabel('处理方式：每天工作不超过八小时', { exact: true });
+    await tier.selectOption('ask'); assert.equal(await tier.inputValue(), 'ask');
+    await tier.selectOption('required');
     for (const width of [900, 390]) {
       await page.setViewportSize({ width, height: 860 });
-      for (const label of ['开始投递', '运行记录', '沟通跟进', '筛选规则', '简历分析', '简历优化', '设置']) {
+      for (const label of ['开始投递', '运行记录', '沟通跟进', '求职进度', '筛选规则', '简历分析', '简历优化', '设置']) {
         await nav.getByRole('button', { name: label, exact: true }).click();
         await page.waitForTimeout(80);
         const sizes = await page.evaluate(() => ({ body: document.documentElement.scrollWidth, viewport: innerWidth, main: document.querySelector('main').scrollWidth, client: document.querySelector('main').clientWidth }));
@@ -158,10 +174,10 @@ async function main() {
     }
     assert.ok(!requests.some(item => item.path === '/delivery/start' || item.path === '/resume/boss/upload' || item.path === '/followup/start'), 'Reviewing UI must not deliver jobs, upload resumes or start automatic messages');
     assert.deepEqual(errors, []);
-    fs.writeFileSync(path.join(output, 'claude-ui-verification.json'), JSON.stringify({ passed: true, pages: 7, widths: [1320, 900, 390], startVisible: true, stickyAction: true, summaryUpdates: true, followupSettings: true, pageErrors: errors }, null, 2));
+    fs.writeFileSync(path.join(output, 'claude-ui-verification.json'), JSON.stringify({ passed: true, pages: 8, career: true, conditionTiers: true, widths: [1320, 900, 390], startVisible: true, stickyAction: true, summaryUpdates: true, followupSettings: true, pageErrors: errors }, null, 2));
     assert.equal(await page.getByRole('heading', { name: 'BOSS 自动操作已停止', exact: true }).count(), 0);
     assert.equal(requests.some(request => request.path === '/boss/automation-safety'), false, '界面不轮询全局停止状态');
-    console.log('PASS | Claude workspace: seven pages, three widths, followup controls, comma input, sticky start, live summary, Chinese and salary rendering.');
+    console.log('PASS | Claude workspace: eight pages, three widths, followup controls, comma input, sticky start, live summary, Chinese and salary rendering.');
   } finally { await browser?.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
