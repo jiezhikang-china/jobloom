@@ -14,7 +14,7 @@ export async function readBossThread(page: CdpPage, target: FollowupContact): Pr
     const root = roots[0];
     const header = (root.querySelector('.chat-position-content') as any)?.__vue__?.conversation$;
     const links = [...root.querySelectorAll<HTMLAnchorElement>('a[href*="/job_detail/"]')].filter(a => visible(a) && !a.closest('.chat-message-list, .chat-record')).map(a => a.href);
-    if (header?.encryptJobId && /^[a-zA-Z0-9_-]+$/.test(header.encryptJobId)) links.push('https://www.zhipin.com/job_detail/' + header.encryptJobId + '.html');
+    if (header?.encryptJobId && /^[a-zA-Z0-9_~-]+$/.test(header.encryptJobId)) links.push('https://www.zhipin.com/job_detail/' + header.encryptJobId + '.html');
     const jobs = [...new Set(links.map(href => { const u = new URL(href); return u.origin + u.pathname; }))];
     if (jobs.length !== 1) throw new Error('当前会话的岗位链接尚未核对');
     const selected = [...document.querySelectorAll('.user-list .selected')].filter(visible);

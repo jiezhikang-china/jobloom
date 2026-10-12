@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { CandidateLedger, candidateLedger, candidateFingerprint } from '../src/services/candidate-ledger.js';
+import { bossJobId, sameJobLink, canonicalBossJobHref } from '../src/services/job-identity.js';
 import { CareerStore } from '../src/services/career-store.js';
 import { configManager } from '../src/config/config.manager.js';
 import { filterService } from '../src/services/filter.service.js';
@@ -19,12 +20,19 @@ import type { BossJobItem } from '../src/types.js';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobloom-candidates-'));
 const restores: Array<() => void> = [];
 const stub = (obj: any, key: string, value: any) => { const original = obj[key]; obj[key] = value; restores.push(() => obj[key] = original); };
-const target = { jobHref: 'https://www.zhipin.com/job_detail/fixture.html', jobName: '行政支持', companyName: '虚构公司', salary: '5-6K' };
+const target = { jobHref: 'https://www.zhipin.com/job_detail/835facaae34d2d7933F73Ny6E1E~.html', jobName: '行政支持', companyName: '虚构公司', salary: '5-6K' };
 const job: BossJobItem = { securityId: '', jobId: 'fixture', lid: '', jobName: target.jobName, brandName: target.companyName, salaryDesc: target.salary,
   jobDegree: '大专', jobExperience: '经验不限', cityName: '上海', brandIndustry: '企业服务', activeTimeDesc: '今日活跃', areaDistrict: '',
   brandScaleName: '', bossName: '', bossTitle: '', skills: [], welfareList: [] };
 const description = '负责办公室文书整理及员工行政支持。';
 async function main() {
+  assert.equal(bossJobId(target.jobHref), '835facaae34d2d7933F73Ny6E1E~', '真实 BOSS 编号中的波浪号是身份的一部分');
+  assert.equal(sameJobLink(target.jobHref + '?ka=search#detail', target.jobHref), true);
+  assert.equal(sameJobLink(target.jobHref.replace('~', ''), target.jobHref), false, '不得删除波浪号来伪造另一个编号');
+  for (const href of ['https://example.com/job_detail/a~.html', 'http://www.zhipin.com/job_detail/a~.html',
+    'https://user:password@www.zhipin.com/job_detail/a~.html', '/web/geek/jobs', '/job_detail/a%2Fb.html']) {
+    assert.throws(() => canonicalBossJobHref(href), /有效/); assert.equal(bossJobId(href), '');
+  }
   const file = path.join(dir, 'ledger.json');
   let ledger = new CandidateLedger(file);
   ledger.discover({ ...target, cardLocator: { circular: () => {}, page: Promise.resolve() } } as any, 'context', 'rules', '来源甲');

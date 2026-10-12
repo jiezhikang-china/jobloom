@@ -14,14 +14,14 @@ async function main() {
   let connectionPage: CdpPage | undefined;
   try {
     const fixture = await browser.newPage();
-    await fixture.route('**/*', route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><meta charset="utf-8"><div class="user-list"><div class="selected" data-uid="hr-fixture">离线公司 内容运营</div></div><div class="chat-conversation"><a href="https://www.zhipin.com/job_detail/dom_fixture.html">内容运营</a><div class="chat-message-list"><div class="message-item" data-mid="greet"><div class="item-myself"><div class="text"><span>您好</span></div></div></div></div><textarea id="boss-chat-editor-input"></textarea></div>' }));
+    await fixture.route('**/*', route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><meta charset="utf-8"><div class="user-list"><div class="selected" data-uid="hr-fixture">离线公司 内容运营</div></div><div class="chat-conversation"><a href="https://www.zhipin.com/job_detail/dom_fixture~.html">内容运营</a><div class="chat-message-list"><div class="message-item" data-mid="greet"><div class="item-myself"><div class="text"><span>您好</span></div></div></div></div><textarea id="boss-chat-editor-input"></textarea></div>' }));
     await fixture.goto('https://www.zhipin.com/web/geek/chat');
     await fixture.evaluate(() => { document.querySelector('.message-item')!.setAttribute('data-sender-id', 'account-fixture'); });
     const targets = await fetch('http://127.0.0.1:' + port + '/json/list').then(r => r.json()) as any[];
     const tab = targets.find(t => t.url.includes('/web/geek/chat'))!;
     const page = await new CdpPage(tab.id, await CdpConnection.connect(tab.webSocketDebuggerUrl), tab.url, false).initialize();
     connectionPage = page;
-    const store = new FollowupStore(null); store.recordContact({ jobHref: 'https://www.zhipin.com/job_detail/dom_fixture.html', jobName: '内容运营', companyName: '离线公司' });
+    const store = new FollowupStore(null); store.recordContact({ jobHref: 'https://www.zhipin.com/job_detail/dom_fixture~.html', jobName: '内容运营', companyName: '离线公司' });
     const contact = store.snapshot().contacts[0], controller = new AbortController();
     const adapter = new BossFollowupDom(async () => page);
     await fixture.evaluate(() => {
@@ -56,14 +56,14 @@ async function main() {
     await fixture.evaluate(() => { document.querySelector('.chat-conversation a')!.setAttribute('href', 'https://www.zhipin.com/job_detail/other_job.html'); });
     await assert.rejects(() => readBossThread(page, contact), /不一致/);
     console.log('PASS | changed conversation/job refuses a send');
-    await fixture.evaluate(() => { document.querySelector('.chat-conversation a')!.setAttribute('href', 'https://www.zhipin.com/job_detail/dom_fixture.html'); document.querySelector('.message-item')!.removeAttribute('data-mid'); });
+    await fixture.evaluate(() => { document.querySelector('.chat-conversation a')!.setAttribute('href', 'https://www.zhipin.com/job_detail/dom_fixture~.html'); document.querySelector('.message-item')!.removeAttribute('data-mid'); });
     await assert.rejects(() => readBossThread(page, contact), /稳定编号/);
     console.log('PASS | missing stable message identity refuses unsafe deduplication');
     await fixture.evaluate(() => {
       document.body.innerHTML = '<div class="user-list"><div class="friend-content-warp"><div class="friend-content selected">已有联系人</div></div></div><div class="chat-conversation"><div class="chat-position-content"><span class="position-name">内容运营</span></div><div class="chat-record"><div class="chat-message"><ul class="im-list"><li class="message-item item-myself"><div class="text-content">您好</div><i class="message-status status-read"></i></li><li class="message-item item-friend"><div class="text-content">请问你的学历是什么？</div></li></ul></div></div><div class="chat-input" id="chat-input" contenteditable="true"></div></div>';
       const root = document.querySelector('.chat-conversation') as any;
       root.__vue__ = { $store: { state: { userInfo: { userId: 'account-fixture' } } } };
-      const friend = { uniqueId: 'hr-fixture-0', encryptJobId: 'dom_fixture' };
+      const friend = { uniqueId: 'hr-fixture-0', encryptJobId: 'dom_fixture~' };
       (document.querySelector('.friend-content-warp') as any).__vue__ = { $props: { source: friend } };
       (document.querySelector('.chat-position-content') as any).__vue__ = { conversation$: friend };
       (document.querySelector('.chat-record') as any).__vue__ = { boss: friend };
@@ -82,7 +82,7 @@ async function main() {
     const modernSent = await adapter.send(contact, '现代求职端离线测试', modern, controller.signal);
     assert.equal(modernSent.messages.at(-1)?.confirmed, true);
     console.log('PASS | verified geek DOM: Vue contact/job identity, row direction, contenteditable and delivered acknowledgement');
-    await fixture.evaluate(() => { (document.querySelector('.chat-position-content') as any).__vue__.conversation$ = { uniqueId: 'another-hr', encryptJobId: 'dom_fixture' }; });
+    await fixture.evaluate(() => { (document.querySelector('.chat-position-content') as any).__vue__.conversation$ = { uniqueId: 'another-hr', encryptJobId: 'dom_fixture~' }; });
     await assert.rejects(() => readBossThread(page, contact), /尚未加载/);
     console.log('PASS | partially switched header cannot be mistaken for a loaded conversation');
   } finally {

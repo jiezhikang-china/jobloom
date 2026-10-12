@@ -6,11 +6,10 @@ import { normalizeFollowupSettings, type FollowupState, type FollowupContact, ty
 import type { WorkRequirement, WorkRequirementAssessment } from '../types.js';
 import type { BossJobItem } from '../types.js';
 import { assessWorkRequirements } from './work-requirements.js';
+import { canonicalBossJobHref } from './job-identity.js';
 
 export function canonicalFollowupJob(href: string): string {
-  const url = new URL(href, 'https://www.zhipin.com');
-  if (url.origin !== 'https://www.zhipin.com' || !/^\/job_detail\/[a-zA-Z0-9_-]+\.html$/.test(url.pathname)) throw new Error('请使用有效的 BOSS 职位详情链接');
-  return url.origin + url.pathname;
+  return canonicalBossJobHref(href);
 }
 function validContact(c: FollowupContact): boolean {
   const text = (v: unknown) => typeof v === 'string' && v.length > 0;

@@ -10,7 +10,7 @@ import { decideFollowup, inFollowupWindow } from '../src/services/followup-polic
 import { acquireBossTask, bossTaskOwner } from '../src/services/boss-task-lock.js';
 
 const now = Date.parse('2026-10-12T02:00:00Z');
-const target = { jobHref: 'https://www.zhipin.com/job_detail/local_fixture.html', jobName: '内容运营', companyName: '离线测试公司' };
+const target = { jobHref: 'https://www.zhipin.com/job_detail/local_fixture~.html', jobName: '内容运营', companyName: '离线测试公司' };
 const outgoing = { id: 'greet', direction: 'outgoing' as const, text: '您好', confirmed: true };
 const makeSnapshot = (): ChatSnapshot => ({ ...target, accountId: 'account-fixture', conversationId: 'hr-fixture', messages: [outgoing] });
 const enabled = normalizeFollowupSettings({ enabled: true, askConditions: false });

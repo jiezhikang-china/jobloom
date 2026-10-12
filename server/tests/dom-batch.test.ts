@@ -12,7 +12,7 @@ const fixture = `<!doctype html><html><head><meta charset="utf-8"></head><body>
       <div class="job-card-footer"><span class="company-location">上海·浦东新区</span><a class="boss-info"><span class="boss-name">甲公司</span></a></div>
     </li>
     <li class="job-card-box" data-key="b">
-      <div class="job-info"><div class="job-title"><a class="job-name" href="/job_detail/b.html">前端开发</a><span class="job-salary">20-30K</span></div>
+      <div class="job-info"><div class="job-title"><a class="job-name" href="/job_detail/b~.html">前端开发</a><span class="job-salary">20-30K</span></div>
       <ul class="tag-list"><li>3-5年</li><li>本科</li><li>TypeScript</li></ul></div>
       <div class="job-card-footer"><span class="company-location">上海·徐汇区</span><a class="boss-info"><span class="boss-name">乙公司</span></a></div>
     </li>
@@ -99,13 +99,13 @@ async function main(): Promise<void> {
 
     const detail = await bossPageService.loadJobDetail(target.cardLocator, target.jobName, target.companyName, target.jobHref);
     assert.match(detail.jobDetailText, /TypeScript/);
-    assert.ok(detail.detailData.jobHref.endsWith('/job_detail/b.html?from=list'), '保留实际详情链接的导航参数');
+    assert.ok(detail.detailData.jobHref.endsWith('/job_detail/b~.html?from=list'), '保留实际详情链接的导航参数');
     assert.equal(detail.activeTimeDesc, '今日活跃');
     assert.equal(await bossPageService.isDetailStillTarget(target.jobName, target.companyName, target.jobHref), true);
     await page.evaluate(() => {
       document.querySelector('.job-detail-info .job-name')!.textContent = '前端开发（急招）';
       (document.querySelector('.job-detail-box') as any).__vue__ = { $props: { loading: false,
-        data: { jobInfo: { encryptId: 'b', jobName: '前端开发' }, brandComInfo: { brandName: '乙公司' } } } };
+        data: { jobInfo: { encryptId: 'b~', jobName: '前端开发' }, brandComInfo: { brandName: '乙公司' } } } };
       const props = (document.querySelector('.job-detail-box') as any).__vue__.$props;
       props.data.brandComInfo.brandName = '乙公司官方全称';
     });
@@ -125,19 +125,19 @@ async function main(): Promise<void> {
     await page.evaluate(() => {
       const card = document.querySelector('[data-key="b"]')!;
       card.querySelector('a.job-name')!.innerHTML = '前 端开发<span style="display:none">隐藏招聘提示</span>';
-      card.querySelector('a.job-name')!.setAttribute('href', '/job_detail/b.html?from=changed');
+      card.querySelector('a.job-name')!.setAttribute('href', '/job_detail/b~.html?from=changed');
       document.querySelector('.job-detail-info .job-name')!.innerHTML = '前 端开发<span style="display:none">隐藏提示</span>';
       (document.querySelector('.job-detail-box') as any).__vue__ = { $props: { loading: false,
-        data: { jobInfo: { encryptId: 'b', jobName: '前端开发' }, brandComInfo: { brandName: '乙公司' } } } };
+        data: { jobInfo: { encryptId: 'b~', jobName: '前端开发' }, brandComInfo: { brandName: '乙公司' } } } };
     });
     assert.equal((await bossPageService.getVisibleJobCards()).find(card => card.companyName === '乙公司')?.jobName, '前 端开发');
-    assert.equal(await bossPageService.isCardStillTarget(target.cardLocator, target.jobName, target.companyName, '/job_detail/b.html?new=1'), true, '可见标题规范化、链接查询参数变化不代表换岗位');
+    assert.equal(await bossPageService.isCardStillTarget(target.cardLocator, target.jobName, target.companyName, '/job_detail/b~.html?new=1'), true, '可见标题规范化、链接查询参数变化不代表换岗位');
     assert.equal(await bossPageService.isDetailStillTarget(target.jobName, target.companyName, target.jobHref), true);
     await page.evaluate(() => { (document.querySelector('.job-detail-box') as any).__vue__.$props.data.jobInfo.encryptId = 'a'; });
     assert.equal(await bossPageService.isDetailStillTarget(target.jobName, target.companyName, target.jobHref), false, '同名岗位仍须核对详情绑定编号');
     await page.evaluate(() => {
       const props = (document.querySelector('.job-detail-box') as any).__vue__.$props;
-      props.data.jobInfo.encryptId = 'b'; props.loading = true;
+      props.data.jobInfo.encryptId = 'b~'; props.loading = true;
       setTimeout(() => { props.loading = false; }, 450);
     });
     assert.equal(await bossPageService.isDetailStillTarget(target.jobName, target.companyName, target.jobHref), false, '加载中不读取旧详情');
@@ -146,7 +146,7 @@ async function main(): Promise<void> {
     assert.ok(Date.now() - loadingStarted >= 300, '等待详情绑定加载完毕再读取');
     await page.evaluate(() => document.querySelector('.more-job-btn')!.remove());
     assert.equal(await bossPageService.isDetailStillTarget(target.jobName, target.companyName, target.jobHref), true, 'DOM链接暂缺时可用已核对的Vue绑定编号');
-    await page.evaluate(() => document.querySelector('.job-detail-box')!.insertAdjacentHTML('beforeend', '<a class="more-job-btn" href="/job_detail/b.html?from=new">更多</a>'));
+    await page.evaluate(() => document.querySelector('.job-detail-box')!.insertAdjacentHTML('beforeend', '<a class="more-job-btn" href="/job_detail/b~.html?from=new">更多</a>'));
 
     await page.evaluate(() => {
       const override = () => {
@@ -167,7 +167,7 @@ async function main(): Promise<void> {
     await page.evaluate(() => {
       document.querySelector('[data-key="b"]')!.removeEventListener('click', (window as any).detailOverride);
       (document.querySelector('.job-detail-box') as any).__vue__.$props.data = {
-        jobInfo: { encryptId: 'b', jobName: '前端开发' }, brandComInfo: { brandName: '乙公司' } };
+        jobInfo: { encryptId: 'b~', jobName: '前端开发' }, brandComInfo: { brandName: '乙公司' } };
     });
     await bossPageService.loadJobDetail(target.cardLocator, target.jobName, target.companyName, target.jobHref);
 

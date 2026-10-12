@@ -317,7 +317,7 @@ export class BossPageService {
     if (!(detail.name || detail.boundName) || !detail.description.trim()) return '职位详情内容尚未加载';
     const linkId = bossJobId(detail.href);
     if (detail.id && linkId && detail.id !== linkId) return '详情正在切换，链接与内容尚未同步';
-    if (!linkId && !/^[a-zA-Z0-9_-]+$/.test(detail.id)) return '详情尚未提供岗位链接';
+    if (!linkId && !bossJobId('/job_detail/' + detail.id + '.html')) return '详情尚未提供岗位链接';
     return '';
   }
 

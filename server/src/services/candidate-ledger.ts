@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { writeJsonAtomic } from './atomic-json.js';
-import { canonicalFollowupJob } from './followup-store.js';
+import { canonicalBossJobHref as canonicalFollowupJob } from './job-identity.js';
 import type { Stage2Result } from './filter.service.js';
 import { normalizeWorkRequirements } from './work-requirements.js';
 import type { WorkRequirement, BossJobItem, WorkConditionReview } from '../types.js';
