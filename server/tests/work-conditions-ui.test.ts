@@ -1,3 +1,4 @@
+import './fixtures/activate-isolated-safety.js';
 import assert from 'node:assert/strict';
 import express from 'express';
 import path from 'node:path';
@@ -63,8 +64,10 @@ async function main() {
   stub(deliveryService, 'startDelivery', async (params: any) => { starts.push(params); });
   stub(deliveryService, 'startReviewDelivery', async (items: WorkConditionReview[]) => { reviewStarts.push(items); });
   stub(workConditionReviews, 'list', () => reviews);
+  stub(workConditionReviews, 'listEligible', () => reviews);
   stub(workConditionReviews, 'pruneExcluded', () => ({ removed: 0 }));
   stub(workConditionReviews, 'remove', (id: string) => { reviews = reviews.filter((item) => item.id !== id); });
+  stub(workConditionReviews, 'removeMany', (ids: string[]) => { const before = reviews.length; reviews = reviews.filter(item => !ids.includes(item.id)); return { removed: before - reviews.length }; });
   const origin = { name: '人民广场', address: '上海市黄浦区人民大道185号', cityName: '上海', query: '上海人民广场',
     longitude: 121.481492, latitude: 31.234736, coordinateSystem: 'boss' };
 
@@ -131,6 +134,7 @@ async function main() {
     assert.equal(config.filter.workRequirements.length, 4);
     assert.equal(config.filter.workRequirements.find((item: any) => item.text === '不做销售').enabled, true);
     assert.match(starts[0].resumeText, /不做销售/);
+    await page.getByRole('navigation').getByRole('button', { name: '运行记录', exact: true }).click();
     const panel = page.getByRole('region', { name: '待确认岗位', exact: true });
     await panel.getByText(fixture.jobName, { exact: true }).waitFor();
     assert.equal(await panel.getByRole('link', { name: fixture.jobName }).getAttribute('href'), fixture.jobHref);
@@ -147,7 +151,7 @@ async function main() {
     assert.equal(reviewStarts.length, 2, '勾选后可批量投递');
     await panel.scrollIntoViewIfNeeded();
     await panel.screenshot({ path: path.resolve(process.cwd(), '../data/work-condition-reviews-preview.png') });
-    await panel.getByRole('button', { name: '移除记录：' + fixture.jobName, exact: true }).click();
+    await panel.getByRole('button', { name: '删除岗位：' + fixture.jobName, exact: true }).click();
     await panel.getByText(/暂时没有待确认岗位/).waitFor();
     assert.equal(reviews.length, 0);
     await page.getByRole('button', { name: '筛选规则', exact: true }).click();
@@ -356,17 +360,12 @@ async function main() {
     const startsBeforeHold = starts.length;
     bossAutomationSafety.halt('user_reported_ban', '离线测试：BOSS 账号封禁，停止自动操作');
     await page.reload();
-    const safetyPanel = page.getByRole('region', { name: 'BOSS 自动操作状态', exact: true });
-    await safetyPanel.getByRole('heading', { name: 'BOSS 自动操作已停止', exact: true }).waitFor();
-    assert.equal(await page.locator('.launch-submit').isDisabled(), true, '封禁停止状态下不能启动投递');
-    const recovery = safetyPanel.getByRole('button', { name: '确认已恢复（不启动投递）', exact: true });
-    assert.equal(await recovery.isDisabled(), true, '恢复需要明确人工确认');
-    await safetyPanel.getByRole('checkbox').check();
-    await recovery.click();
-    await safetyPanel.waitFor({ state: 'detached' });
-    assert.equal(starts.length, startsBeforeHold, '确认恢复不能自动投递');
+    await page.locator('.launch-submit').waitFor();
+    assert.equal(await page.getByRole('region', { name: 'BOSS 自动操作状态', exact: true }).count(), 0, '遵守已删除全局停止横幅的界面要求');
+    assert.equal(await page.getByRole('heading', { name: 'BOSS 自动操作已停止', exact: true }).count(), 0);
+    assert.equal(starts.length, startsBeforeHold, '重载界面不能自动启动投递');
     assert.deepEqual(errors, []);
-    console.log('PASS | 三个自选目标、条件与定位设置、待确认投递、封禁横幅拦截、人工恢复不自动投递');
+    console.log('PASS | 三个自选目标、条件与定位设置、待确认投递及删除、重载不自动投递且不恢复已移除的横幅');
   } finally {
     await browser?.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

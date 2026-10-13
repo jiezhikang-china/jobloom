@@ -79,8 +79,18 @@ export class WorkConditionReviews {
   }
 
   remove(id: string): void {
-    if (!/^[a-f0-9]{20}$/.test(id)) throw new Error('记录标识无效');
-    this.save(this.list().filter((item) => item.id !== id));
+    this.removeMany([id]);
+  }
+
+  removeMany(ids: unknown): { removed: number } {
+    if (!Array.isArray(ids) || !ids.length || ids.length > 5000
+      || ids.some(id => typeof id !== 'string' || !/^[a-f0-9]{20}$/.test(id))
+      || new Set(ids).size !== ids.length) throw new Error('请选择有效且不重复的待确认岗位');
+    const selected = new Set(ids);
+    const items = this.list();
+    const remaining = items.filter(item => !selected.has(item.id));
+    if (remaining.length !== items.length) this.save(remaining);
+    return { removed: items.length - remaining.length };
   }
 
   removeForJob(jobHref: string): void {

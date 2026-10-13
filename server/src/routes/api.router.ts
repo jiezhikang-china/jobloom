@@ -565,6 +565,11 @@ apiRouter.post('/delivery/work-condition-reviews/apply', async (req: Request, re
   }
 });
 
+apiRouter.delete('/delivery/work-condition-reviews', (req: Request, res: Response) => {
+  try { res.json({ success: true, data: workConditionReviews.removeMany(req.body?.ids) }); }
+  catch (error) { res.status(400).json({ success: false, message: (error as Error).message || '删除待确认岗位失败，请刷新后重试。' }); }
+});
+
 apiRouter.delete('/delivery/work-condition-reviews/:id', (req: Request, res: Response) => {
   try { workConditionReviews.remove(req.params.id); res.json({ success: true }); }
   catch { res.status(400).json({ success: false, message: '移除待确认记录失败，请刷新后重试。' }); }

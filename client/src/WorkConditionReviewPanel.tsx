@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ExternalLink, RefreshCw, Send, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ExternalLink, RefreshCw, Send, Trash2 } from 'lucide-react';
 import type { DeliveryStats, WorkConditionReview } from './types.js';
 
 const statusLabels = { met: '描述符合', not_met: '描述不符合', unknown: '待确认' };
@@ -13,17 +13,21 @@ export default function WorkConditionReviewPanel({ taskRunning = false, onStarte
   const [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const busy = taskRunning || submitting;
+  const [deleting, setDeleting] = useState(false);
+  const loadGeneration = useRef(0);
+  const busy = taskRunning || submitting || deleting;
   useEffect(() => {
     const controller = new AbortController();
     const load = async () => {
+      const generation = ++loadGeneration.current;
       try {
         const response = await fetch('/api/delivery/work-condition-reviews', { signal: controller.signal });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || '读取待确认岗位失败');
+        if (generation !== loadGeneration.current || controller.signal.aborted) return;
         setItems(result.data); setSelected(previous => previous.filter(id => result.data.some((item: WorkConditionReview) => item.id === id))); setError('');
       } catch (cause) {
-        if (!controller.signal.aborted) setError((cause as Error).message);
+        if (!controller.signal.aborted && generation === loadGeneration.current) setError((cause as Error).message);
       }
     };
     void load();
@@ -31,14 +35,23 @@ export default function WorkConditionReviewPanel({ taskRunning = false, onStarte
     return () => { controller.abort(); window.clearInterval(interval); };
   }, [refresh]);
 
-  const remove = async (id: string) => {
+  const remove = async (ids: string[]) => {
+    if (busy || !ids.length) return;
+    setDeleting(true); setNotice(''); setError('');
+    ++loadGeneration.current;
     try {
-      const response = await fetch('/api/delivery/work-condition-reviews/' + id, { method: 'DELETE' });
+      const response = await fetch('/api/delivery/work-condition-reviews', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+      });
       const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.message || '移除记录失败');
-      setItems((previous) => previous.filter((item) => item.id !== id));
-      setNotice('已移除本地记录'); setError('');
+      if (!response.ok || !result.success) throw new Error(result.message || '删除待确认岗位失败');
+      ++loadGeneration.current;
+      setItems((previous) => previous.filter((item) => !ids.includes(item.id)));
+      setSelected(previous => previous.filter(id => !ids.includes(id)));
+      setNotice('已删除 ' + result.data.removed + ' 个待确认岗位'); setError('');
+      setRefresh(value => value + 1);
     } catch (cause) { setError((cause as Error).message); }
+    finally { setDeleting(false); }
   };
   const apply = async (ids: string[]) => {
     if (busy || !ids.length) return;
@@ -69,6 +82,7 @@ export default function WorkConditionReviewPanel({ taskRunning = false, onStarte
           onChange={event => setSelected(event.target.checked ? items.map(item => item.id) : [])} /> 全选</label>
         <span>已选 {selected.length} 个{taskRunning ? ' · 当前有投递任务，请结束后操作' : ''}</span>
         <button type="button" disabled={busy || !selected.length} onClick={() => void apply(selected)}><Send size={14} /> 投递所选（{selected.length}）</button>
+        <button type="button" className="work-review-delete" disabled={busy || !selected.length} onClick={() => void remove(selected)}><Trash2 size={14} /> 删除所选（{selected.length}）</button>
       </div>}
       {!items.length && !error && <p className="work-review-empty">暂时没有待确认岗位。运行投递后，缺少依据或描述冲突的岗位会显示在这里。</p>}
       <div className="work-review-list">
@@ -79,7 +93,7 @@ export default function WorkConditionReviewPanel({ taskRunning = false, onStarte
                   onChange={event => setSelected(previous => event.target.checked ? [...previous, item.id] : previous.filter(id => id !== item.id))} />
                 <div><a href={item.jobHref} target="_blank" rel="noreferrer">{item.jobName} <ExternalLink size={13} /></a>
                 <p>{item.companyName}{item.screening?.industry ? ' · ' + item.screening.industry : ''} · {item.salary || '薪资未注明'}</p></div>
-              </div><button type="button" disabled={busy} aria-label={'移除记录：' + item.jobName} onClick={() => void remove(item.id)}><X size={16} /></button>
+              </div><button type="button" className="work-review-delete" disabled={busy} aria-label={'删除岗位：' + item.jobName} onClick={() => void remove([item.id])}><Trash2 size={14} /> 删除</button>
             </div>
             <p>{item.reason}</p>
             {(item.screening?.workAddress || item.screening?.commute) && <div className="work-review-location">

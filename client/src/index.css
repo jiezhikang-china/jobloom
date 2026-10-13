@@ -240,7 +240,7 @@ progress { accent-color: var(--brand-accent); }
 .work-review-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; }
 .work-review-title a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 650; color: var(--text-main); text-decoration-color: var(--border-strong); }
 .work-review-title a:hover { color: var(--primary); }
-.work-review-title button { display: grid; place-items: center; padding: 5px; color: var(--text-muted); background: transparent; }
+.work-review-title button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; white-space: nowrap; color: var(--text-muted); background: transparent; }
 .work-review-item dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 13px 0; }
 .work-review-item dt { font-size: 12px; color: var(--text-secondary); }
 .work-review-item dt span { display: inline-block; margin: 5px 0; padding: 2px 6px; border-radius: 5px; font-size: 11px; }
@@ -254,6 +254,8 @@ progress { accent-color: var(--brand-accent); }
 .work-review-selection label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .work-review-selection button, .work-review-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 14px; background: var(--primary); border: 1px solid var(--primary); border-radius: 8px; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .work-review-selection button:hover:not(:disabled), .work-review-actions button:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.work-reviews button.work-review-delete { background: transparent; border: 1px solid var(--border-strong); color: var(--text-muted); border-radius: 8px; }
+.work-reviews button.work-review-delete:hover:not(:disabled) { background: var(--surface-subtle); border-color: var(--text-muted); color: var(--text-main); }
 .work-review-job { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
 .work-review-job > input { margin-top: 4px; flex-shrink: 0; }
 /* Public map and commute controls. */

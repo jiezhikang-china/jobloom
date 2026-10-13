@@ -25,6 +25,8 @@ const review = { id: 'ui-review', jobHref: 'https://www.zhipin.com/job_detail/lo
   assessment: requirements.map(item => ({ requirementId: item.id, text: item.text, status: item.id === 'hours' ? 'unknown' : 'met', evidence: item.id === 'rest' ? '周末双休' : item.id === 'experience' ? '应届生可投' : '' })),
   question: '请问岗位的上下班时间？', evaluationSource: 'ai', score: 78, updatedAt: '2026-10-07T02:00:00.000Z' };
 const source = { id: 'ui-resume', format: 'pdf', fileName: '测试简历.pdf', text: '内容运营求职简历\n参与校园活动策划与社交媒体内容制作，关注文案、数据和用户反馈。' };
+let reviews = [review];
+let failDeletion = false;
 const tailored = { targetRole: target.name, rewrittenResumeMarkdown: '', topHighlights: ['有内容制作与活动协作经验', '关注数据反馈，持续改进内容', '能够主动沟通并推进任务'], defaultGreetingPitch: '您好，我对这个岗位很感兴趣，希望有机会进一步沟通。',
   pdf: { id: 'ui-pdf', sourceId: source.id, targetRole: target.name, fileName: '测试简历_优化.pdf', pageCount: 1, downloadUrl: '/api/fixture.pdf', previewUrls: ['/api/fixture-preview.svg'], text: source.text,
     changes: [{ id: 'paragraph', page: 1, before: '负责内容', after: '参与内容策划与发布，并根据用户反馈调整内容。' }] } };
@@ -44,6 +46,12 @@ const app = express();
 app.use(express.json());
 app.use('/api', (req, res) => {
   requests.push({ path: req.path, method: req.method });
+  if (req.path === '/delivery/work-condition-reviews' && req.method === 'DELETE') {
+    if (failDeletion) { res.status(500).json({ success: false, message: '测试删除失败' }); return; }
+    const before = reviews.length;
+    reviews = reviews.filter(item => !req.body.ids.includes(item.id));
+    res.json({ success: true, data: { removed: before - reviews.length } }); return;
+  }
   if (req.path === '/delivery/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
     res.write('data: ' + JSON.stringify({ type: 'init', stats, logs: [
@@ -65,7 +73,7 @@ app.use('/api', (req, res) => {
     : req.path === '/presets' ? [{ id: 'deepseek-web-flash', name: 'DeepSeek 网页', badge: '网页登录', connectionMode: 'deepseek-web', model: config.llm.model, baseUrl: '', description: '使用本机保存的 DeepSeek 网页账号。', applyUrl: '' }]
     : req.path === '/browser/status' ? { isLoggedIn: true, isBrowserActive: true, reasonCode: 'authenticated' }
     : req.path === '/boss/automation-safety' ? { blocked, hold: blocked ? { id: 'ui-hold', reason: 'platform_verification', message: '本地测试：BOSS 页面需要人工验证。', detectedAt: new Date().toISOString() } : null }
-    : req.path === '/delivery/work-condition-reviews' ? [review]
+    : req.path === '/delivery/work-condition-reviews' ? reviews
     : req.path === '/delivery/not-suitable' ? []
     : req.path === '/llm/web/status' ? { state: 'ready', message: '本地测试：登录状态已保存。', hasCredential: true, busy: false, retryAfterSeconds: 0, loginWindowOpen: false }
     : req.path === '/location/map' ? { tileUrl: '/api/tiles/{z}/{x}/{y}.svg', attribution: 'OpenStreetMap 界面测试' } : null;
@@ -172,12 +180,36 @@ async function main() {
       await nav.getByRole('button', { name: '开始投递', exact: true }).click();
       await page.screenshot({ path: path.join(output, 'claude-ui-' + width + '.png') });
     }
+    // Delete error retains rows; success clears the selection and survives refresh/reload.
+    reviews = [review, { ...review, id: 'ui-review-2', jobName: '第二个测试岗位' }, { ...review, id: 'ui-review-3', jobName: '第三个测试岗位' }];
+    await nav.getByRole('button', { name: '运行记录', exact: true }).click();
+    const panel = main.getByRole('region', { name: '待确认岗位', exact: true });
+    await panel.getByRole('button', { name: '刷新待确认岗位', exact: true }).click();
+    await panel.getByText('第三个测试岗位', { exact: true }).waitFor();
+    await panel.getByRole('checkbox', { name: '选择岗位：' + review.jobName, exact: true }).check();
+    await panel.getByRole('checkbox', { name: '选择岗位：第二个测试岗位', exact: true }).check();
+    failDeletion = true;
+    await panel.getByRole('button', { name: '删除所选（2）', exact: true }).click();
+    await panel.getByRole('alert').filter({ hasText: '测试删除失败' }).waitFor();
+    assert.equal(await panel.locator('article').count(), 3);
+    assert.equal(await panel.getByRole('checkbox', { name: '选择岗位：第二个测试岗位', exact: true }).isChecked(), true);
+    failDeletion = false;
+    await panel.getByRole('button', { name: '删除所选（2）', exact: true }).click();
+    await panel.getByRole('status').filter({ hasText: '已删除 2 个待确认岗位' }).waitFor();
+    assert.equal(await panel.locator('article').count(), 1);
+    assert.equal(await panel.getByRole('button', { name: '投递所选（0）', exact: true }).isDisabled(), true);
+    await page.reload();
+    await nav.getByRole('button', { name: '运行记录', exact: true }).click();
+    await panel.getByRole('button', { name: '删除岗位：第三个测试岗位', exact: true }).click();
+    await panel.getByText(/暂时没有待确认岗位/).waitFor();
+    await panel.getByRole('button', { name: '刷新待确认岗位', exact: true }).click();
+    assert.equal(reviews.length, 0);
     assert.ok(!requests.some(item => item.path === '/delivery/start' || item.path === '/resume/boss/upload' || item.path === '/followup/start'), 'Reviewing UI must not deliver jobs, upload resumes or start automatic messages');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, 'claude-ui-verification.json'), JSON.stringify({ passed: true, pages: 8, career: true, conditionTiers: true, widths: [1320, 900, 390], startVisible: true, stickyAction: true, summaryUpdates: true, followupSettings: true, pageErrors: errors }, null, 2));
     assert.equal(await page.getByRole('heading', { name: 'BOSS 自动操作已停止', exact: true }).count(), 0);
     assert.equal(requests.some(request => request.path === '/boss/automation-safety'), false, '界面不轮询全局停止状态');
-    console.log('PASS | Claude workspace: eight pages, three widths, followup controls, comma input, sticky start, live summary, Chinese and salary rendering.');
+    console.log('PASS | Claude workspace: eight pages, three widths, single/batch delete, failed-delete retention, refresh persistence, followup controls, comma input, sticky start, Chinese and salary rendering.');
   } finally { await browser?.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

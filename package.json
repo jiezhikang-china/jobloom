@@ -14,6 +14,7 @@
     "desktop:open": "electron .",
     "test:ui": "node server/tests/claude-ui.test.cjs",
     "test:desktop": "node --test desktop/tests/startup.test.cjs desktop/tests/protocol.test.cjs",
+    "git:upload:api": "node tools/github/push-via-api.cjs",
     "start": "cd server && npm start"
   },
   "keywords": [

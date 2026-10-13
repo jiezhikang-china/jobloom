@@ -28,6 +28,7 @@
     "test:experience": "tsx tests/experience-filter.test.ts",
     "test:language": "tsx tests/language-qualification.test.ts && tsx tests/delivery-language.test.ts",
     "test:review-delivery": "tsx tests/delivery-review.test.ts",
+    "test:review-delete": "tsx tests/review-delete.test.ts",
     "test:followup": "tsx tests/followup.test.ts && tsx tests/followup-dom.test.ts",
     "test:work-conditions": "tsx tests/work-conditions.test.ts",
     "test:exclusions": "tsx tests/job-exclusions.test.ts",
