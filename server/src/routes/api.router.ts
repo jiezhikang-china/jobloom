@@ -422,6 +422,7 @@ apiRouter.post('/delivery/start', async (req: Request, res: Response) => {
       : [];
 
     if (!targetRole && useSavedExpectations) targetRole = 'BOSS 自选求职期望';
+    if (!targetRole && ['recommendation', 'message_recommendations'].includes(configManager.getConfig().delivery.jobSource || '')) targetRole = '适合当前简历和求职要求的岗位';
     if (!targetRole || typeof targetRole !== 'string') {
       return res.status(400).json({ success: false, message: '请指定目标职业' });
     }

@@ -133,7 +133,7 @@ export class ConfigManager {
         workRequirements: normalizeWorkRequirements(cfg.filter?.workRequirements, legacyWorkConditions),
       },
       delivery: {
-        jobSource: cfg.delivery?.jobSource === 'search' ? 'search' : 'saved_expectations',
+        jobSource: cfg.delivery?.jobSource === 'search' || cfg.delivery?.jobSource === 'recommendation' || cfg.delivery?.jobSource === 'message_recommendations' ? cfg.delivery.jobSource : 'saved_expectations',
         dailyMaxQuota: Number.isFinite(quota) ? Math.max(0, Math.min(150, Math.trunc(quota))) : DEFAULT_CONFIG.delivery.dailyMaxQuota,
       },
     };

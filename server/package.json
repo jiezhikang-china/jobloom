@@ -49,6 +49,7 @@
     "test:deepseek": "tsx tests/deepseek-web.test.ts",
     "test:deepseek-ui": "tsx tests/deepseek-ui.test.ts",
     "selftest": "tsx tests/selftest.ts",
+    "test:sources": "tsx tests/boss-recommendation-source.test.ts && tsx tests/boss-message-recommendations.test.ts && tsx tests/delivery-new-sources.test.ts && tsx tests/boss-chat-login.test.ts",
     "test:candidates": "tsx tests/candidate-recovery.test.ts && tsx tests/delivery-recovery-screening.test.ts"
   },
   "dependencies": {

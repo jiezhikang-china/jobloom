@@ -31,7 +31,7 @@ export interface AppConfig {
     workRequirements?: WorkRequirement[];
   };
   delivery: {
-    jobSource?: 'saved_expectations' | 'search';
+    jobSource?: 'saved_expectations' | 'search' | 'recommendation' | 'message_recommendations';
     dailyMaxQuota: number;
   };
   targetPosition?: BossPositionSelection;

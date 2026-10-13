@@ -467,7 +467,8 @@ export default function App() {
   const selectedConditions = (config?.filter.workRequirements || []).filter((item) => item.enabled);
   const conditionDescription = selectedConditions.map((item) => item.text).join('、');
   const searchByConditions = deliveryMode === 'manual' && conditionsOnly;
-  const usesSavedExpectations = config?.delivery.jobSource !== 'search';
+  const usesSavedExpectations = (config?.delivery.jobSource || 'saved_expectations') === 'saved_expectations';
+  const usesRecommendation = config?.delivery.jobSource === 'recommendation' || config?.delivery.jobSource === 'message_recommendations';
 
   const handleStartDelivery = async () => {
     setStartMessage('');
@@ -479,7 +480,7 @@ export default function App() {
       setStartMessage('已有投递任务正在运行，请先在运行记录中停止。');
       return;
     }
-    if (!usesSavedExpectations && !searchByConditions && !selectedPosition) {
+    if (!usesSavedExpectations && !usesRecommendation && !searchByConditions && !selectedPosition) {
       setStartMessage('请从 BOSS 官方分类中选择具体岗位。');
       return;
     }
@@ -494,7 +495,7 @@ export default function App() {
       setStartMessage('请至少选择一项工作条件。');
       return;
     }
-    if (deliveryMode === 'manual' && !searchByConditions && !(usesSavedExpectations && selectedConditions.length) && manualRequirements.trim().length < 10) {
+    if (deliveryMode === 'manual' && !searchByConditions && !((usesSavedExpectations || usesRecommendation) && selectedConditions.length) && manualRequirements.trim().length < 10) {
       setStartMessage('请填写至少 10 个字的目标岗位要求。');
       return;
     }
@@ -524,9 +525,9 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          targetRole: usesSavedExpectations ? targets.map(item => item.name).join('、') || '按当前条件规划目标岗位' : searchByConditions ? '符合工作条件的岗位' : selectedRole,
-          positionCode: usesSavedExpectations || searchByConditions ? undefined : selectedPosition?.code,
-          positionCodes: usesSavedExpectations ? targets.map(item => item.code) : undefined,
+          targetRole: usesSavedExpectations ? targets.map(item => item.name).join('、') || '按当前条件规划目标岗位' : usesRecommendation ? searchByConditions ? '符合当前工作条件的岗位' : selectedRole || '适合当前简历和求职要求的岗位' : searchByConditions ? '符合工作条件的岗位' : selectedRole,
+          positionCode: usesSavedExpectations || usesRecommendation || searchByConditions ? undefined : selectedPosition?.code,
+          positionCodes: usesSavedExpectations ? targets.map(item => item.code) : usesRecommendation && !searchByConditions && selectedPosition ? [selectedPosition.code] : undefined,
           conditionsOnly: searchByConditions,
           keywords: searchKeywords.length || !searchByConditions ? searchKeywords
             : selectedConditions.filter((item) => item.builtin).map((item) => ({ eightHours: '八小时', doubleRest: '双休', noExperience: '经验不限' })[item.builtin!]),
@@ -659,11 +660,13 @@ export default function App() {
                 <label htmlFor="boss-job-source">BOSS 职位来源</label>
                 <select id="boss-job-source" value={config?.delivery.jobSource || 'saved_expectations'} disabled={isTaskRunning}
                   onChange={(event) => config && setConfig({ ...config, delivery: { ...config.delivery,
-                    jobSource: event.target.value === 'search' ? 'search' : 'saved_expectations' } })}>
+                    jobSource: event.target.value as AppConfig['delivery']['jobSource'] } })}>
                   <option value="saved_expectations">按目标设置 BOSS 自选岗位</option>
                   <option value="search">按官方分类和关键词搜索</option>
+                  <option value="recommendation">按 BOSS 推荐页找岗位</option>
+                  <option value="message_recommendations">消息中带「荐」标记的岗位</option>
                 </select>
-                <p>{usesSavedExpectations ? '按目标岗位和城市调整 BOSS 的自选职位，再逐个筛选。' : '按官方分类和搜索词查找职位。'}</p>
+                <p>{usesSavedExpectations ? '按目标岗位和城市调整 BOSS 的自选职位，再逐个筛选。' : config?.delivery.jobSource === 'message_recommendations' ? '读取电脑网页消息列表中 BOSS 标记「荐」的岗位，再按当前条件筛选。当前没有标记时会显示未发现。手机「综合推荐 → 新职位」汇总尚未接入，与此来源不同。' : usesRecommendation ? '从 BOSS 的推荐列表找岗位，继续核对你的目标、工作条件、排除项和距离。' : '按官方分类和搜索词查找职位。'}</p>
               </div>
 
               {deliveryMode === 'manual' && (
@@ -718,8 +721,9 @@ export default function App() {
                     </div>)}
                     {targetSlots.length < 3 && <button type="button" disabled={isTaskRunning} onClick={() => setTargetSlots(previous => [...previous, undefined])}>添加目标岗位</button>}
                   </section>}
-                  {(searchByConditions || usesSavedExpectations) && config ? (
+                  {(searchByConditions || usesSavedExpectations || usesRecommendation) && config ? (
                     <>
+                      {usesRecommendation && !searchByConditions && <section><strong>目标岗位（可选）</strong><BossPositionPicker catalog={bossPositions} value={selectedPosition} loading={isLoadingPositions} error={positionError} disabled={isTaskRunning} optional onChange={handlePositionChange} onRefresh={() => fetchBossPositions(true)} /></section>}
                       <WorkConditionOptions value={config.filter.workRequirements} disabled={isTaskRunning}
                         onChange={(value) => setConfig({ ...config, filter: { ...config.filter, workRequirements: value } })} />
                       <div className="conditions-salary">

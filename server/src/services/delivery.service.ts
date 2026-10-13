@@ -14,6 +14,7 @@ import { languageQualificationIssue, candidateLanguageEvidence } from './languag
 import { jobCommuteService } from './job-commute.service.js';
 import { commuteDecision } from './commute.js';
 import { evaluationRetrySeconds } from './ai-retry.js';
+import { bossMessageRecommendations } from './boss-message-recommendations.js';
 import { bossJobId, sameJobLink } from './job-identity.js';
 import { notSuitableStore } from './not-suitable-store.js';
 import { DeliveryStats, DeliveryLogItem, BossJobItem, BossPositionSelection, WorkConditionReview, AppConfig, WorkRequirementAssessment } from '../types.js';
@@ -432,7 +433,9 @@ export class DeliveryService {
       }
       await this.restAtBoundary();
       const useSavedExpectations = cfg.delivery.jobSource === 'saved_expectations';
-      let sources = params.keywords;
+      const useRecommendation = cfg.delivery.jobSource === 'recommendation';
+      const useMessageRecommendations = cfg.delivery.jobSource === 'message_recommendations';
+      let sources = useRecommendation ? ['BOSS 推荐页'] : useMessageRecommendations ? ['BOSS 消息荐职位'] : params.keywords;
       if (useSavedExpectations) {
         let targets = params.targetPositions || [];
         if (!targets.length) {
@@ -475,8 +478,9 @@ export class DeliveryService {
         });
       } else this.stats.targetRoles = [params.targetRole];
       this.stats.phase = 'screening'; this.emit();
-      const openList = (source: string) => useSavedExpectations
+      const openList = (source: string) => useMessageRecommendations ? bossMessageRecommendations.open() : useSavedExpectations
         ? bossPageService.initJobPage(undefined, cfg.filter.cityCode, undefined, { expectationName: source })
+        : useRecommendation ? bossPageService.initJobPage(undefined, cfg.filter.cityCode, undefined, { recommendation: true })
         : bossPageService.initJobPage(source, cfg.filter.cityCode, params.positionCode);
       if (useSavedExpectations) this.log('info', 'BOSS 自选求职期望：' + sources.join('、'));
       if (useSavedExpectations) {
@@ -505,7 +509,7 @@ export class DeliveryService {
           stoppedByUser = true;
           break;
         }
-        this.log('info', useSavedExpectations ? '正在打开 BOSS 自选岗位：' + keyword : '正在搜索岗位：' + keyword);
+        this.log('info', useSavedExpectations ? '正在打开 BOSS 自选岗位：' + keyword : useRecommendation ? '正在读取 BOSS 推荐岗位，按当前条件筛选' : useMessageRecommendations ? '正在读取 BOSS 消息列表中带「荐」标记的职位' : '正在搜索岗位：' + keyword);
 
         await this.restAtBoundary();
         let pageReady = false;
@@ -525,6 +529,7 @@ export class DeliveryService {
         }
         if (!pageReady) throw new Error('BOSS 安全验证后仍无法打开职位列表，任务已停止');
         let noNewJobScrollAttempts = 0;
+        const sourceCards = () => useMessageRecommendations ? bossMessageRecommendations.cards() : bossPageService.getVisibleJobCards();
 
         const pending: PendingCandidate[] = [];
         const aiBatchSize = boundedInteger(cfg.llm.jobBatchSize, 5, 1, 10);
@@ -621,7 +626,7 @@ export class DeliveryService {
           }
           if (evaluation.passed && reopen) {
             if (!(await bossPageService.isJobListPage())) await openList(keyword);
-            const currentCards = await bossPageService.getVisibleJobCards();
+            const currentCards = useMessageRecommendations ? [] : await bossPageService.getVisibleJobCards();
             const freshCard = currentCards.find(card => sameJobLink(card.jobHref, jobCard.jobHref))
               || (candidate.sourceHref ? currentCards.find(card => sameJobLink(card.jobHref, candidate.sourceHref!)) : undefined);
             if (freshCard) cardLocator = freshCard.cardLocator;
@@ -701,7 +706,7 @@ export class DeliveryService {
               companyName: jobCard.companyName,
               ...scoreExtra,
             });
-            if (evaluation.evaluationSource === 'rules' && exclusion && cardLocator) {
+            if (!useMessageRecommendations && evaluation.evaluationSource === 'rules' && exclusion && cardLocator) {
               // A rest invalidates feedback locators as well as submission buttons.
               if (reopen) {
                 const cards = await bossPageService.getVisibleJobCards();
@@ -959,7 +964,8 @@ export class DeliveryService {
 
           if (await this.restAtBoundary(() => openList(keyword))) noNewJobScrollAttempts = 0;
           // 扫描当前页面可见卡片
-          const cards = await bossPageService.getVisibleJobCards();
+          const cards = await sourceCards();
+          if (useMessageRecommendations && !cards.length && !noNewJobScrollAttempts) this.log('info', '[消息推荐] 当前消息列表未发现 BOSS 标记「荐」的职位；不会把普通新招呼或已沟通职位冒充推荐');
           const snapshotGeneration = this.browserGeneration;
           let newlyFoundInThisBatch = 0;
 
@@ -1011,7 +1017,7 @@ export class DeliveryService {
 
             // 卡片身份校验：索引型 Locator 在列表重排后可能指向别的岗位
             let cardLocator = jobCard.cardLocator;
-            if (!(await bossPageService.isCardStillTarget(cardLocator, jobCard.jobName, jobCard.companyName, jobCard.jobHref))) {
+            if (!useMessageRecommendations && !(await bossPageService.isCardStillTarget(cardLocator, jobCard.jobName, jobCard.companyName, jobCard.jobHref))) {
               const relocated = await bossPageService.relocateCard(jobCard.jobHref, jobCard.jobName, jobCard.companyName);
               if (!relocated) {
                 deferDetail(jobCard, jobKey, '列表已重排，尚未重新定位原岗位');
@@ -1024,7 +1030,9 @@ export class DeliveryService {
             if (!(await this.paceJobSelection(cfg.delivery))) { stoppedByUser = true; break; }
             let detailRes: Awaited<ReturnType<typeof bossPageService.loadJobDetail>>;
             try {
-              detailRes = await bossPageService.loadJobDetail(cardLocator, jobCard.jobName, jobCard.companyName, jobCard.jobHref, detailOptions);
+              detailRes = useMessageRecommendations
+                ? await bossPageService.loadCandidateJob(jobCard, cfg.filter, candidateLanguageEvidence(cfg.filter.candidateLanguages, candidateContext))
+                : await bossPageService.loadJobDetail(cardLocator, jobCard.jobName, jobCard.companyName, jobCard.jobHref, detailOptions);
             } catch (err) {
               const message = (err as Error).message;
               if (/CAPTCHA_REQUIRED/.test(message)) {
@@ -1104,7 +1112,7 @@ export class DeliveryService {
               try { workConditionReviews.removeForJob(jobCard.jobHref); } catch {}
               this.stats.localDecisionCount = (this.stats.localDecisionCount || 0) + 1;
               this.log('info', `[初筛淘汰] ${mockJobItem.brandName} - ${jobCard.jobName}: ${stage1.reason}`);
-              const marked = await this.markExplicitExclusion(cardLocator, jobCard, mockJobItem, detailRes.jobDetailText, cfg.filter, exclusionText);
+              const marked = !useMessageRecommendations && await this.markExplicitExclusion(cardLocator, jobCard, mockJobItem, detailRes.jobDetailText, cfg.filter, exclusionText);
               if (marked) this.stats.markedNotSuitCount++;
               this.emit();
               continue;
@@ -1152,7 +1160,8 @@ export class DeliveryService {
           if (newlyFoundInThisBatch === 0) {
             noNewJobScrollAttempts++;
             this.log('info', `[DOM] 正在向下滑动以加载更多职位数据...`);
-            await bossPageService.scrollDownForMore();
+            if (useMessageRecommendations) await bossMessageRecommendations.scroll();
+            else await bossPageService.scrollDownForMore();
           } else {
             noNewJobScrollAttempts = 0;
           }

@@ -1,3 +1,4 @@
+import './isolated-browser-profile.js';
 import { BossAutomationSafety, bossAutomationSafety } from '../../src/services/boss-automation-safety.js';
 import { workConditionReviews } from '../../src/services/work-condition-reviews.js';
 import { candidateLedger, CandidateLedger } from '../../src/services/candidate-ledger.js';

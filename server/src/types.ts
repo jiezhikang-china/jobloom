@@ -39,7 +39,7 @@ export interface AppConfig {
     workConditions?: WorkConditions;
   };
   delivery: {
-    jobSource?: 'saved_expectations' | 'search';
+    jobSource?: 'saved_expectations' | 'search' | 'recommendation' | 'message_recommendations';
     dailyMaxQuota: number; // 每日最大投递数，0~150；0 表示停止自动投递
   };
   targetPosition?: BossPositionSelection;

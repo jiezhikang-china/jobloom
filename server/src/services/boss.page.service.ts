@@ -180,14 +180,15 @@ export class BossPageService {
   }
 
   public async initJobPage(keyword?: string, cityCode?: string, positionCode?: string,
-    options: { expectationName?: string } = {}): Promise<CdpPage> {
+    options: { expectationName?: string; recommendation?: boolean } = {}): Promise<CdpPage> {
     const page = await browserService.getWorkerPage();
     const current = new URL(typeof page.refreshUrl === 'function' ? await page.refreshUrl() : page.url());
-    const reuseSavedList = options.expectationName && current.hostname === 'www.zhipin.com'
+    const reuseSavedList = (options.expectationName || options.recommendation) && current.hostname === 'www.zhipin.com'
       && current.pathname === '/web/geek/jobs' && !current.searchParams.has('query') && !current.searchParams.has('position')
+      && (!options.recommendation || !cityCode || current.searchParams.get('city') === cityCode)
       && await this.isJobListPage();
-    if (!reuseSavedList) await page.goto(searchUrl(options.expectationName ? undefined : keyword,
-      options.expectationName ? undefined : cityCode, options.expectationName ? undefined : positionCode),
+    if (!reuseSavedList) await page.goto(searchUrl(options.expectationName || options.recommendation ? undefined : keyword,
+      options.expectationName ? undefined : cityCode, options.expectationName || options.recommendation ? undefined : positionCode),
       { timeout: 30000, waitUntil: 'domcontentloaded' });
     const deadline = Date.now() + this.pageReadyTimeoutMs;
     let state = await this.inspectPage(page);
@@ -200,6 +201,26 @@ export class BossPageService {
       throw new Error(`职位页加载超时：${this.pageReadyTimeoutMs / 1000} 秒内未出现职位卡片或无结果提示；${state.reason}（${state.url}）`);
     }
     await this.ensureLoggedIn(page);
+    if (options.recommendation) {
+      const tab = page.locator('.c-expect-select a.synthesis[ka="jobs_recommend_tab_click"]').filter({ visible: true }).first();
+      if (!(await tab.isVisible()) || (await tab.innerText()).trim() !== '推荐') throw new Error('BOSS 推荐入口未找到，请检查当前职位页');
+      const before = await page.evaluate(() => ({
+        active: Boolean(document.querySelector('.c-expect-select a.synthesis.active')),
+        jobs: [...document.querySelectorAll('li.job-card-box a.job-name')].map(a => a.getAttribute('href')).join('|'),
+      }));
+      if (!before.active) {
+        await clickBossAction(tab, 'source');
+        await page.waitForFunction(({ previousJobs }) => {
+          const active = Boolean(document.querySelector('.c-expect-select a.synthesis.active'));
+          const jobs = [...document.querySelectorAll('li.job-card-box a.job-name')].map(a => a.getAttribute('href')).join('|');
+          const empty = [...document.querySelectorAll('.search-empty,.job-list-empty,[class*="empty-result"]')]
+            .some(e => (e as HTMLElement).getClientRects().length && /暂无|没有|无相关|未找到/.test(e.textContent || ''));
+          return active && ((Boolean(jobs) && jobs !== previousJobs) || empty);
+        }, { previousJobs: before.jobs }, { timeout: this.pageReadyTimeoutMs });
+      }
+      await this.ensureLoggedIn(page);
+      return page;
+    }
     if (options.expectationName) {
       const names = await this.getSavedExpectationNames();
       const index = names.indexOf(options.expectationName);

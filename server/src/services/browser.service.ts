@@ -344,7 +344,7 @@ export class BrowserService {
       || location.pathname.startsWith('/web/user/'), null, { timeout: 15000 }).catch(() => {});
   }
 
-  /** Cookie 只是线索；职位页 DOM 才能证实已登录。 */
+  /** Cookie 只是线索；已登录的职位或消息 DOM 才能证实会话。 */
   public async checkLoginStatus(options: { restore?: boolean; observeBlocked?: boolean } = {}): Promise<LoginStatus> {
     if (this.resting) return { isLoggedIn: false, isBrowserActive: false, reasonCode: 'resting', reason: 'BOSS 浏览器已关闭休息，结束后自动重开并核对登录' };
     const hold = bossAutomationSafety.status().hold;
@@ -394,8 +394,11 @@ export class BrowserService {
             .some((element) => (element as HTMLElement).getClientRects().length > 0);
           const loginLink = [...document.querySelectorAll('a[href*="/web/user/"]')]
             .some((element) => /登录\s*\/\s*注册/.test(element.textContent || '') && (element as HTMLElement).getClientRects().length > 0);
+          const chat = document.querySelector('.chat-conversation') as any;
+          const authenticatedChat = Boolean(document.querySelector('.chat-user .user-list')
+            && chat?.__vue__?.$store?.state?.userInfo?.userId);
           const hasPageContent = body.trim().length > 5
-            && !!document.querySelector('.rec-job-list, .job-detail-box, .search-empty, .job-list-empty');
+            && (Boolean(document.querySelector('.rec-job-list, .job-detail-box, .search-empty, .job-list-empty')) || authenticatedChat);
           return { loginModal, loginLink, hasPageContent };
         }).catch(() => ({ loginModal: false, loginLink: false, hasPageContent: false }));
         if (state.loginModal || state.loginLink) {
@@ -409,7 +412,7 @@ export class BrowserService {
       }
       const reasonCode = pageIssue.includes('安全验证') ? 'verification_required'
         : pageIssue.includes('重新登录') ? 'login_required' : 'unverified';
-      return { isLoggedIn: false, isBrowserActive: true, reasonCode, reason: pageIssue || '尚未看到已登录的职位页面' };
+      return { isLoggedIn: false, isBrowserActive: true, reasonCode, reason: pageIssue || '尚未看到已登录的职位或消息页面' };
     } catch (error) {
       return { isLoggedIn: false, isBrowserActive: false, reasonCode: 'browser_unavailable', reason: `Chrome 连接失败：${(error as Error).message}` };
     }
