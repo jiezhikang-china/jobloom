@@ -43,6 +43,11 @@ import {
   BossPositionSelection,
 } from './types.js';
 
+const jobSourceLabels: Record<NonNullable<AppConfig['delivery']['jobSource']>, string> = {
+  saved_expectations: 'BOSS 自选职位', search: '分类与关键词搜索',
+  recommendation: 'BOSS 推荐页', message_recommendations: '消息“荐”岗位',
+};
+
 type WorkbenchTab = 'launch' | 'diagnosis' | 'tailor' | 'rules' | 'delivery' | 'settings' | 'followup' | 'career';
 const navigationItems = [
   { id: 'launch', label: '开始投递', icon: Play, description: '选择岗位与工作条件，开始新的投递。' },
@@ -658,7 +663,7 @@ export default function App() {
 
               <div className="launch-field">
                 <label htmlFor="boss-job-source">BOSS 职位来源</label>
-                <select id="boss-job-source" value={config?.delivery.jobSource || 'saved_expectations'} disabled={isTaskRunning}
+                <select id="boss-job-source" value={config?.delivery.jobSource || 'saved_expectations'} disabled={!config || isTaskRunning}
                   onChange={(event) => config && setConfig({ ...config, delivery: { ...config.delivery,
                     jobSource: event.target.value as AppConfig['delivery']['jobSource'] } })}>
                   <option value="saved_expectations">按目标设置 BOSS 自选岗位</option>
@@ -786,7 +791,7 @@ export default function App() {
                 <dl className="summary-details">
                   <div><dt><MapPin size={14} />求职城市</dt><dd>{config?.filter.cityName || '尚未载入'}</dd></div>
                   <div><dt>匹配方式</dt><dd>{deliveryMode === 'resume' ? '简历匹配' : '手动目标'}</dd></div>
-                  <div><dt>职位来源</dt><dd>{usesSavedExpectations ? 'BOSS 自选职位' : '分类与关键词搜索'}</dd></div>
+                  <div><dt>职位来源</dt><dd>{jobSourceLabels[config?.delivery.jobSource || 'saved_expectations']}</dd></div>
                 </dl>
                 <div className="summary-section"><h4>目标方向</h4>
                   <p>{summaryTargets.length ? summaryTargets.map(item => item.name).join('、') : searchByConditions ? '按工作条件找岗位' : usesSavedExpectations ? '由 AI 规划目标岗位' : '选择一个官方岗位'}</p>

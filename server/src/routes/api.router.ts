@@ -9,7 +9,7 @@ import { bossPageService } from '../services/boss.page.service.js';
 import { deliveryService } from '../services/delivery.service.js';
 import { llmService } from '../services/llm.service.js';
 import { bossCatalogService } from '../services/boss.catalog.service.js';
-import type { BossPositionSelection } from '../types.js';
+import { isJobSource, type BossPositionSelection } from '../types.js';
 import { deepseekProxyService } from '../services/deepseek.proxy.service.js';
 import { workConditionReviews } from '../services/work-condition-reviews.js';
 import { notSuitableStore } from '../services/not-suitable-store.js';
@@ -134,8 +134,8 @@ apiRouter.post('/config', (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '资料筛选选项必须为开启或关闭。' });
     }
   }
-  if (req.body?.delivery?.jobSource !== undefined && !['saved_expectations', 'search'].includes(req.body.delivery.jobSource)) {
-    return res.status(400).json({ success: false, message: '请选择 BOSS 自选期望或搜索岗位。' });
+  if (req.body?.delivery?.jobSource !== undefined && !isJobSource(req.body.delivery.jobSource)) {
+    return res.status(400).json({ success: false, message: '请选择有效的 BOSS 职位来源。' });
   }
   const experienceMode = req.body?.filter?.experienceMatchMode;
   if (experienceMode !== undefined && !['flexible', 'strict'].includes(experienceMode)) {

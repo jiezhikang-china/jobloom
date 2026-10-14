@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { AppConfig } from '../types.js';
+import { AppConfig, isJobSource } from '../types.js';
 import { sanitizeApiKey } from './credentials.js';
 import { normalizeCandidateDegrees } from '../services/education.js';
 import { normalizeWorkRequirements } from '../services/work-requirements.js';
@@ -133,7 +133,7 @@ export class ConfigManager {
         workRequirements: normalizeWorkRequirements(cfg.filter?.workRequirements, legacyWorkConditions),
       },
       delivery: {
-        jobSource: cfg.delivery?.jobSource === 'search' || cfg.delivery?.jobSource === 'recommendation' || cfg.delivery?.jobSource === 'message_recommendations' ? cfg.delivery.jobSource : 'saved_expectations',
+        jobSource: isJobSource(cfg.delivery?.jobSource) ? cfg.delivery.jobSource : 'saved_expectations',
         dailyMaxQuota: Number.isFinite(quota) ? Math.max(0, Math.min(150, Math.trunc(quota))) : DEFAULT_CONFIG.delivery.dailyMaxQuota,
       },
     };

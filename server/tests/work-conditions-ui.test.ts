@@ -101,6 +101,7 @@ async function main() {
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('dialog', (dialog) => void dialog.accept());
     await page.goto(base);
+    await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('.launch-submit')?.disabled);
     await page.getByLabel('BOSS 职位来源', { exact: true }).selectOption('search');
     const startButton = page.getByRole('main').getByRole('button', { name: '开始投递', exact: true });
     await startButton.click();
@@ -357,6 +358,27 @@ async function main() {
     await targetPanel.getByRole('button', { name: '移除目标2', exact: true }).click();
     assert.equal(await targetPanel.locator('[aria-label="目标岗位3"]').count(), 0);
     assert.deepEqual((await targetPanel.getByLabel('具体岗位', { exact: true }).allTextContents()).length, 2);
+    // Use the real config route before the mocked delivery worker: this catches source
+    // modes that normalize correctly but are rejected by POST /config in the actual UI.
+    for (const [source, label] of [['recommendation', 'BOSS 推荐页'], ['message_recommendations', '消息“荐”岗位']]) {
+      await page.getByRole('navigation').getByRole('button', { name: '开始投递', exact: true }).click();
+      await page.getByLabel('BOSS 职位来源', { exact: true }).selectOption(source);
+      await page.getByRole('checkbox', { name: '不限岗位，按工作条件找', exact: true }).check();
+      await page.locator('.launch-summary').getByText(label, { exact: true }).waitFor();
+      const before = starts.length;
+      const [saved, started] = await Promise.all([
+        page.waitForResponse(response => response.url().endsWith('/api/config') && response.request().method() === 'POST'),
+        page.waitForResponse(response => response.url().endsWith('/api/delivery/start') && response.request().method() === 'POST'),
+        startButton.click(),
+      ]);
+      assert.equal(saved.status(), 200); assert.equal(started.status(), 200);
+      assert.equal(config.delivery.jobSource, source); assert.equal(starts.length, before + 1);
+      assert.equal(started.request().postDataJSON().conditionsOnly, true); assert.equal(starts.at(-1).positionCode, undefined);
+      assert.match(starts.at(-1).resumeText, /不做销售/);
+      await page.reload();
+      await page.locator('.launch-summary').getByText(label, { exact: true }).waitFor();
+      assert.equal(await page.getByLabel('BOSS 职位来源', { exact: true }).inputValue(), source);
+    }
     const startsBeforeHold = starts.length;
     bossAutomationSafety.halt('user_reported_ban', '离线测试：BOSS 账号封禁，停止自动操作');
     await page.reload();
@@ -365,7 +387,7 @@ async function main() {
     assert.equal(await page.getByRole('heading', { name: 'BOSS 自动操作已停止', exact: true }).count(), 0);
     assert.equal(starts.length, startsBeforeHold, '重载界面不能自动启动投递');
     assert.deepEqual(errors, []);
-    console.log('PASS | 三个自选目标、条件与定位设置、待确认投递及删除、重载不自动投递且不恢复已移除的横幅');
+    console.log('PASS | 推荐与消息来源真实配置保存→启动、摘要与重载，三个自选目标、条件与定位、待确认投递及删除；无真实账号操作');
   } finally {
     await browser?.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -1,3 +1,8 @@
+export const JOB_SOURCES = ['saved_expectations', 'search', 'recommendation', 'message_recommendations'] as const;
+export type JobSource = typeof JOB_SOURCES[number];
+export const isJobSource = (value: unknown): value is JobSource =>
+  typeof value === 'string' && JOB_SOURCES.includes(value as JobSource);
+
 export interface AppConfig {
   llm: {
     connectionMode?: 'api' | 'deepseek-web';
@@ -39,7 +44,7 @@ export interface AppConfig {
     workConditions?: WorkConditions;
   };
   delivery: {
-    jobSource?: 'saved_expectations' | 'search' | 'recommendation' | 'message_recommendations';
+    jobSource?: JobSource;
     dailyMaxQuota: number; // 每日最大投递数，0~150；0 表示停止自动投递
   };
   targetPosition?: BossPositionSelection;
